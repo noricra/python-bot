@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TechBot Marketplace - Formations & Crypto Wallet Intégré
-Version 2.0 - Marketplace décentralisée avec wallets
+TechBot Marketplace - Plateforme de Formations Digitales
+Version 2.0 - Marketplace sécurisée avec paiements crypto
 """
 
 import os
@@ -28,27 +28,59 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.error import TelegramError
 from dotenv import load_dotenv
 import re
-import base58 # Import manquant
+import base58
+from contextlib import contextmanager
+from functools import wraps
+from collections import defaultdict
+import aiohttp
+import gzip
+import shutil
+from dataclasses import dataclass
 
 # Charger les variables d'environnement
 load_dotenv()
 
 # Configuration
-TOKEN = os.getenv('TELEGRAM_TOKEN')
-NOWPAYMENTS_API_KEY = os.getenv('NOWPAYMENTS_API_KEY')
-NOWPAYMENTS_IPN_SECRET = os.getenv('NOWPAYMENTS_IPN_SECRET')
-ADMIN_USER_ID = int(
-    os.getenv('ADMIN_USER_ID')) if os.getenv('ADMIN_USER_ID') else None
-ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'admin@votre-domaine.com')
-SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-SMTP_EMAIL = os.getenv('SMTP_EMAIL')
-SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
+@dataclass
+class Config:
+    token: str
+    nowpayments_api_key: str
+    nowpayments_ipn_secret: str
+    admin_user_id: Optional[int]
+    admin_email: str
+    smtp_server: str
+    smtp_port: int
+    smtp_email: str
+    smtp_password: str
+    max_connections: int
+    cache_ttl: int
+    max_file_size_mb: int
+    rate_limit_requests: int
+    rate_limit_window: int
+    
+    @classmethod
+    def from_env(cls):
+        return cls(
+            token=os.getenv('TELEGRAM_TOKEN'),
+            nowpayments_api_key=os.getenv('NOWPAYMENTS_API_KEY'),
+            nowpayments_ipn_secret=os.getenv('NOWPAYMENTS_IPN_SECRET'),
+            admin_user_id=int(os.getenv('ADMIN_USER_ID')) if os.getenv('ADMIN_USER_ID') else None,
+            admin_email=os.getenv('ADMIN_EMAIL', 'admin@votre-domaine.com'),
+            smtp_server=os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
+            smtp_port=int(os.getenv('SMTP_PORT', '587')),
+            smtp_email=os.getenv('SMTP_EMAIL'),
+            smtp_password=os.getenv('SMTP_PASSWORD'),
+            max_connections=int(os.getenv('MAX_CONNECTIONS', '10')),
+            cache_ttl=int(os.getenv('CACHE_TTL', '3600')),
+            max_file_size_mb=int(os.getenv('MAX_FILE_SIZE_MB', '100')),
+            rate_limit_requests=int(os.getenv('RATE_LIMIT_REQUESTS', '10')),
+            rate_limit_window=int(os.getenv('RATE_LIMIT_WINDOW', '60'))
+        )
+
+config = Config.from_env()
 
 # Configuration marketplace
 PLATFORM_COMMISSION_RATE = 0.05  # 5%
-PARTNER_COMMISSION_RATE = 0.10  # 10%
-MAX_FILE_SIZE_MB = 100
 SUPPORTED_FILE_TYPES = ['.pdf', '.zip', '.rar', '.mp4', '.txt', '.docx']
 
 # Configuration crypto
@@ -57,11 +89,6 @@ MARKETPLACE_CONFIG = {
     'platform_commission_rate': 0.05,  # 5%
     'min_payout_amount': 0.1,  # SOL minimum pour payout
 }
-
-# Variables commission
-# (Définies une seule fois pour éviter les doublons)
-PLATFORM_COMMISSION_RATE = 0.05  # 5% pour la plateforme
-PARTNER_COMMISSION_RATE = 0.10   # 10% pour parrainage (si gardé)
 
 # Configuration logging
 os.makedirs('logs', exist_ok=True)
@@ -76,6 +103,197 @@ logging.basicConfig(
         logging.StreamHandler()
     ])
 logger = logging.getLogger(__name__)
+
+# ==========================================
+# CLASSES DE PERFORMANCE ET OPTIMISATION
+# ==========================================
+
+class DatabaseManager:
+    """Gestionnaire de base de données optimisé avec pool de connexions"""
+    
+    def __init__(self, db_path: str, max_connections: int = 10):
+        self.db_path = db_path
+        self.max_connections = max_connections
+        self.connections = []
+        self.lock = asyncio.Lock()
+    
+    @contextmanager
+    def get_connection(self):
+        """Obtient une connexion du pool"""
+        conn = None
+        try:
+            if self.connections:
+                conn = self.connections.pop()
+            else:
+                conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
+                conn.execute('PRAGMA journal_mode=WAL;')
+                conn.execute('PRAGMA synchronous=NORMAL;')
+                conn.execute('PRAGMA foreign_keys=ON;')
+                conn.execute('PRAGMA busy_timeout=5000;')
+            yield conn
+        finally:
+            if conn:
+                if len(self.connections) < self.max_connections:
+                    self.connections.append(conn)
+                else:
+                    conn.close()
+
+class SmartCache:
+    """Cache intelligent avec TTL et gestion mémoire"""
+    
+    def __init__(self, default_ttl: int = 3600):
+        self.cache = {}
+        self.ttl = {}
+        self.default_ttl = default_ttl
+    
+    def get(self, key: str):
+        """Récupère une valeur du cache"""
+        if key in self.cache:
+            if time.time() < self.ttl.get(key, 0):
+                return self.cache[key]
+            else:
+                del self.cache[key]
+                del self.ttl[key]
+        return None
+    
+    def set(self, key: str, value, ttl: int = None):
+        """Définit une valeur dans le cache"""
+        if ttl is None:
+            ttl = self.default_ttl
+        self.cache[key] = value
+        self.ttl[key] = time.time() + ttl
+    
+    def clear_expired(self):
+        """Nettoie les entrées expirées"""
+        current_time = time.time()
+        expired_keys = [k for k, v in self.ttl.items() if current_time > v]
+        for key in expired_keys:
+            del self.cache[key]
+            del self.ttl[key]
+
+class HTTPClient:
+    """Client HTTP asynchrone avec retry et circuit breaker"""
+    
+    def __init__(self, retry_attempts: int = 3):
+        self.session = None
+        self.retry_attempts = retry_attempts
+        self.failure_count = 0
+        self.failure_threshold = 5
+        self.recovery_timeout = 60
+        self.last_failure_time = 0
+        self.state = 'CLOSED'  # CLOSED, OPEN, HALF_OPEN
+    
+    async def get_session(self):
+        """Obtient ou crée une session HTTP"""
+        if self.session is None:
+            self.session = aiohttp.ClientSession()
+        return self.session
+    
+    async def make_request(self, url: str, method: str = 'GET', **kwargs):
+        """Effectue une requête HTTP avec retry"""
+        if self.state == 'OPEN':
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = 'HALF_OPEN'
+            else:
+                raise Exception("Circuit breaker is OPEN")
+        
+        session = await self.get_session()
+        for attempt in range(self.retry_attempts):
+            try:
+                async with session.request(method, url, **kwargs) as response:
+                    if response.status == 200:
+                        self.state = 'CLOSED'
+                        self.failure_count = 0
+                        return await response.json()
+                    else:
+                        raise Exception(f"HTTP {response.status}")
+            except Exception as e:
+                self.failure_count += 1
+                if self.failure_count >= self.failure_threshold:
+                    self.state = 'OPEN'
+                    self.last_failure_time = time.time()
+                
+                if attempt == self.retry_attempts - 1:
+                    raise e
+                await asyncio.sleep(2 ** attempt)  # Backoff exponentiel
+
+class RateLimiter:
+    """Rate limiter pour protéger contre les abus"""
+    
+    def __init__(self, max_requests: int = 10, window: int = 60):
+        self.max_requests = max_requests
+        self.window = window
+        self.requests = defaultdict(list)
+    
+    def is_allowed(self, user_id: int) -> bool:
+        """Vérifie si un utilisateur peut faire une requête"""
+        now = time.time()
+        user_requests = self.requests[user_id]
+        
+        # Nettoyer les anciennes requêtes
+        user_requests[:] = [req for req in user_requests if now - req < self.window]
+        
+        if len(user_requests) < self.max_requests:
+            user_requests.append(now)
+            return True
+        return False
+
+class TaskQueue:
+    """Queue de tâches asynchrone pour le traitement en arrière-plan"""
+    
+    def __init__(self, max_workers: int = 5):
+        self.queue = asyncio.Queue()
+        self.workers = []
+        self.max_workers = max_workers
+        self.running = False
+    
+    async def start(self):
+        """Démarre les workers"""
+        self.running = True
+        for _ in range(self.max_workers):
+            worker = asyncio.create_task(self.worker())
+            self.workers.append(worker)
+    
+    async def stop(self):
+        """Arrête les workers"""
+        self.running = False
+        for worker in self.workers:
+            worker.cancel()
+        await asyncio.gather(*self.workers, return_exceptions=True)
+    
+    async def add_task(self, task):
+        """Ajoute une tâche à la queue"""
+        await self.queue.put(task)
+    
+    async def worker(self):
+        """Worker qui traite les tâches"""
+        while self.running:
+            try:
+                task = await asyncio.wait_for(self.queue.get(), timeout=1.0)
+                try:
+                    await task()
+                except Exception as e:
+                    logger.error(f"Task failed: {e}")
+                finally:
+                    self.queue.task_done()
+            except asyncio.TimeoutError:
+                continue
+
+def measure_performance(func):
+    """Décorateur pour mesurer les performances"""
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        start_time = time.time()
+        try:
+            result = await func(*args, **kwargs)
+            duration = time.time() - start_time
+            logger.info(f"{func.__name__} completed in {duration:.2f}s")
+            return result
+        except Exception as e:
+            duration = time.time() - start_time
+            logger.error(f"{func.__name__} failed after {duration:.2f}s: {e}")
+            raise
+    return wrapper
 
 
 # SUPPRIMER ENTIÈREMENT la classe CryptoWalletManager
@@ -94,27 +312,25 @@ def validate_solana_address(address: str) -> bool:
     except:
         return False
 
-def get_solana_balance_display(address: str) -> float:
-    """Récupère solde Solana pour affichage (optionnel)"""
+async def get_solana_balance_display(address: str, http_client: HTTPClient) -> float:
+    """Récupère solde Solana pour affichage (optionnel) - Version asynchrone"""
     try:
-        # API publique Solana
-        response = requests.post(
+        # API publique Solana avec client HTTP optimisé
+        response = await http_client.make_request(
             "https://api.mainnet-beta.solana.com",
+            method="POST",
             json={
                 "jsonrpc": "2.0",
                 "id": 1, 
                 "method": "getBalance",
                 "params": [address]
-            },
-            timeout=10
+            }
         )
-
-        if response.status_code == 200:
-            data = response.json()
-            balance_lamports = data.get('result', {}).get('value', 0)
-            return balance_lamports / 1_000_000_000  # Lamports to SOL
-        return 0.0
-    except:
+        
+        balance_lamports = response.get('result', {}).get('value', 0)
+        return balance_lamports / 1_000_000_000  # Lamports to SOL
+    except Exception as e:
+        logger.warning(f"Erreur récupération solde Solana: {e}")
         return 0.0  # En cas d'erreur, afficher 0
 
 def validate_email(email: str) -> bool:
@@ -128,7 +344,11 @@ class MarketplaceBot:
 
     def __init__(self):
         self.db_path = "marketplace_database.db"
-        self.init_database()
+        self.db_manager = DatabaseManager(self.db_path, config.max_connections)
+        self.cache = SmartCache(config.cache_ttl)
+        self.http_client = HTTPClient()
+        self.rate_limiter = RateLimiter(config.rate_limit_requests, config.rate_limit_window)
+        self.task_queue = TaskQueue()
         self.memory_cache = {}
 
     def is_seller_logged_in(self, user_id: int) -> bool:
@@ -144,17 +364,21 @@ class MarketplaceBot:
         current = self.memory_cache.get(user_id, {})
         logged = bool(current.get('seller_logged_in'))
         self.memory_cache[user_id] = {'seller_logged_in': logged}
+    
+    async def cache_cleanup_task(self):
+        """Tâche de nettoyage automatique du cache"""
+        while True:
+            try:
+                await asyncio.sleep(3600)  # Nettoyer toutes les heures
+                self.cache.clear_expired()
+                logger.info("Cache nettoyé automatiquement")
+            except Exception as e:
+                logger.error(f"Erreur nettoyage cache: {e}")
+                await asyncio.sleep(300)  # Réessayer dans 5 minutes en cas d'erreur
 
-    def get_db_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
-        try:
-            conn.execute('PRAGMA journal_mode=WAL;')
-            conn.execute('PRAGMA synchronous=NORMAL;')
-            conn.execute('PRAGMA foreign_keys=ON;')
-            conn.execute('PRAGMA busy_timeout=5000;')
-        except Exception as e:
-            logger.warning(f"PRAGMA init error: {e}")
-        return conn
+    def get_db_connection(self):
+        """Obtient une connexion de la base de données via le pool"""
+        return self.db_manager.get_connection()
 
     def escape_markdown(self, text: str) -> str:
         if text is None:
@@ -172,282 +396,292 @@ class MarketplaceBot:
         sanitized = ''.join(ch if ch in allowed else '_' for ch in safe_name)
         return sanitized or f"file_{int(time.time())}"
 
-    def init_database(self):
-        """Base de données simplifiée"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
+    async def init_database(self):
+        """Base de données simplifiée avec optimisations"""
+        with self.get_db_connection() as conn:
+            cursor = conn.cursor()
 
-        # Table utilisateurs SIMPLIFIÉE
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id INTEGER PRIMARY KEY,
-                    username TEXT,
-                    first_name TEXT,
-                    language_code TEXT DEFAULT 'fr',
-                    registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-                    -- Vendeur (SIMPLIFIÉ)
-                    is_seller BOOLEAN DEFAULT FALSE,
-                    seller_name TEXT,
-                    seller_bio TEXT,
-                    seller_solana_address TEXT,  -- JUSTE L'ADRESSE, pas de seed phrase
-                    seller_rating REAL DEFAULT 0.0,
-                    total_sales INTEGER DEFAULT 0,
-                    total_revenue REAL DEFAULT 0.0,
-
-                    -- Système de récupération
-                    recovery_email TEXT,
-                    recovery_code_hash TEXT,
-
-                    -- Parrainage (gardé de l'original)
-                    is_partner BOOLEAN DEFAULT FALSE,
-                    partner_code TEXT UNIQUE,
-                    referred_by TEXT,
-                    total_commission REAL DEFAULT 0.0,
-
-                    email TEXT
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table users: {e}")
-            conn.rollback()
-
-        # Table des payouts vendeurs (NOUVELLE)
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS seller_payouts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    seller_user_id INTEGER,
-                    order_ids TEXT,  -- JSON array des order_ids
-                    total_amount_sol REAL,
-                    payout_status TEXT DEFAULT 'pending',  -- pending, processing, completed, failed
-                    payout_tx_hash TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    processed_at TIMESTAMP,
-                    FOREIGN KEY (seller_user_id) REFERENCES users (user_id)
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table seller_payouts: {e}")
-            conn.rollback()
-
-        # Table products (garder l'existante mais corriger generate_product_id)
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS products (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    product_id TEXT UNIQUE,
-                    seller_user_id INTEGER,
-                    title TEXT NOT NULL,
-                    description TEXT,
-                    category TEXT,
-                    price_eur REAL NOT NULL,
-                    price_usd REAL NOT NULL,
-                    main_file_path TEXT,
-                    file_size_mb REAL,
-                    views_count INTEGER DEFAULT 0,
-                    sales_count INTEGER DEFAULT 0,
-                    rating REAL DEFAULT 0.0,
-                    reviews_count INTEGER DEFAULT 0,
-                    status TEXT DEFAULT 'active',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (seller_user_id) REFERENCES users (user_id)
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table products: {e}")
-            conn.rollback()
-
-        # Table orders (garder existante)
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS orders (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    order_id TEXT UNIQUE,
-                    buyer_user_id INTEGER,
-                    product_id TEXT,
-                    seller_user_id INTEGER,
-                    product_price_eur REAL,
-                    platform_commission REAL,
-                    seller_revenue REAL,
-                    partner_commission REAL DEFAULT 0.0,
-                    crypto_currency TEXT,
-                    crypto_amount REAL,
-                    payment_status TEXT DEFAULT 'pending',
-                    nowpayments_id TEXT,
-                    payment_address TEXT,
-                    partner_code TEXT,
-                    commission_paid BOOLEAN DEFAULT FALSE,
-                    file_delivered BOOLEAN DEFAULT FALSE,
-                    download_count INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    FOREIGN KEY (buyer_user_id) REFERENCES users (user_id),
-                    FOREIGN KEY (seller_user_id) REFERENCES users (user_id),
-                    FOREIGN KEY (product_id) REFERENCES products (product_id)
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table orders: {e}")
-            conn.rollback()
-
-        # Table avis/reviews
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS reviews (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    product_id TEXT,
-                    buyer_user_id INTEGER,
-                    order_id TEXT,
-
-                    rating INTEGER CHECK(rating >= 1 AND rating <= 5),
-                    comment TEXT,
-
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-                    FOREIGN KEY (product_id) REFERENCES products (product_id),
-                    FOREIGN KEY (buyer_user_id) REFERENCES users (user_id),
-                    FOREIGN KEY (order_id) REFERENCES orders (order_id)
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table reviews: {e}")
-            conn.rollback()
-
-        # Table transactions wallet
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS wallet_transactions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-
-                    transaction_type TEXT,  -- receive, send, commission
-                    crypto_currency TEXT,
-                    amount REAL,
-                    from_address TEXT,
-                    to_address TEXT,
-                    tx_hash TEXT,
-
-                    status TEXT DEFAULT 'pending',  -- pending, confirmed, failed
-
-                    -- Lié aux commissions
-                    related_order_id TEXT,
-
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    confirmed_at TIMESTAMP,
-
-                    FOREIGN KEY (user_id) REFERENCES users (user_id)
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table wallet_transactions: {e}")
-            conn.rollback()
-
-        # Table support tickets (gardée de l'original)
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS support_tickets (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    ticket_id TEXT UNIQUE,
-                    subject TEXT,
-                    message TEXT,
-                    status TEXT DEFAULT 'open',
-                    admin_response TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users (user_id)
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table support_tickets: {e}")
-            conn.rollback()
-
-        # Table catégories
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS categories (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT UNIQUE,
-                    description TEXT,
-                    icon TEXT,
-                    products_count INTEGER DEFAULT 0
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table categories: {e}")
-            conn.rollback()
-
-        # Table codes de parrainage par défaut
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS default_referral_codes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    code TEXT UNIQUE,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    usage_count INTEGER DEFAULT 0
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table default_referral_codes: {e}")
-            conn.rollback()
-
-        # Insérer catégories par défaut
-        default_categories = [
-            ('Finance & Crypto', 'Formations trading, blockchain, DeFi', '💰'),
-            ('Marketing Digital', 'SEO, publicité, réseaux sociaux', '📈'),
-            ('Développement', 'Programming, web dev, apps', '💻'),
-            ('Design & Créatif', 'Graphisme, vidéo, arts', '🎨'),
-            ('Business', 'Entrepreneuriat, management', '📊'),
-            ('Formation Pro', 'Certifications, compétences', '🎓'),
-            ('Outils & Tech', 'Logiciels, automatisation', '🔧')
-        ]
-
-        for cat_name, cat_desc, cat_icon in default_categories:
+            # Table utilisateurs SIMPLIFIÉE
             try:
-                cursor.execute(
-                    '''
-                    INSERT OR IGNORE INTO categories (name, description, icon)
-                    VALUES (?, ?, ?)
-                ''', (cat_name, cat_desc, cat_icon))
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS users (
+                        user_id INTEGER PRIMARY KEY,
+                        username TEXT,
+                        first_name TEXT,
+                        language_code TEXT DEFAULT 'fr',
+                        registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                        -- Vendeur (SIMPLIFIÉ)
+                        is_seller BOOLEAN DEFAULT FALSE,
+                        seller_name TEXT,
+                        seller_bio TEXT,
+                        seller_solana_address TEXT,  -- JUSTE L'ADRESSE, pas de seed phrase
+                        seller_rating REAL DEFAULT 0.0,
+                        total_sales INTEGER DEFAULT 0,
+                        total_revenue REAL DEFAULT 0.0,
+
+                        -- Système de récupération
+                        recovery_email TEXT,
+                        recovery_code_hash TEXT,
+
+                        email TEXT
+                    )
+                ''')
+                
+                # Index pour optimiser les recherches
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_seller ON users(is_seller)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_recovery_email ON users(recovery_email)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_last_activity ON users(last_activity)')
+                
                 conn.commit()
             except sqlite3.Error as e:
-                logger.error(f"Erreur insertion catégorie {cat_name}: {e}")
+                logger.error(f"Erreur création table users: {e}")
                 conn.rollback()
 
-        # Créer quelques codes par défaut si la table est vide
-        cursor.execute('SELECT COUNT(*) FROM default_referral_codes')
-        if cursor.fetchone()[0] == 0:
-            default_codes = [
-                'BRF2025', 'CRYPTO57', 'BITREF', 'PROFIT42', 'MONEY57',
-                'GAIN420'
+            # Table des payouts vendeurs (NOUVELLE)
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS seller_payouts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        seller_user_id INTEGER,
+                        order_ids TEXT,  -- JSON array des order_ids
+                        total_amount_sol REAL,
+                        payout_status TEXT DEFAULT 'pending',  -- pending, processing, completed, failed
+                        payout_tx_hash TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        processed_at TIMESTAMP,
+                        FOREIGN KEY (seller_user_id) REFERENCES users (user_id)
+                    )
+                ''')
+                
+                # Index pour les payouts
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_payouts_seller ON seller_payouts(seller_user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_payouts_status ON seller_payouts(payout_status)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_payouts_created ON seller_payouts(created_at)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table seller_payouts: {e}")
+                conn.rollback()
+
+            # Table products (garder l'existante mais corriger generate_product_id)
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS products (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        product_id TEXT UNIQUE,
+                        seller_user_id INTEGER,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        category TEXT,
+                        price_eur REAL NOT NULL,
+                        price_usd REAL NOT NULL,
+                        main_file_path TEXT,
+                        file_size_mb REAL,
+                        views_count INTEGER DEFAULT 0,
+                        sales_count INTEGER DEFAULT 0,
+                        rating REAL DEFAULT 0.0,
+                        reviews_count INTEGER DEFAULT 0,
+                        status TEXT DEFAULT 'active',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (seller_user_id) REFERENCES users (user_id)
+                    )
+                ''')
+                
+                # Index pour les produits
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_status ON products(status)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller_user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_sales ON products(sales_count)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_created ON products(created_at)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table products: {e}")
+                conn.rollback()
+
+            # Table orders (garder existante)
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS orders (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        order_id TEXT UNIQUE,
+                        buyer_user_id INTEGER,
+                        product_id TEXT,
+                        seller_user_id INTEGER,
+                        product_price_eur REAL,
+                        platform_commission REAL,
+                        seller_revenue REAL,
+
+                        crypto_currency TEXT,
+                        crypto_amount REAL,
+                        payment_status TEXT DEFAULT 'pending',
+                        nowpayments_id TEXT,
+                        payment_address TEXT,
+
+                        commission_paid BOOLEAN DEFAULT FALSE,
+                        file_delivered BOOLEAN DEFAULT FALSE,
+                        download_count INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        completed_at TIMESTAMP,
+                        FOREIGN KEY (buyer_user_id) REFERENCES users (user_id),
+                        FOREIGN KEY (seller_user_id) REFERENCES users (user_id),
+                        FOREIGN KEY (product_id) REFERENCES products (product_id)
+                    )
+                ''')
+                
+                # Index pour les commandes
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_orders_buyer ON orders(buyer_user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_orders_seller ON orders(seller_user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table orders: {e}")
+                conn.rollback()
+
+            # Table avis/reviews
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS reviews (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        product_id TEXT,
+                        buyer_user_id INTEGER,
+                        order_id TEXT,
+
+                        rating INTEGER CHECK(rating >= 1 AND rating <= 5),
+                        comment TEXT,
+
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                        FOREIGN KEY (product_id) REFERENCES products (product_id),
+                        FOREIGN KEY (buyer_user_id) REFERENCES users (user_id),
+                        FOREIGN KEY (order_id) REFERENCES orders (order_id)
+                    )
+                ''')
+                
+                # Index pour les avis
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_reviews_product ON reviews(product_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_reviews_buyer ON reviews(buyer_user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_reviews_created ON reviews(created_at)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table reviews: {e}")
+                conn.rollback()
+
+            # Table transactions wallet
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS wallet_transactions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER,
+
+                        transaction_type TEXT,  -- receive, send, commission
+                        crypto_currency TEXT,
+                        amount REAL,
+                        from_address TEXT,
+                        to_address TEXT,
+                        tx_hash TEXT,
+
+                        status TEXT DEFAULT 'pending',  -- pending, confirmed, failed
+
+                        -- Lié aux commissions
+                        related_order_id TEXT,
+
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        confirmed_at TIMESTAMP,
+
+                        FOREIGN KEY (user_id) REFERENCES users (user_id)
+                    )
+                ''')
+                
+                # Index pour les transactions
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user ON wallet_transactions(user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_status ON wallet_transactions(status)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_created ON wallet_transactions(created_at)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table wallet_transactions: {e}")
+                conn.rollback()
+
+            # Table support tickets (gardée de l'original)
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS support_tickets (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER,
+                        ticket_id TEXT UNIQUE,
+                        subject TEXT,
+                        message TEXT,
+                        status TEXT DEFAULT 'open',
+                        admin_response TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (user_id) REFERENCES users (user_id)
+                    )
+                ''')
+                
+                # Index pour les tickets
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_user ON support_tickets(user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_status ON support_tickets(status)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_created ON support_tickets(created_at)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table support_tickets: {e}")
+                conn.rollback()
+
+            # Table catégories
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS categories (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT UNIQUE,
+                        description TEXT,
+                        icon TEXT,
+                        products_count INTEGER DEFAULT 0
+                    )
+                ''')
+                
+                # Index pour les catégories
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_categories_products_count ON categories(products_count)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table categories: {e}")
+                conn.rollback()
+
+            # Insérer catégories par défaut
+            default_categories = [
+                ('Finance & Crypto', 'Formations trading, blockchain, DeFi', '💰'),
+                ('Marketing Digital', 'SEO, publicité, réseaux sociaux', '📈'),
+                ('Développement', 'Programming, web dev, apps', '💻'),
+                ('Design & Créatif', 'Graphisme, vidéo, arts', '🎨'),
+                ('Business', 'Entrepreneuriat, management', '📊'),
+                ('Formation Pro', 'Certifications, compétences', '🎓'),
+                ('Outils & Tech', 'Logiciels, automatisation', '🔧')
             ]
-            for code in default_codes:
+
+            for cat_name, cat_desc, cat_icon in default_categories:
                 try:
                     cursor.execute(
-                        'INSERT INTO default_referral_codes (code) VALUES (?)',
-                        (code, ))
+                        '''
+                        INSERT OR IGNORE INTO categories (name, description, icon)
+                        VALUES (?, ?, ?)
+                    ''', (cat_name, cat_desc, cat_icon))
                     conn.commit()
                 except sqlite3.Error as e:
-                    logger.error(f"Erreur insertion code {code}: {e}")
+                    logger.error(f"Erreur insertion catégorie {cat_name}: {e}")
                     conn.rollback()
 
-        conn.close()
-
-    def generate_product_id(self) -> str:
-        """Génère un ID produit vraiment unique"""
+    async def generate_product_id(self) -> str:
+        """Génère un ID produit vraiment unique - Version asynchrone"""
         import secrets
 
         # Format aligné avec la recherche: TBF-YYMM-XXXXXX
@@ -458,66 +692,59 @@ class MarketplaceBot:
             return ''.join(random.choice(alphabet) for _ in range(length))
 
         # Double vérification d'unicité
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
+        with self.get_db_connection() as conn:
+            cursor = conn.cursor()
 
-        max_attempts = 100
-        for attempt in range(max_attempts):
-            product_id = f"TBF-{yymm}-{random_code()}"
+            max_attempts = 100
+            for attempt in range(max_attempts):
+                product_id = f"TBF-{yymm}-{random_code()}"
 
-            try:
-                cursor.execute('SELECT COUNT(*) FROM products WHERE product_id = ?', (product_id,))
-                if cursor.fetchone()[0] == 0:
-                    conn.close()
-                    return product_id
-            except sqlite3.Error as e:
-                logger.error(f"Erreur vérification ID produit: {e}")
-                conn.close()
-                raise e
+                try:
+                    cursor.execute('SELECT COUNT(*) FROM products WHERE product_id = ?', (product_id,))
+                    if cursor.fetchone()[0] == 0:
+                        return product_id
+                except sqlite3.Error as e:
+                    logger.error(f"Erreur vérification ID produit: {e}")
+                    raise e
 
-            # Si collision, générer nouveau random
-            yymm = datetime.utcnow().strftime('%y%m')
+                # Si collision, générer nouveau random
+                yymm = datetime.utcnow().strftime('%y%m')
 
-        conn.close()
-        raise Exception("Impossible de générer un ID unique après 100 tentatives")
+            raise Exception("Impossible de générer un ID unique après 100 tentatives")
 
-    def add_user(self,
+    async def add_user(self,
                  user_id: int,
                  username: str,
                  first_name: str,
                  language_code: str = 'fr') -> bool:
-        """Ajoute un utilisateur"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
+        """Ajoute un utilisateur - Version asynchrone"""
         try:
-            cursor.execute(
-                '''
-                INSERT OR IGNORE INTO users 
-                (user_id, username, first_name, language_code)
-                VALUES (?, ?, ?, ?)
-            ''', (user_id, username, first_name, language_code))
-            conn.commit()
-            return True
+            with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''
+                    INSERT OR IGNORE INTO users 
+                    (user_id, username, first_name, language_code)
+                    VALUES (?, ?, ?, ?)
+                ''', (user_id, username, first_name, language_code))
+                conn.commit()
+                return True
         except sqlite3.Error as e:
             logger.error(f"Erreur ajout utilisateur: {e}")
             return False
-        finally:
-            conn.close()
 
-    def get_user(self, user_id: int) -> Optional[Dict]:
-        """Récupère un utilisateur"""
-        conn = self.get_db_connection()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+    async def get_user(self, user_id: int) -> Optional[Dict]:
+        """Récupère un utilisateur - Version asynchrone"""
         try:
-            cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id, ))
-            row = cursor.fetchone()
+            with self.get_db_connection() as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id, ))
+                row = cursor.fetchone()
+                return dict(row) if row else None
         except sqlite3.Error as e:
             logger.error(f"Erreur récupération utilisateur: {e}")
             return None
-        finally:
-            conn.close()
-        return dict(row) if row else None
 
     def create_seller_account_with_recovery(self, user_id: int, seller_name: str, 
                                       seller_bio: str, recovery_email: str, 
@@ -534,51 +761,45 @@ class MarketplaceBot:
             # Hash du code (ne jamais stocker en clair)
             code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
 
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
+            with self.get_db_connection() as conn:
+                cursor = conn.cursor()
 
-            # Vérifier que l'adresse n'est pas déjà utilisée
-            try:
-                cursor.execute(
-                    'SELECT COUNT(*) FROM users WHERE seller_solana_address = ?',
-                    (solana_address,)
-                )
-                if cursor.fetchone()[0] > 0:
-                    conn.close()
-                    return {'success': False, 'error': 'Adresse déjà utilisée'}
-            except sqlite3.Error as e:
-                logger.error(f"Erreur vérification adresse: {e}")
-                conn.close()
-                return {'success': False, 'error': 'Erreur interne'}
+                # Vérifier que l'adresse n'est pas déjà utilisée
+                try:
+                    cursor.execute(
+                        'SELECT COUNT(*) FROM users WHERE seller_solana_address = ?',
+                        (solana_address,)
+                    )
+                    if cursor.fetchone()[0] > 0:
+                        return {'success': False, 'error': 'Adresse déjà utilisée'}
+                except sqlite3.Error as e:
+                    logger.error(f"Erreur vérification adresse: {e}")
+                    return {'success': False, 'error': 'Erreur interne'}
 
-            # Créer le compte vendeur
-            try:
-                cursor.execute('''
-                    UPDATE users 
-                    SET is_seller = TRUE,
-                        seller_name = ?,
-                        seller_bio = ?,
-                        seller_solana_address = ?,
-                        recovery_email = ?,
-                        recovery_code_hash = ?
-                    WHERE user_id = ?
-                ''', (seller_name, seller_bio, solana_address, recovery_email, code_hash, user_id))
+                # Créer le compte vendeur
+                try:
+                    cursor.execute('''
+                        UPDATE users 
+                        SET is_seller = TRUE,
+                            seller_name = ?,
+                            seller_bio = ?,
+                            seller_solana_address = ?,
+                            recovery_email = ?,
+                            recovery_code_hash = ?
+                        WHERE user_id = ?
+                    ''', (seller_name, seller_bio, solana_address, recovery_email, code_hash, user_id))
 
-                if cursor.rowcount > 0:
-                    conn.commit()
-                    conn.close()
-
-                    return {
-                        'success': True,
-                        'recovery_code': recovery_code
-                    }
-                else:
-                    conn.close()
-                    return {'success': False, 'error': 'Échec mise à jour'}
-            except sqlite3.Error as e:
-                logger.error(f"Erreur création vendeur: {e}")
-                conn.close()
-                return {'success': False, 'error': 'Erreur interne'}
+                    if cursor.rowcount > 0:
+                        conn.commit()
+                        return {
+                            'success': True,
+                            'recovery_code': recovery_code
+                        }
+                    else:
+                        return {'success': False, 'error': 'Échec mise à jour'}
+                except sqlite3.Error as e:
+                    logger.error(f"Erreur création vendeur: {e}")
+                    return {'success': False, 'error': 'Erreur interne'}
 
         except Exception as e:
             logger.error(f"Erreur création vendeur: {e}")
@@ -631,72 +852,27 @@ class MarketplaceBot:
 
     def get_available_referral_codes(self) -> List[str]:
         """Récupère les codes de parrainage disponibles"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-
-        try:
-            # Codes par défaut
-            cursor.execute(
-                'SELECT code FROM default_referral_codes WHERE is_active = TRUE')
-            default_codes = [row[0] for row in cursor.fetchall()]
-
-            # Codes de partenaires actifs
-            cursor.execute(
-                'SELECT partner_code FROM users WHERE is_partner = TRUE AND partner_code IS NOT NULL'
-            )
-            partner_codes = [row[0] for row in cursor.fetchall()]
-
-            conn.close()
-            return default_codes + partner_codes
-        except sqlite3.Error as e:
-            logger.error(f"Erreur récupération codes parrainage: {e}")
-            conn.close()
-            return []
+        # Codes fixes pour simplifier - plus descriptifs
+        return [
+            'TECH2025', 'CRYPTO57', 'BITCOIN', 'PROFIT42', 'MONEY57', 'GAIN420',
+            'TRADE25', 'SOLANA', 'ETHEREUM', 'BLOCKCHAIN', 'DEFI2025', 'NFT2025'
+        ]
 
     def validate_referral_code(self, code: str) -> bool:
         """Valide un code de parrainage"""
         available_codes = self.get_available_referral_codes()
         return code in available_codes
 
-    def create_partner_code(self, user_id: int) -> Optional[str]:
-        """Crée un code partenaire unique"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-
-        for _ in range(10):
-            partner_code = f"REF{user_id % 1000}{random.randint(100, 999)}"
-            try:
-                cursor.execute(
-                    '''
-                    UPDATE users 
-                    SET is_partner = TRUE, partner_code = ?
-                    WHERE user_id = ?
-                ''', (partner_code, user_id))
-
-                if cursor.rowcount > 0:
-                    conn.commit()
-                    conn.close()
-                    return partner_code
-            except sqlite3.IntegrityError:
-                continue
-            except sqlite3.Error as e:
-                logger.error(f"Erreur création code partenaire: {e}")
-                conn.close()
-                return None
-
-        conn.close()
-        return None
-
-    def create_payment(self, amount_usd: float, currency: str,
+    async def create_payment(self, amount_usd: float, currency: str,
                        order_id: str) -> Optional[Dict]:
-        """Crée un paiement NOWPayments"""
+        """Crée un paiement NOWPayments - Version asynchrone optimisée"""
         try:
-            if not NOWPAYMENTS_API_KEY:
+            if not config.nowpayments_api_key:
                 logger.error("NOWPAYMENTS_API_KEY manquant!")
                 return None
 
             headers = {
-                "x-api-key": NOWPAYMENTS_API_KEY,
+                "x-api-key": config.nowpayments_api_key,
                 "Content-Type": "application/json"
             }
 
@@ -708,105 +884,120 @@ class MarketplaceBot:
                 "order_description": "Formation TechBot Marketplace"
             }
 
-            response = requests.post("https://api.nowpayments.io/v1/payment",
-                                     headers=headers,
-                                     json=payload,
-                                     timeout=30)
+            response = await self.http_client.make_request(
+                "https://api.nowpayments.io/v1/payment",
+                method="POST",
+                headers=headers,
+                json=payload
+            )
 
-            if response.status_code == 201:
-                return response.json()
+            if response:
+                return response
             else:
-                logger.error(
-                    f"Erreur paiement: {response.status_code} - {response.text}"
-                )
+                logger.error("Erreur paiement NOWPayments")
                 return None
         except Exception as e:
             logger.error(f"Erreur PaymentManager: {e}")
             return None
 
-    def check_payment_status(self, payment_id: str) -> Optional[Dict]:
-        """Vérifie le statut d'un paiement"""
+    async def check_payment_status(self, payment_id: str) -> Optional[Dict]:
+        """Vérifie le statut d'un paiement - Version asynchrone optimisée"""
         try:
-            if not NOWPAYMENTS_API_KEY:
+            if not config.nowpayments_api_key:
                 return None
 
-            headers = {"x-api-key": NOWPAYMENTS_API_KEY}
-            response = requests.get(
+            # Vérifier le cache d'abord
+            cache_key = f"payment_status_{payment_id}"
+            cached_result = self.cache.get(cache_key)
+            if cached_result:
+                return cached_result
+
+            headers = {"x-api-key": config.nowpayments_api_key}
+            response = await self.http_client.make_request(
                 f"https://api.nowpayments.io/v1/payment/{payment_id}",
-                headers=headers,
-                timeout=10)
+                method="GET",
+                headers=headers
+            )
 
-            if response.status_code == 200:
-                return response.json()
-            return None
+            # Mettre en cache pour 30 secondes
+            self.cache.set(cache_key, response, 30)
+            return response
         except Exception as e:
-            logger.error(f"Erreur vérification: {e}")
+            logger.error(f"Erreur vérification paiement: {e}")
             return None
 
-    def get_exchange_rate(self) -> float:
-        """Récupère le taux EUR/USD"""
+    async def get_exchange_rate(self) -> float:
+        """Récupère le taux EUR/USD - Version asynchrone optimisée"""
         try:
-            cache = self.memory_cache.setdefault('_fx_cache', {})
-            now = time.time()
-            hit = cache.get('eur_usd')
-            if hit and (now - hit['ts'] < 3600):
-                return hit['value']
-            response = requests.get(
-                "https://api.exchangerate-api.com/v4/latest/EUR", timeout=10)
-            if response.status_code == 200:
-                val = response.json()['rates']['USD']
-                cache['eur_usd'] = {'value': val, 'ts': now}
-                return val
+            # Vérifier le cache d'abord
+            cached_rate = self.cache.get('eur_usd_rate')
+            if cached_rate:
+                return cached_rate
+
+            response = await self.http_client.make_request(
+                "https://api.exchangerate-api.com/v4/latest/EUR",
+                method="GET"
+            )
+            
+            if response and 'rates' in response:
+                rate = response['rates']['USD']
+                # Mettre en cache pour 1 heure
+                self.cache.set('eur_usd_rate', rate, 3600)
+                return rate
             return 1.10
-        except Exception:
-            return self.memory_cache.get('_fx_cache', {}).get('eur_usd', {}).get('value', 1.10)
+        except Exception as e:
+            logger.warning(f"Erreur récupération taux de change: {e}")
+            return 1.10
 
-    def get_available_currencies(self) -> List[str]:
-        """Récupère les cryptos disponibles"""
+    async def get_available_currencies(self) -> List[str]:
+        """Récupère les cryptos disponibles - Version asynchrone optimisée"""
         try:
-            cache = self.memory_cache.setdefault('_currencies_cache', {})
-            now = time.time()
-            hit = cache.get('list')
-            if hit and (now - hit['ts'] < 3600):
-                return hit['value']
+            # Vérifier le cache d'abord
+            cached_currencies = self.cache.get('available_currencies')
+            if cached_currencies:
+                return cached_currencies
 
-            if not NOWPAYMENTS_API_KEY:
+            if not config.nowpayments_api_key:
                 return ['btc', 'eth', 'usdt', 'usdc']
 
-            headers = {"x-api-key": NOWPAYMENTS_API_KEY}
-            response = requests.get("https://api.nowpayments.io/v1/currencies",
-                                    headers=headers,
-                                    timeout=10)
-            if response.status_code == 200:
-                currencies = response.json()['currencies']
+            headers = {"x-api-key": config.nowpayments_api_key}
+            response = await self.http_client.make_request(
+                "https://api.nowpayments.io/v1/currencies",
+                method="GET",
+                headers=headers
+            )
+            
+            if response and 'currencies' in response:
+                currencies = response['currencies']
                 main_cryptos = [
                     'btc', 'eth', 'usdt', 'usdc', 'bnb', 'sol', 'ltc', 'xrp'
                 ]
-                val = [c for c in currencies if c in main_cryptos]
-                cache['list'] = {'value': val, 'ts': now}
-                return val
+                available = [c for c in currencies if c in main_cryptos]
+                # Mettre en cache pour 1 heure
+                self.cache.set('available_currencies', available, 3600)
+                return available
             return ['btc', 'eth', 'usdt', 'usdc']
-        except Exception:
-            return self.memory_cache.get('_currencies_cache', {}).get('list', {}).get('value', ['btc', 'eth', 'usdt', 'usdc'])
+        except Exception as e:
+            logger.warning(f"Erreur récupération devises: {e}")
+            return ['btc', 'eth', 'usdt', 'usdc']
 
-    def create_seller_payout(self, seller_user_id: int, order_ids: list, 
+    async def create_seller_payout(self, seller_user_id: int, order_ids: list, 
                         total_amount_sol: float) -> Optional[int]:
-        """Crée un payout vendeur en attente"""
+        """Crée un payout vendeur en attente - Version asynchrone optimisée"""
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
+            async with self.get_db_connection() as conn:
+                cursor = conn.cursor()
 
-            cursor.execute('''
-                INSERT INTO seller_payouts 
-                (seller_user_id, order_ids, total_amount_sol, payout_status)
-                VALUES (?, ?, ?, 'pending')
-            ''', (seller_user_id, json.dumps(order_ids), total_amount_sol))
+                cursor.execute('''
+                    INSERT INTO seller_payouts 
+                    (seller_user_id, order_ids, total_amount_sol, payout_status)
+                    VALUES (?, ?, ?, 'pending')
+                ''', (seller_user_id, json.dumps(order_ids), total_amount_sol))
 
-            payout_id = cursor.lastrowid
-            conn.commit()
-            conn.close()
+                payout_id = cursor.lastrowid
+                conn.commit()
 
-            return payout_id
+                return payout_id
 
         except Exception as e:
             logger.error(f"Erreur création payout: {e}")
@@ -852,43 +1043,42 @@ class MarketplaceBot:
             logger.error(f"Erreur auto payout: {e}")
             return False
 
+    @measure_performance
     async def start_command(self, update: Update,
                             context: ContextTypes.DEFAULT_TYPE):
         """Nouveau menu d'accueil marketplace"""
         user = update.effective_user
-        self.add_user(user.id, user.username, user.first_name,
+        user_id = user.id
+        
+        # Rate limiting
+        if not self.rate_limiter.is_allowed(user_id):
+            await update.message.reply_text(
+                "⚠️ **Trop de requêtes**\n\nVeuillez patienter quelques secondes avant de réessayer."
+            )
+            return
+        
+        await self.add_user(user_id, user.username, user.first_name,
                       user.language_code or 'fr')
 
+        # Ne pas déconnecter automatiquement à chaque /start
+        # Garder l'état de connexion vendeur
+
         welcome_text = """🏪 **TECHBOT MARKETPLACE**
-*La première marketplace crypto pour formations*
+*Plateforme de formations digitales avec paiements crypto*
 
 🎯 **Découvrez des formations premium**
-📚 **Vendez vos connaissances**  
-💰 **Wallet crypto intégré**
+📚 **Monétisez votre expertise**  
+💳 **Paiements sécurisés en crypto**
 
 Choisissez une option pour commencer :"""
 
-        keyboard = [[
-            InlineKeyboardButton("🛒 Acheter une formation",
-                                 callback_data='buy_menu')
-        ],
-                    [
-                        InlineKeyboardButton("📚 Vendre vos formations",
-                                             callback_data='sell_menu')
-                    ],
-                    [
-                        InlineKeyboardButton("🔑 Accéder à mon compte",
-                                             callback_data='access_account')
-                    ],
-
-                    [
-                        InlineKeyboardButton("📊 Stats marketplace",
-                                             callback_data='marketplace_stats')
-                    ],
-                    [
-                        InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'),
-                        InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')
-                    ]]
+        keyboard = [
+            [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
+            [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')],
+            [InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')],
+            [InlineKeyboardButton("📊 Stats marketplace", callback_data='marketplace_stats')],
+            [InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')]
+        ]
 
         await update.message.reply_text(
             welcome_text,
@@ -901,7 +1091,7 @@ Choisissez une option pour commencer :"""
         await query.answer()
 
         user_id = query.from_user.id
-        user_data = self.get_user(user_id)
+        user_data = await self.get_user(user_id)
         lang = user_data['language_code'] if user_data else 'fr'
 
         try:
@@ -956,6 +1146,8 @@ Choisissez une option pour commencer :"""
                 await self.show_wallet(query, lang)
             elif query.data == 'seller_logout':
                 await self.seller_logout(query)
+            elif query.data == 'seller_back':
+                await self.seller_back(query)
             elif query.data == 'delete_seller':
                 await self.delete_seller_prompt(query)
             elif query.data == 'delete_seller_confirm':
@@ -989,8 +1181,7 @@ Choisissez une option pour commencer :"""
             elif query.data.startswith('use_referral_'):
                 code = query.data[13:]
                 await self.validate_and_proceed(query, code, lang)
-            elif query.data == 'become_partner':
-                await self.become_partner(query, lang)
+
 
             # Paiement
             elif query.data == 'proceed_to_payment':
@@ -1083,22 +1274,10 @@ Choisissez une option pour commencer :"""
     async def buy_menu(self, query, lang):
         """Menu d'achat"""
         keyboard = [
-            [
-                InlineKeyboardButton("🔍 Rechercher par ID produit",
-                                     callback_data='search_product')
-            ],
-            [
-                InlineKeyboardButton("📂 Parcourir catégories",
-                                     callback_data='browse_categories')
-            ],
-            [
-                InlineKeyboardButton("🔥 Meilleures ventes",
-                                     callback_data='category_bestsellers')
-            ],
-            [
-                InlineKeyboardButton("🆕 Nouveautés",
-                                     callback_data='category_new')
-            ],
+            [InlineKeyboardButton("🔍 Rechercher par ID", callback_data='search_product')],
+            [InlineKeyboardButton("📂 Parcourir catégories", callback_data='browse_categories')],
+            [InlineKeyboardButton("🔥 Meilleures ventes", callback_data='category_bestsellers')],
+            [InlineKeyboardButton("🆕 Nouveautés", callback_data='category_new')],
             [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
             [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
         ]
@@ -1112,7 +1291,7 @@ Plusieurs façons de découvrir nos formations :
 🔥 **Tendances** - Les plus populaires
 🆕 **Nouveautés** - Dernières publications
 
-💰 **Paiement crypto sécurisé** avec votre wallet intégré"""
+💳 **Paiement sécurisé** en crypto-monnaies"""
 
         await query.edit_message_text(
             buy_text,
@@ -1134,9 +1313,10 @@ Saisissez l'ID de la formation que vous souhaitez acheter.
 💡 **Format attendu :** `TBF-2501-ABC123`
 
 ✍️ **Tapez l'ID produit :**""",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Retour",
-                                       callback_data='buy_menu')]]),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]),
             parse_mode='Markdown')
 
     async def browse_categories(self, query, lang):
@@ -1166,6 +1346,9 @@ Saisissez l'ID de la formation que vous souhaitez acheter.
 
         keyboard.append(
             [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')])
+
+        keyboard.append(
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')])
 
         categories_text = """📂 **CATÉGORIES DE FORMATIONS**
 
@@ -1212,18 +1395,27 @@ Choisissez votre domaine d'intérêt :"""
             '''
             query_params = (category_name,)
 
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
+        # Pagination optimisée
+        page = 1
+        limit = 10
+        offset = (page - 1) * limit
+        
+        with self.get_db_connection() as conn:
+            cursor = conn.cursor()
 
-        # Exécuter la requête appropriée
-        try:
-            cursor.execute(f"{base_query} LIMIT 10", query_params)
-            products = cursor.fetchall()
-            conn.close()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur récupération produits catégorie: {e}")
-            conn.close()
-            return
+            # Exécuter la requête appropriée avec pagination
+            try:
+                cursor.execute(f"{base_query} LIMIT {limit} OFFSET {offset}", query_params)
+                products = cursor.fetchall()
+                
+                # Compter le total pour la pagination
+                count_query = base_query.replace("SELECT p.product_id, p.title, p.price_eur, p.sales_count, p.rating, u.seller_name", "SELECT COUNT(*)")
+                cursor.execute(count_query, query_params)
+                total_count = cursor.fetchone()[0]
+                
+            except sqlite3.Error as e:
+                logger.error(f"Erreur récupération produits catégorie: {e}")
+                return
 
         # Reste du code identique pour l'affichage...
 
@@ -1234,15 +1426,11 @@ Aucune formation disponible dans cette catégorie pour le moment.
 
 Soyez le premier à publier dans ce domaine !"""
 
-            keyboard = [[
-                InlineKeyboardButton("🚀 Créer une formation",
-                                     callback_data='sell_menu')
-            ],
-                        [
-                            InlineKeyboardButton(
-                                "📂 Autres catégories",
-                                callback_data='browse_categories')
-                        ]]
+            keyboard = [
+                [InlineKeyboardButton("🚀 Créer une formation", callback_data='sell_menu')],
+                [InlineKeyboardButton("📂 Autres catégories", callback_data='browse_categories')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]
         else:
             products_text = f"📂 **{category_name.upper()}** ({len(products)} formations)\n\n"
 
@@ -1263,6 +1451,8 @@ Soyez le premier à publier dans ce domaine !"""
                                      callback_data='browse_categories')
             ], [
                 InlineKeyboardButton("🔙 Menu achat", callback_data='buy_menu')
+            ], [
+                InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
             ]])
 
         await query.edit_message_text(
@@ -1318,18 +1508,12 @@ Soyez le premier à publier dans ce domaine !"""
 
 📁 **Fichier :** {product['file_size_mb']:.1f} MB"""
 
-        keyboard = [[
-            InlineKeyboardButton("🛒 Acheter maintenant",
-                                 callback_data=f'buy_product_{product_id}')
-        ],
-                    [
-                        InlineKeyboardButton("📂 Autres produits",
-                                             callback_data='browse_categories')
-                    ],
-                    [
-                        InlineKeyboardButton("🔙 Retour",
-                                             callback_data='buy_menu')
-                    ]]
+        keyboard = [
+            [InlineKeyboardButton("🛒 Acheter maintenant", callback_data=f'buy_product_{product_id}')],
+            [InlineKeyboardButton("📂 Autres produits", callback_data='browse_categories')],
+            [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+        ]
 
         await query.edit_message_text(
             product_text,
@@ -1379,30 +1563,22 @@ Soyez le premier à publier dans ce domaine !"""
                 InlineKeyboardButton("🎲 Choisir un code aléatoire",
                                      callback_data='choose_random_referral')
             ],
-            [
-                InlineKeyboardButton("🚀 Devenir partenaire (10% commission!)",
-                                     callback_data='become_partner')
-            ],
+
             [
                 InlineKeyboardButton("🔙 Retour",
                                      callback_data=f'product_{product_id}')
             ]
         ]
 
-        referral_text = """🎯 **CODE DE PARRAINAGE OBLIGATOIRE**
+        referral_text = """🎯 **CODE DE PARRAINAGE REQUIS**
 
 ⚠️ **IMPORTANT :** Un code de parrainage est requis pour acheter.
 
-💡 **3 OPTIONS DISPONIBLES :**
+💡 **2 OPTIONS DISPONIBLES :**
 
 1️⃣ **Vous avez un code ?** Saisissez-le !
 
-2️⃣ **Pas de code ?** Choisissez-en un gratuitement !
-
-3️⃣ **MEILLEURE OPTION :** Devenez partenaire !
-   • ✅ Gagnez 10% sur chaque vente
-   • ✅ Votre propre code de parrainage
-   • ✅ Dashboard vendeur complet"""
+2️⃣ **Pas de code ?** Choisissez-en un gratuitement !"""
 
         await query.edit_message_text(
             referral_text,
@@ -1415,9 +1591,10 @@ Soyez le premier à publier dans ce domaine !"""
 
         await query.edit_message_text(
             "✍️ **Veuillez saisir votre code de parrainage :**\n\nTapez le code exactement comme vous l'avez reçu.",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Retour",
-                                       callback_data='buy_menu')]]))
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]))
 
     async def check_payment_handler(self, query, order_id, lang):
         """Vérification paiement + création payout vendeur"""
@@ -1489,12 +1666,10 @@ Soyez le premier à publier dans ce domaine !"""
 
     📚 **ACCÈS IMMÉDIAT À VOTRE FORMATION**"""
 
-                keyboard = [[
-                    InlineKeyboardButton("📥 Télécharger maintenant", 
-                                    callback_data=f'download_product_{order[3]}')
-                ], [
-                    InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')
-                ]]
+                keyboard = [
+                    [InlineKeyboardButton("📥 Télécharger maintenant", callback_data=f'download_product_{order[3]}')],
+                    [InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')]
+                ]
 
                 await query.edit_message_text(
                     success_text,
@@ -1539,7 +1714,9 @@ Soyez le premier à publier dans ce domaine !"""
         keyboard.extend([[
             InlineKeyboardButton("🔄 Autres codes",
                                  callback_data='choose_random_referral')
-        ], [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')]])
+        ], [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')], [
+            InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
+        ]])
 
         codes_text = """🎲 **CODES DE PARRAINAGE DISPONIBLES**
 
@@ -1572,69 +1749,14 @@ Choisissez un code pour continuer votre achat :
 
         await query.edit_message_text(
             f"✅ **Code validé :** `{referral_code}`\n\nProcédons au paiement !",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("💳 Continuer vers le paiement",
-                                     callback_data='proceed_to_payment'),
-                InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
-            ]]),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💳 Continuer vers le paiement", callback_data='proceed_to_payment')],
+                [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]),
             parse_mode='Markdown')
 
-    async def become_partner(self, query, lang):
-        """Inscription partenaire"""
-        user_id = query.from_user.id
-        user_data = self.get_user(user_id)
 
-        if user_data and user_data['is_partner']:
-            await query.edit_message_text(
-                "✅ Vous êtes déjà partenaire !",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("📊 Mon dashboard",
-                                         callback_data='seller_dashboard')
-                ]]))
-            return
-
-        partner_code = self.create_partner_code(user_id)
-
-        if partner_code:
-            # Valider automatiquement son propre code
-            user_cache = self.memory_cache.get(user_id, {})
-            user_cache['validated_referral'] = partner_code
-            user_cache['lang'] = lang
-            user_cache['self_referral'] = True
-            self.memory_cache[user_id] = user_cache
-
-            welcome_text = f"""🎊 **BIENVENUE DANS L'ÉQUIPE !**
-
-✅ Votre compte partenaire est activé !
-
-🎯 **VOTRE CODE UNIQUE :** `{partner_code}`
-
-💰 **Avantages partenaire :**
-• Gagnez 10% sur chaque vente
-• Utilisez VOTRE code pour vos achats
-• Dashboard vendeur complet
-• Support prioritaire"""
-
-            keyboard = [[
-                InlineKeyboardButton("💳 Continuer l'achat",
-                                     callback_data='proceed_to_payment')
-            ],
-                        [
-                            InlineKeyboardButton(
-                                "📊 Mon dashboard",
-                                callback_data='seller_dashboard')
-                        ]]
-
-            await query.edit_message_text(
-                welcome_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown')
-        else:
-            await query.edit_message_text(
-                "❌ Erreur lors de la création du compte partenaire.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
-                ]]))
 
     async def show_crypto_options(self, query, lang):
         """Affiche les options de crypto pour le paiement"""
@@ -1679,7 +1801,7 @@ Choisissez un code pour continuer votre achat :
             'btc': ('₿ Bitcoin', '⚡ 10-30 min'),
             'eth': ('⟠ Ethereum', '⚡ 5-15 min'),
             'usdt': ('₮ Tether USDT', '⚡ 5-10 min'),
-            'usdc': ('🟢 USD Coin', '⚡ 5-10 min'),
+            'usdc': ('🟢 USD Coin (Ethereum)', '⚡ 5-10 min'),
             'bnb': ('🟡 BNB', '⚡ 2-5 min'),
             'sol': ('◎ Solana', '⚡ 1-2 min'),
             'ltc': ('Ł Litecoin', '⚡ 10-20 min'),
@@ -1701,17 +1823,19 @@ Choisissez un code pour continuer votre achat :
 
         keyboard.append(
             [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')])
+        keyboard.append(
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')])
 
-        crypto_text = f"""💳 **CHOISIR VOTRE CRYPTO**
+        crypto_text = f"""💳 **CHOISIR VOTRE MOYEN DE PAIEMENT**
 
 📦 **Produit :** {product['title']}
 💰 **Prix :** {product['price_eur']}€
 🎯 **Code parrainage :** `{user_cache['validated_referral']}`
 
-🔐 **Sélectionnez votre crypto préférée :**
+🔐 **Sélectionnez votre crypto-monnaie préférée :**
 
 ✅ **Avantages :**
-• Paiement 100% sécurisé et anonyme
+• Paiement 100% sécurisé
 • Confirmation automatique
 • Livraison instantanée après paiement
 • Support prioritaire 24/7"""
@@ -1756,8 +1880,7 @@ Choisissez un code pour continuer votre achat :
         product_price_usd = product_price_eur * rate
 
         platform_commission = product_price_eur * PLATFORM_COMMISSION_RATE
-        partner_commission = product_price_eur * PARTNER_COMMISSION_RATE
-        seller_revenue = product_price_eur - platform_commission - partner_commission
+        seller_revenue = product_price_eur - platform_commission
 
         # Créer paiement NOWPayments
         payment_data = await asyncio.to_thread(
@@ -1773,15 +1896,14 @@ Choisissez un code pour continuer votre achat :
                     '''
                     INSERT INTO orders 
                     (order_id, buyer_user_id, product_id, seller_user_id,
-                     product_price_eur, platform_commission, seller_revenue, partner_commission,
-                     crypto_currency, crypto_amount, nowpayments_id, payment_address, partner_code)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     product_price_eur, platform_commission, seller_revenue,
+                     crypto_currency, crypto_amount, nowpayments_id, payment_address)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (order_id, user_id, product_id, product['seller_user_id'],
                       product_price_eur, platform_commission, seller_revenue,
-                      partner_commission, crypto_currency,
-                      payment_data.get('pay_amount',
-                                       0), payment_data.get('payment_id'),
-                      payment_data.get('pay_address', ''), referral_code))
+                      crypto_currency,
+                      payment_data.get('pay_amount', 0), payment_data.get('payment_id'),
+                      payment_data.get('pay_address', '')))
                 conn.commit()
                 conn.close()
             except sqlite3.Error as e:
@@ -1813,12 +1935,11 @@ Choisissez un code pour continuer votre achat :
 • Utilisez uniquement du {crypto_currency.upper()}
 • La détection est automatique"""
 
-            keyboard = [[
-                InlineKeyboardButton("🔄 Vérifier paiement",
-                                     callback_data=f'check_payment_{order_id}')
-            ], [
-                InlineKeyboardButton("💬 Support", callback_data='support_menu')
-            ]]
+            keyboard = [
+                [InlineKeyboardButton("🔄 Vérifier paiement", callback_data=f'check_payment_{order_id}')],
+                [InlineKeyboardButton("💬 Support", callback_data='support_menu')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]
 
             await query.edit_message_text(
                 payment_text,
@@ -1850,8 +1971,8 @@ Choisissez un code pour continuer votre achat :
             await query.edit_message_text("❌ Commande introuvable!")
             return
 
-        # Index corrects: nowpayments_id = 12, partner_code = 14
-        payment_id = order[12]
+        # Index corrects: nowpayments_id = 11
+        payment_id = order[11]
         # Exécuter l'appel bloquant dans un thread pour ne pas bloquer la boucle
         payment_status = await asyncio.to_thread(self.check_payment_status, payment_id)
 
@@ -1882,16 +2003,9 @@ Choisissez un code pour continuer votre achat :
                         SET total_sales = total_sales + 1,
                             total_revenue = total_revenue + ?
                         WHERE user_id = ?
-                    ''', (order[7], order[4]))
+                    ''', (order[6], order[4]))
 
-                    partner_code = order[14]
-                    if partner_code:
-                        cursor.execute(
-                            '''
-                            UPDATE users 
-                            SET total_commission = total_commission + ?
-                            WHERE partner_code = ?
-                        ''', (order[8], partner_code))
+
 
                     conn.commit()
                 except sqlite3.Error as e:
@@ -1911,7 +2025,7 @@ Choisissez un code pour continuer votre achat :
                 success_text = f"""🎉 **FÉLICITATIONS !**
 
 ✅ **Paiement confirmé** - Commande : {order_id}
-{"✅ Payout vendeur créé automatiquement" if payout_created else "⚠️ Payout vendeur en attente"}
+{"✅ Paiement vendeur créé automatiquement" if payout_created else "⚠️ Paiement vendeur en attente"}
 
 📚 **ACCÈS IMMÉDIAT À VOTRE FORMATION**"""
 
@@ -1931,50 +2045,47 @@ Choisissez un code pour continuer votre achat :
                 conn.close()
                 await query.edit_message_text(
                     f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                        "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]]))
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')],
+                        [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+                    ]))
         else:
             conn.close()
             await query.edit_message_text(
                 "❌ Erreur de vérification. Réessayez.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                    "🔄 Réessayer", callback_data=f'check_payment_{order_id}')]]))
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Réessayer", callback_data=f'check_payment_{order_id}')],
+                    [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+                ]))
 
     async def sell_menu(self, query, lang):
         """Menu vendeur"""
-        user_data = self.get_user(query.from_user.id)
+        user_data = await self.get_user(query.from_user.id)
 
         if user_data and user_data['is_seller']:
             await self.seller_dashboard(query, lang)
             return
 
-        keyboard = [[
-            InlineKeyboardButton("🚀 Devenir vendeur",
-                                 callback_data='create_seller')
-        ],
-                    [
-                        InlineKeyboardButton("📋 Conditions & avantages",
-                                             callback_data='seller_info')
-                    ],
-                    [
-                        InlineKeyboardButton("🏠 Accueil",
-                                             callback_data='back_main')
-                    ]]
+        keyboard = [
+            [InlineKeyboardButton("🚀 Devenir vendeur", callback_data='create_seller')],
+            [InlineKeyboardButton("📋 Conditions & avantages", callback_data='seller_info')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+        ]
 
         sell_text = """📚 **VENDRE VOS FORMATIONS**
 
-🎯 **Valorisez votre expertise**
+🎯 **Monétisez votre expertise**
 
 💰 **Avantages vendeur :**
 • 95% des revenus pour vous (5% commission plateforme)
 • Paiements automatiques en crypto
-• Wallet intégré sécurisé
 • Gestion complète de vos produits
 • Support marketing inclus
+• Interface intuitive
 
 🔐 **Sécurité**
 • Récupération via email + code
-• Adresse Solana de paiement à votre nom
+• Adresse Solana de paiement sécurisée
 • Contrôle total de vos fonds
 
 Prêt à commencer ?"""
@@ -1994,9 +2105,9 @@ Prêt à commencer ?"""
 
         await query.edit_message_text("""🚀 **CRÉATION COMPTE VENDEUR**
 
-Pour créer votre compte vendeur sécurisé, nous avons besoin de quelques informations.
+Pour créer votre compte vendeur, nous avons besoin de quelques informations.
 
-👤 **Étape 1/2 : Nom public**
+👤 **Étape 1/4 : Nom public**
 
 Saisissez le nom qui apparaîtra sur vos formations :""",
                                       reply_markup=InlineKeyboardMarkup([[
@@ -2025,7 +2136,7 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
 
     async def seller_dashboard(self, query, lang):
         """Dashboard vendeur complet"""
-        user_data = self.get_user(query.from_user.id)
+        user_data = await self.get_user(query.from_user.id)
         # Si on arrive via un bouton et que le flag login est set, on autorise;
         # sinon on redirige vers la connexion
         if not user_data or not user_data['is_seller']:
@@ -2086,24 +2197,14 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
 
 💳 **Wallet :** {'✅ Configuré' if user_data['seller_solana_address'] else '❌ À configurer'}"""
 
-        keyboard = [[
-            InlineKeyboardButton("➕ Ajouter un produit",
-                                 callback_data='add_product')
-        ], [
-            InlineKeyboardButton("📦 Mes produits", callback_data='my_products')
-        ], [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
-                    [
-                        InlineKeyboardButton("📊 Analytics détaillées",
-                                             callback_data='seller_analytics')
-                    ],
-                    [
-                        InlineKeyboardButton("⚙️ Paramètres",
-                                             callback_data='seller_settings')
-                    ],
-                    [
-                        InlineKeyboardButton("🏠 Accueil",
-                                             callback_data='back_main')
-                    ]]
+        keyboard = [
+            [InlineKeyboardButton("➕ Ajouter un produit", callback_data='add_product')],
+            [InlineKeyboardButton("📦 Mes produits", callback_data='my_products')],
+            [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
+            [InlineKeyboardButton("📊 Analytics", callback_data='seller_analytics')],
+            [InlineKeyboardButton("⚙️ Paramètres", callback_data='seller_settings')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+        ]
 
         await query.edit_message_text(
             dashboard_text,
@@ -2112,7 +2213,7 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
 
     async def add_product_prompt(self, query, lang):
         """Demande les informations pour ajouter un produit"""
-        user_data = self.get_user(query.from_user.id)
+        user_data = await self.get_user(query.from_user.id)
 
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
             await query.edit_message_text(
@@ -2145,7 +2246,7 @@ Saisissez le titre de votre formation :
 
     async def show_my_products(self, query, lang):
         """Affiche les produits du vendeur"""
-        user_data = self.get_user(query.from_user.id)
+        user_data = await self.get_user(query.from_user.id)
 
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
             await query.edit_message_text(
@@ -2179,15 +2280,11 @@ Aucun produit créé pour le moment.
 
 Commencez dès maintenant à monétiser votre expertise !"""
 
-            keyboard = [[
-                InlineKeyboardButton("➕ Créer mon premier produit",
-                                     callback_data='add_product')
-            ],
-                        [
-                            InlineKeyboardButton(
-                                "🔙 Dashboard",
-                                callback_data='seller_dashboard')
-                        ]]
+            keyboard = [
+                [InlineKeyboardButton("➕ Créer mon premier produit", callback_data='add_product')],
+                [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]
         else:
             products_text = f"📦 **MES PRODUITS** ({len(products)})\n\n"
 
@@ -2215,6 +2312,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
                                  InlineKeyboardButton(
                                      "🔙 Dashboard",
                                      callback_data='seller_dashboard')
+                             ], [
+                                 InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
                              ]])
 
         await query.edit_message_text(
@@ -2224,7 +2323,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
     async def show_wallet(self, query, lang):
         """Affiche l'adresse Solana du vendeur"""
-        user_data = self.get_user(query.from_user.id)
+        user_data = await self.get_user(query.from_user.id)
 
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
             await query.edit_message_text(
@@ -2235,14 +2334,15 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
         if not user_data['seller_solana_address']:
             await query.edit_message_text(
-                """💳 **WALLET NON CONFIGURÉ**
+                """💳 **COMPTE DE PAIEMENT NON CONFIGURÉ**
 
-    Pour avoir un wallet, vous devez d'abord devenir vendeur.
+Pour configurer votre compte de paiement, vous devez d'abord devenir vendeur.
 
-    Votre adresse Solana sera configurée lors de l'inscription.""",
+Votre adresse Solana sera configurée lors de l'inscription.""",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🚀 Devenir vendeur", callback_data='create_seller')],
-                    [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
+                    [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')],
+                    [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
                 ])
             )
             return
@@ -2250,40 +2350,39 @@ Commencez dès maintenant à monétiser votre expertise !"""
         solana_address = user_data['seller_solana_address']
 
         # Récupérer solde (optionnel)
-        balance = util_get_solana_balance_display(solana_address)
+        balance = await get_solana_balance_display(solana_address, self.http_client)
 
         # Calculer payouts en attente
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
         try:
-            cursor.execute('''
-                SELECT COALESCE(SUM(total_amount_sol), 0) 
-                FROM seller_payouts 
-                WHERE seller_user_id = ? AND payout_status = 'pending'
-            ''', (query.from_user.id,))
-            pending_amount = cursor.fetchone()[0]
-            conn.close()
+            with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT COALESCE(SUM(total_amount_sol), 0) 
+                    FROM seller_payouts 
+                    WHERE seller_user_id = ? AND payout_status = 'pending'
+                ''', (query.from_user.id,))
+                pending_amount = cursor.fetchone()[0]
         except sqlite3.Error as e:
             logger.error(f"Erreur récupération payouts en attente: {e}")
-            conn.close()
             pending_amount = 0
 
-        wallet_text = f"""💰 **MON WALLET SOLANA**
+        wallet_text = f"""💰 **MON COMPTE DE PAIEMENT**
 
-    📍 **Adresse :** `{solana_address}`
+📍 **Adresse Solana :** `{solana_address}`
 
-    💎 **Solde actuel :** {balance:.6f} SOL
-    ⏳ **Payout en attente :** {pending_amount:.6f} SOL
+💎 **Solde actuel :** {balance:.6f} SOL
+⏳ **Paiements en attente :** {pending_amount:.6f} SOL
 
-    💸 **Payouts :**
-    - Traités quotidiennement
-    - 95% de vos ventes
-    - Commission plateforme : 5%"""
+💸 **Système de paiements :**
+- Traités quotidiennement
+- 95% de vos ventes
+- Commission plateforme : 5%"""
 
         keyboard = [
             [InlineKeyboardButton("📊 Historique payouts", callback_data='payout_history')],
             [InlineKeyboardButton("📋 Copier adresse", callback_data='copy_address')],
-            [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')]
+            [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
         ]
 
         await query.edit_message_text(
@@ -2293,44 +2392,42 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
     async def marketplace_stats(self, query, lang):
         """Statistiques globales de la marketplace"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-
-        # Stats générales
         try:
-            cursor.execute('SELECT COUNT(*) FROM users')
-            total_users = cursor.fetchone()[0]
+            with self.get_db_connection() as conn:
+                cursor = conn.cursor()
 
-            cursor.execute('SELECT COUNT(*) FROM users WHERE is_seller = TRUE')
-            total_sellers = cursor.fetchone()[0]
+                # Stats générales
+                cursor.execute('SELECT COUNT(*) FROM users')
+                total_users = cursor.fetchone()[0]
 
-            cursor.execute('SELECT COUNT(*) FROM products WHERE status = "active"')
-            total_products = cursor.fetchone()[0]
+                cursor.execute('SELECT COUNT(*) FROM users WHERE is_seller = TRUE')
+                total_sellers = cursor.fetchone()[0]
 
-            cursor.execute(
-                'SELECT COUNT(*) FROM orders WHERE payment_status = "completed"')
-            total_sales = cursor.fetchone()[0]
+                cursor.execute('SELECT COUNT(*) FROM products WHERE status = "active"')
+                total_products = cursor.fetchone()[0]
 
-            cursor.execute(
-                'SELECT COALESCE(SUM(product_price_eur), 0) FROM orders WHERE payment_status = "completed"'
-            )
-            total_volume = cursor.fetchone()[0]
+                cursor.execute(
+                    'SELECT COUNT(*) FROM orders WHERE payment_status = "completed"')
+                total_sales = cursor.fetchone()[0]
 
-            # Top catégories
-            cursor.execute('''
-                SELECT c.name, c.icon, COUNT(p.id) as product_count
-                FROM categories c
-                LEFT JOIN products p ON c.name = p.category
-                GROUP BY c.name
-                ORDER BY product_count DESC
-                LIMIT 5
-            ''')
-            top_categories = cursor.fetchall()
+                cursor.execute(
+                    'SELECT COALESCE(SUM(product_price_eur), 0) FROM orders WHERE payment_status = "completed"'
+                )
+                total_volume = cursor.fetchone()[0]
 
-            conn.close()
+                # Top catégories
+                cursor.execute('''
+                    SELECT c.name, c.icon, COUNT(p.id) as product_count
+                    FROM categories c
+                    LEFT JOIN products p ON c.name = p.category
+                    GROUP BY c.name
+                    ORDER BY product_count DESC
+                    LIMIT 5
+                ''')
+                top_categories = cursor.fetchall()
+
         except sqlite3.Error as e:
             logger.error(f"Erreur récupération stats marketplace: {e}")
-            conn.close()
             return
 
         stats_text = f"""📊 **STATISTIQUES MARKETPLACE**
@@ -2347,20 +2444,12 @@ Commencez dès maintenant à monétiser votre expertise !"""
         for cat in top_categories:
             stats_text += f"\n{cat[1]} {cat[0]} : {cat[2]} formations"
 
-        keyboard = [[
-            InlineKeyboardButton("🔥 Meilleures ventes",
-                                 callback_data='category_bestsellers')
-        ], [
-            InlineKeyboardButton("🆕 Nouveautés", callback_data='category_new')
-        ],
-                    [
-                        InlineKeyboardButton("🏪 Devenir vendeur",
-                                             callback_data='sell_menu')
-                    ],
-                    [
-                        InlineKeyboardButton("🏠 Accueil",
-                                             callback_data='back_main')
-                    ]]
+        keyboard = [
+            [InlineKeyboardButton("🔥 Meilleures ventes", callback_data='category_bestsellers')],
+            [InlineKeyboardButton("🆕 Nouveautés", callback_data='category_new')],
+            [InlineKeyboardButton("🏪 Devenir vendeur", callback_data='sell_menu')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+        ]
 
         await query.edit_message_text(
             stats_text,
@@ -2806,19 +2895,19 @@ Commencez dès maintenant à monétiser votre expertise !"""
         admin_id = update.effective_user.id
         self.memory_cache.pop(admin_id, None)
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            # Essayer par user_id
-            if message_text.isdigit():
-                cursor.execute('SELECT user_id, username, first_name, is_seller, is_partner, partner_code FROM users WHERE user_id = ?', (int(message_text),))
-            else:
-                cursor.execute('SELECT user_id, username, first_name, is_seller, is_partner, partner_code FROM users WHERE partner_code = ?', (message_text.strip(),))
-            row = cursor.fetchone()
-            conn.close()
-            if not row:
-                await update.message.reply_text("❌ Utilisateur non trouvé.")
-                return
-            await update.message.reply_text(f"ID: {row[0]}\nUser: {row[1]}\nNom: {row[2]}\nVendeur: {bool(row[3])}\nPartenaire: {bool(row[4])}\nCode: {row[5]}")
+            with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                # Essayer par user_id
+                if message_text.isdigit():
+                    cursor.execute('SELECT user_id, username, first_name, is_seller FROM users WHERE user_id = ?', (int(message_text),))
+                else:
+                    cursor.execute('SELECT user_id, username, first_name, is_seller FROM users WHERE user_id = ?', (0,))
+                
+                row = cursor.fetchone()
+                if not row:
+                    await update.message.reply_text("❌ Utilisateur non trouvé.")
+                    return
+                await update.message.reply_text(f"ID: {row[0]}\nUser: {row[1]}\nNom: {row[2]}\nVendeur: {bool(row[3])}")
         except Exception as e:
             logger.error(f"Erreur admin search user: {e}")
             await update.message.reply_text("❌ Erreur recherche utilisateur.")
@@ -2827,15 +2916,14 @@ Commencez dès maintenant à monétiser votre expertise !"""
         admin_id = update.effective_user.id
         self.memory_cache.pop(admin_id, None)
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('SELECT product_id, title, price_eur, status FROM products WHERE product_id = ?', (message_text.strip(),))
-            row = cursor.fetchone()
-            conn.close()
-            if not row:
-                await update.message.reply_text("❌ Produit non trouvé.")
-                return
-            await update.message.reply_text(f"{row[0]} — {row[1]} — {row[2]}€ — {row[3]}")
+            with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT product_id, title, price_eur, status FROM products WHERE product_id = ?', (message_text.strip(),))
+                row = cursor.fetchone()
+                if not row:
+                    await update.message.reply_text("❌ Produit non trouvé.")
+                    return
+                await update.message.reply_text(f"{row[0]} — {row[1]} — {row[2]}€ — {row[3]}")
         except Exception as e:
             logger.error(f"Erreur admin search product: {e}")
             await update.message.reply_text("❌ Erreur recherche produit.")
@@ -2844,12 +2932,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
         admin_id = update.effective_user.id
         self.memory_cache.pop(admin_id, None)
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("UPDATE products SET status='inactive' WHERE product_id = ?", (message_text.strip(),))
-            conn.commit()
-            conn.close()
-            await update.message.reply_text("✅ Produit suspendu si trouvé.")
+            with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE products SET status='inactive' WHERE product_id = ?", (message_text.strip(),))
+                conn.commit()
+                await update.message.reply_text("✅ Produit suspendu si trouvé.")
         except Exception as e:
             logger.error(f"Erreur suspend product: {e}")
             await update.message.reply_text("❌ Erreur suspension produit.")
@@ -2895,11 +2982,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
             return
 
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('UPDATE users SET language_code = ? WHERE user_id = ?', (lang, user_id))
-            conn.commit()
-            conn.close()
+            with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET language_code = ? WHERE user_id = ?', (lang, user_id))
+                conn.commit()
 
             await query.answer(f"✅ Language changed to {lang}")
             await self.back_to_main(query)
@@ -2949,11 +3035,15 @@ Commencez dès maintenant à monétiser votre expertise !"""
         return texts.get(lang, texts['fr']).get(key, key)
 
     async def back_to_main(self, query):
-        """Menu principal avec récupération"""
+        """Menu principal avec récupération - NE DÉCONNECTE JAMAIS"""
         user_id = query.from_user.id
         user_data = self.get_user(user_id)
         lang = user_data['language_code'] if user_data else 'fr'
         is_seller = user_data and user_data['is_seller']
+        is_logged = self.is_seller_logged_in(user_id)
+
+        # Ne jamais déconnecter automatiquement
+        # L'état de connexion est préservé
 
         keyboard = [
             [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
@@ -2961,8 +3051,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
             [InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]
         ]
 
-        # Accès rapide espace vendeur si déjà vendeur
-        if is_seller:
+        # Accès rapide espace vendeur si déjà vendeur ET connecté
+        if is_seller and is_logged:
             keyboard.append([
                 InlineKeyboardButton("🏪 Mon espace vendeur", callback_data='seller_dashboard')
             ])
@@ -2978,13 +3068,13 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
         await query.edit_message_text(
             """🏪 **TECHBOT MARKETPLACE**
-    *La première marketplace crypto pour formations*
+*Plateforme de formations digitales avec paiements crypto*
 
-    🎯 **Découvrez des formations premium**
-    📚 **Vendez vos connaissances**  
-    💰 **Paiements Solana ultra-rapides**
+🎯 **Découvrez des formations premium**
+📚 **Monétisez votre expertise**  
+💳 **Paiements sécurisés en crypto**
 
-    Choisissez une option pour commencer :""",
+Choisissez une option pour commencer :""",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown')
 
@@ -2992,15 +3082,15 @@ Commencez dès maintenant à monétiser votre expertise !"""
         """Menu de récupération de compte"""
         await query.edit_message_text("""🔐 **RÉCUPÉRATION COMPTE VENDEUR**
 
-    Si vous avez perdu l'accès à votre compte Telegram :
+Si vous avez perdu l'accès à votre compte :
 
-    📧 **Récupération automatique :**
-    - Saisissez votre email de récupération
-    - Entrez votre code à 6 chiffres
-    - Accès restauré instantanément
+📧 **Récupération automatique :**
+- Saisissez votre email de récupération
+- Entrez votre code à 6 chiffres
+- Accès restauré instantanément
 
-    🎫 **Support manuel :**
-    - Contactez notre équipe avec preuves""",
+🎫 **Support manuel :**
+- Contactez notre équipe avec preuves""",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📧 Récupération par email", callback_data='recovery_by_email')],
                 [InlineKeyboardButton("🎫 Contacter support", callback_data='create_ticket')],
@@ -3018,9 +3108,9 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
         await query.edit_message_text("""📧 **RÉCUPÉRATION PAR EMAIL**
 
-    Saisissez l'email de votre compte vendeur :
+Saisissez l'email de votre compte vendeur :
 
-    ✍️ **Tapez votre email :**""",
+✍️ **Tapez votre email :**""",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 Retour", callback_data='account_recovery')]
             ]))
@@ -3415,67 +3505,15 @@ Commencez dès maintenant à monétiser votre expertise !"""
             parse_mode='Markdown')
 
     async def admin_commissions_handler(self, query):
-        """Affiche les commissions à payer"""
+        """Affiche les commissions à payer - Système supprimé"""
         if query.from_user.id != ADMIN_USER_ID:
             return
 
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-
-        # Commissions non payées
-        try:
-            cursor.execute('''
-                SELECT o.order_id, o.partner_code, o.partner_commission, o.created_at,
-                       u.first_name, p.title
-                FROM orders o
-                LEFT JOIN users u ON u.partner_code = o.partner_code
-                LEFT JOIN products p ON p.product_id = o.product_id
-                WHERE o.payment_status = 'completed' 
-                AND o.commission_paid = FALSE
-                AND o.partner_commission > 0
-                ORDER BY o.created_at DESC
-            ''')
-
-            unpaid = cursor.fetchall()
-
-            # Total à payer
-            cursor.execute('''
-                SELECT SUM(partner_commission) 
-                FROM orders 
-                WHERE payment_status = 'completed' 
-                AND commission_paid = FALSE
-            ''')
-            total_due = cursor.fetchone()[0] or 0
-
-            conn.close()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur récupération commissions (admin): {e}")
-            conn.close()
-            return
-
-        if not unpaid:
-            text = "💰 **COMMISSIONS**\n\n✅ Aucune commission en attente !"
-        else:
-            text = f"💰 **COMMISSIONS À PAYER**\n\n💸 **Total à payer : {total_due:.2f}€**\n\n"
-
-            for comm in unpaid:
-                text += f"📋 **Commande :** `{comm[0]}`\n"
-                text += f"👤 **Partenaire :** {comm[4] or 'Anonyme'} (`{comm[1]}`)\n"
-                text += f"📦 **Produit :** {comm[5]}\n"
-                text += f"💰 **Commission :** {comm[2]:.2f}€\n"
-                text += f"📅 **Date :** {comm[3][:10]}\n"
-                text += "---\n"
-
-        keyboard = [[
-            InlineKeyboardButton("✅ Marquer comme payées",
-                                 callback_data='admin_mark_paid')
-        ], [
-            InlineKeyboardButton("🔙 Retour admin", callback_data='admin_menu')
-        ]]
-
         await query.edit_message_text(
-            text[:4000],  # Limite Telegram
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            "💰 **COMMISSIONS**\n\n✅ Système de commissions supprimé",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Retour admin", callback_data='admin_menu')
+            ]]),
             parse_mode='Markdown')
 
     async def admin_marketplace_stats(self, query):
@@ -3511,11 +3549,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
             )
             platform_revenue = cursor.fetchone()[0]
 
-            # Commissions en attente
-            cursor.execute(
-                'SELECT COALESCE(SUM(partner_commission), 0) FROM orders WHERE payment_status = "completed" AND commission_paid = FALSE'
-            )
-            pending_commissions = cursor.fetchone()[0]
+
 
             conn.close()
         except sqlite3.Error as e:
@@ -3533,15 +3567,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
 💰 **Finances :**
 • Volume total : {total_volume:,.2f}€
 • Revenus plateforme : {platform_revenue:.2f}€
-• Commissions en attente : {pending_commissions:.2f}€
 
 📈 **Taux plateforme :** {PLATFORM_COMMISSION_RATE*100}%
 💸 **Moyenne par vente :** {total_volume/max(total_sales,1):.2f}€"""
 
-        keyboard = [[
-            InlineKeyboardButton("💰 Traiter commissions",
-                                 callback_data='admin_commissions')
-        ],
+        keyboard = [
                     [
                         InlineKeyboardButton("📦 Gérer produits",
                                              callback_data='admin_products')
@@ -3552,7 +3582,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
                     ]]
 
         await query.edit_message_text(
-            stats_text,
+            text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown')
 
@@ -3596,9 +3626,9 @@ Commencez dès maintenant à monétiser votre expertise !"""
         # Vérifier taille avec gestion d'erreur
         try:
             file_size_mb = document.file_size / (1024 * 1024)
-            if document.file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+            if document.file_size > config.max_file_size_mb * 1024 * 1024:
                 await update.message.reply_text(
-                    f"❌ **Fichier trop volumineux**\n\nTaille max : {MAX_FILE_SIZE_MB}MB\nVotre fichier : {file_size_mb:.1f}MB",
+                    f"❌ **Fichier trop volumineux**\n\nTaille max : {config.max_file_size_mb}MB\nVotre fichier : {file_size_mb:.1f}MB",
                     parse_mode='Markdown'
                 )
                 return
@@ -3645,6 +3675,19 @@ Commencez dès maintenant à monétiser votre expertise !"""
             try:
                 await file.download_to_drive(filepath)
                 logger.info(f"Fichier téléchargé avec succès: {filepath}")
+                
+                # Compression automatique pour les gros fichiers
+                if file_size_mb > 10:  # Compresser si > 10MB
+                    compressed_filepath = f"{filepath}.gz"
+                    with open(filepath, 'rb') as f_in:
+                        with gzip.open(compressed_filepath, 'wb') as f_out:
+                            shutil.copyfileobj(f_in, f_out)
+                    
+                    # Remplacer le fichier original par la version compressée
+                    os.remove(filepath)
+                    filepath = compressed_filepath
+                    logger.info(f"Fichier compressé: {filepath}")
+                    
             except Exception as download_error:
                 logger.error(f"Erreur téléchargement fichier: {download_error}")
                 await update.message.reply_text(
@@ -4004,13 +4047,36 @@ Top produits:\n"""
         await query.edit_message_text(text)
 
     async def seller_settings(self, query, lang):
-        self.memory_cache[query.from_user.id] = {'editing_settings': True, 'step': 'menu'}
+        """Paramètres vendeur"""
+        user_data = self.get_user(query.from_user.id)
+
+        if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
+            await query.edit_message_text(
+                "❌ Connectez-vous d'abord (email + code)",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
+            )
+            return
+
+        settings_text = f"""⚙️ **PARAMÈTRES VENDEUR**
+
+👤 **Nom actuel :** {user_data['seller_name']}
+📝 **Bio actuelle :** {user_data['seller_bio'][:100]}{'...' if len(user_data['seller_bio']) > 100 else ''}
+
+Choisissez ce que vous voulez modifier :"""
+
         keyboard = [
             [InlineKeyboardButton("✏️ Modifier nom", callback_data='edit_seller_name')],
             [InlineKeyboardButton("📝 Modifier bio", callback_data='edit_seller_bio')],
-            [InlineKeyboardButton("🔙 Retour", callback_data='seller_dashboard')]
+            [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
+            [InlineKeyboardButton("🗑️ Supprimer compte", callback_data='delete_seller')],
+            [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
         ]
-        await query.edit_message_text("Paramètres vendeur:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+        await query.edit_message_text(
+            settings_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown')
 
     async def seller_info(self, query, lang):
         await query.edit_message_text("Conditions & avantages vendeur (à implémenter)")
@@ -4070,12 +4136,12 @@ Top produits:\n"""
             conn = self.get_db_connection()
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT user_id, username, first_name, is_seller, is_partner, partner_code, registration_date
+                SELECT user_id, username, first_name, is_seller, registration_date
                 FROM users ORDER BY registration_date DESC
             ''')
             rows = cursor.fetchall()
             conn.close()
-            csv_lines = ["user_id,username,first_name,is_seller,is_partner,partner_code,registration_date"]
+            csv_lines = ["user_id,username,first_name,is_seller,registration_date"]
             for r in rows:
                 csv_lines.append(','.join([str(x).replace(',', ' ') for x in r]))
             data = '\n'.join(csv_lines)
@@ -4107,8 +4173,7 @@ Top produits:\n"""
             keyboard = [
                 [InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')],
                 [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
-                [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
-                [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
+                [InlineKeyboardButton("⚙️ Paramètres", callback_data='seller_settings')],
                 [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
             ]
             await query.edit_message_text("🔑 Compte vendeur", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -4120,7 +4185,7 @@ Top produits:\n"""
             [InlineKeyboardButton("🚀 Créer un compte vendeur", callback_data='create_seller')],
             [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
         ]
-        await query.edit_message_text("🔑 Connexion vendeur\n\nConnectez-vous avec votre email et votre code de récupération.", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text("🔑 **ACCÈS COMPTE VENDEUR**\n\nConnectez-vous avec votre email et votre code de récupération.", reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def seller_logout(self, query):
         """Déconnexion: on nettoie l'état mémoire d'authentification côté bot."""
@@ -4129,6 +4194,10 @@ Top produits:\n"""
         self.memory_cache[query.from_user.id] = state
         await query.answer("Déconnecté.")
         await self.back_to_main(query)
+
+    async def seller_back(self, query):
+        """Retour vendeur qui préserve l'état de connexion"""
+        await self.seller_dashboard(query, 'fr')
 
     async def delete_seller_prompt(self, query):
         keyboard = [
@@ -4142,29 +4211,35 @@ Top produits:\n"""
 
     async def delete_seller_confirm(self, query):
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE users
-                SET is_seller = FALSE, seller_name = NULL, seller_bio = NULL, seller_solana_address = NULL
-                WHERE user_id = ?
-            ''', (query.from_user.id,))
-            conn.commit()
-            conn.close()
-            await query.edit_message_text("✅ Compte vendeur supprimé.")
+            with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE users
+                    SET is_seller = FALSE, seller_name = NULL, seller_bio = NULL, seller_solana_address = NULL
+                    WHERE user_id = ?
+                ''', (query.from_user.id,))
+                conn.commit()
+                await query.edit_message_text("✅ Compte vendeur supprimé.")
         except Exception as e:
             logger.error(f"Erreur suppression vendeur: {e}")
             await query.edit_message_text("❌ Erreur suppression compte vendeur.")
 
-def main():
-    """Fonction principale"""
-    if not TOKEN:
+async def main():
+    """Fonction principale optimisée"""
+    if not config.token:
         logger.error("❌ TELEGRAM_TOKEN manquant dans .env")
         return
 
     # Créer l'application
     bot = MarketplaceBot()
-    application = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(config.token).build()
+
+    # Initialiser les tâches asynchrones
+    await bot.init_database()
+    await bot.task_queue.start()
+    
+    # Démarrer le nettoyage automatique du cache en arrière-plan
+    cache_task = asyncio.create_task(bot.cache_cleanup_task())
 
     # Handlers principaux
     application.add_handler(CommandHandler("start", bot.start_command))
@@ -4178,21 +4253,40 @@ def main():
     application.add_handler(
         MessageHandler(filters.Document.ALL, bot.handle_document_upload))
 
-    logger.info("🚀 Démarrage du TechBot Marketplace COMPLET...")
-    logger.info(f"📱 Bot: @{TOKEN.split(':')[0] if TOKEN else 'TOKEN_MISSING'}")
+    logger.info("🚀 Démarrage du TechBot Marketplace OPTIMISÉ...")
+    logger.info(f"📱 Bot: @{config.token.split(':')[0] if config.token else 'TOKEN_MISSING'}")
     logger.info("✅ FONCTIONNALITÉS ACTIVÉES :")
     logger.info("   🏪 Marketplace multi-vendeurs")
-    logger.info("   🔐 Authentification BIP-39 seed phrase")
-    logger.info("   💰 Wallets crypto intégrés (8 devises)")
-    logger.info("   🎁 Système parrainage restructuré")
-    logger.info("   💳 Paiements NOWPayments + wallet")
+    logger.info("   🔐 Authentification email + code")
+    logger.info("   💰 Paiements crypto (8 devises)")
+    logger.info("   🎁 Système parrainage")
+    logger.info("   💳 Paiements NOWPayments")
     logger.info("   📁 Upload/download formations")
     logger.info("   📊 Analytics vendeurs complets")
     logger.info("   🎫 Support tickets intégré")
     logger.info("   👑 Panel admin marketplace")
+    logger.info("🚀 OPTIMISATIONS PERFORMANCE :")
+    logger.info("   🗄️ Pool de connexions DB")
+    logger.info("   ⚡ Cache intelligent avec TTL")
+    logger.info("   🌐 Client HTTP asynchrone")
+    logger.info("   🛡️ Rate limiting")
+    logger.info("   📊 Monitoring performances")
+    logger.info("   🔄 Queue de tâches asynchrones")
+    logger.info("   📦 Compression automatique")
 
-    # Démarrer le bot
-    application.run_polling(drop_pending_updates=True)
+    try:
+        # Démarrer le bot
+        await application.initialize()
+        await application.start()
+        await application.run_polling(drop_pending_updates=True)
+    except KeyboardInterrupt:
+        logger.info("🛑 Arrêt du bot...")
+    finally:
+        # Nettoyage à la fermeture
+        cache_task.cancel()
+        await bot.task_queue.stop()
+        await application.stop()
+        await application.shutdown()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
