@@ -854,6 +854,10 @@ Choisissez une option pour commencer :"""
                                              callback_data='sell_menu')
                     ],
                     [
+                        InlineKeyboardButton("🔑 Accéder à mon compte",
+                                             callback_data='access_account')
+                    ],
+                    [
                         InlineKeyboardButton("🔐 Connexion vendeur",
                                              callback_data='seller_login')
                     ],
@@ -902,6 +906,9 @@ Choisissez une option pour commencer :"""
                 await self.seller_login_menu(query, lang)
             elif query.data == 'access_account':
                 await self.access_account_prompt(query, lang)
+            elif query.data == 'recovery_enter_code':
+                self.memory_cache[user_id] = {'waiting_for_recovery_code': True}
+                await query.edit_message_text("Entrez votre code de récupération à 6 chiffres:")
 
             # Achat
             elif query.data == 'search_product':
@@ -2953,6 +2960,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
     - Contactez notre équipe avec preuves""",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📧 Récupération par email", callback_data='recovery_by_email')],
+                [InlineKeyboardButton("🔢 Saisir un code", callback_data='recovery_enter_code')],
                 [InlineKeyboardButton("🎫 Contacter support", callback_data='create_ticket')],
                 [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
             ]),
