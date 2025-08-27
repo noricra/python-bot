@@ -28,26 +28,59 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.error import TelegramError
 from dotenv import load_dotenv
 import re
-import base58 # Import manquant
+import base58
+from contextlib import contextmanager
+from functools import wraps
+from collections import defaultdict
+import aiohttp
+import gzip
+import shutil
+from dataclasses import dataclass
 
 # Charger les variables d'environnement
 load_dotenv()
 
 # Configuration
-TOKEN = os.getenv('TELEGRAM_TOKEN')
-NOWPAYMENTS_API_KEY = os.getenv('NOWPAYMENTS_API_KEY')
-NOWPAYMENTS_IPN_SECRET = os.getenv('NOWPAYMENTS_IPN_SECRET')
-ADMIN_USER_ID = int(
-    os.getenv('ADMIN_USER_ID')) if os.getenv('ADMIN_USER_ID') else None
-ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'admin@votre-domaine.com')
-SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-SMTP_EMAIL = os.getenv('SMTP_EMAIL')
-SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
+@dataclass
+class Config:
+    token: str
+    nowpayments_api_key: str
+    nowpayments_ipn_secret: str
+    admin_user_id: Optional[int]
+    admin_email: str
+    smtp_server: str
+    smtp_port: int
+    smtp_email: str
+    smtp_password: str
+    max_connections: int
+    cache_ttl: int
+    max_file_size_mb: int
+    rate_limit_requests: int
+    rate_limit_window: int
+    
+    @classmethod
+    def from_env(cls):
+        return cls(
+            token=os.getenv('TELEGRAM_TOKEN'),
+            nowpayments_api_key=os.getenv('NOWPAYMENTS_API_KEY'),
+            nowpayments_ipn_secret=os.getenv('NOWPAYMENTS_IPN_SECRET'),
+            admin_user_id=int(os.getenv('ADMIN_USER_ID')) if os.getenv('ADMIN_USER_ID') else None,
+            admin_email=os.getenv('ADMIN_EMAIL', 'admin@votre-domaine.com'),
+            smtp_server=os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
+            smtp_port=int(os.getenv('SMTP_PORT', '587')),
+            smtp_email=os.getenv('SMTP_EMAIL'),
+            smtp_password=os.getenv('SMTP_PASSWORD'),
+            max_connections=int(os.getenv('MAX_CONNECTIONS', '10')),
+            cache_ttl=int(os.getenv('CACHE_TTL', '3600')),
+            max_file_size_mb=int(os.getenv('MAX_FILE_SIZE_MB', '100')),
+            rate_limit_requests=int(os.getenv('RATE_LIMIT_REQUESTS', '10')),
+            rate_limit_window=int(os.getenv('RATE_LIMIT_WINDOW', '60'))
+        )
+
+config = Config.from_env()
 
 # Configuration marketplace
 PLATFORM_COMMISSION_RATE = 0.05  # 5%
-MAX_FILE_SIZE_MB = 100
 SUPPORTED_FILE_TYPES = ['.pdf', '.zip', '.rar', '.mp4', '.txt', '.docx']
 
 # Configuration crypto
@@ -56,10 +89,6 @@ MARKETPLACE_CONFIG = {
     'platform_commission_rate': 0.05,  # 5%
     'min_payout_amount': 0.1,  # SOL minimum pour payout
 }
-
-# Variables commission
-# (Définies une seule fois pour éviter les doublons)
-PLATFORM_COMMISSION_RATE = 0.05  # 5% pour la plateforme
 
 # Configuration logging
 os.makedirs('logs', exist_ok=True)
@@ -74,6 +103,199 @@ logging.basicConfig(
         logging.StreamHandler()
     ])
 logger = logging.getLogger(__name__)
+
+# ==========================================
+# CLASSES DE PERFORMANCE ET OPTIMISATION
+# ==========================================
+
+class DatabaseManager:
+    """Gestionnaire de base de données optimisé avec pool de connexions"""
+    
+    def __init__(self, db_path: str, max_connections: int = 10):
+        self.db_path = db_path
+        self.max_connections = max_connections
+        self.connections = []
+        self.lock = asyncio.Lock()
+    
+    @contextmanager
+    async def get_connection(self):
+        """Obtient une connexion du pool"""
+        conn = None
+        try:
+            async with self.lock:
+                if self.connections:
+                    conn = self.connections.pop()
+                else:
+                    conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
+                    conn.execute('PRAGMA journal_mode=WAL;')
+                    conn.execute('PRAGMA synchronous=NORMAL;')
+                    conn.execute('PRAGMA foreign_keys=ON;')
+                    conn.execute('PRAGMA busy_timeout=5000;')
+            yield conn
+        finally:
+            if conn:
+                async with self.lock:
+                    if len(self.connections) < self.max_connections:
+                        self.connections.append(conn)
+                    else:
+                        conn.close()
+
+class SmartCache:
+    """Cache intelligent avec TTL et gestion mémoire"""
+    
+    def __init__(self, default_ttl: int = 3600):
+        self.cache = {}
+        self.ttl = {}
+        self.default_ttl = default_ttl
+    
+    def get(self, key: str):
+        """Récupère une valeur du cache"""
+        if key in self.cache:
+            if time.time() < self.ttl.get(key, 0):
+                return self.cache[key]
+            else:
+                del self.cache[key]
+                del self.ttl[key]
+        return None
+    
+    def set(self, key: str, value, ttl: int = None):
+        """Définit une valeur dans le cache"""
+        if ttl is None:
+            ttl = self.default_ttl
+        self.cache[key] = value
+        self.ttl[key] = time.time() + ttl
+    
+    def clear_expired(self):
+        """Nettoie les entrées expirées"""
+        current_time = time.time()
+        expired_keys = [k for k, v in self.ttl.items() if current_time > v]
+        for key in expired_keys:
+            del self.cache[key]
+            del self.ttl[key]
+
+class HTTPClient:
+    """Client HTTP asynchrone avec retry et circuit breaker"""
+    
+    def __init__(self, retry_attempts: int = 3):
+        self.session = None
+        self.retry_attempts = retry_attempts
+        self.failure_count = 0
+        self.failure_threshold = 5
+        self.recovery_timeout = 60
+        self.last_failure_time = 0
+        self.state = 'CLOSED'  # CLOSED, OPEN, HALF_OPEN
+    
+    async def get_session(self):
+        """Obtient ou crée une session HTTP"""
+        if self.session is None:
+            self.session = aiohttp.ClientSession()
+        return self.session
+    
+    async def make_request(self, url: str, method: str = 'GET', **kwargs):
+        """Effectue une requête HTTP avec retry"""
+        if self.state == 'OPEN':
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = 'HALF_OPEN'
+            else:
+                raise Exception("Circuit breaker is OPEN")
+        
+        session = await self.get_session()
+        for attempt in range(self.retry_attempts):
+            try:
+                async with session.request(method, url, **kwargs) as response:
+                    if response.status == 200:
+                        self.state = 'CLOSED'
+                        self.failure_count = 0
+                        return await response.json()
+                    else:
+                        raise Exception(f"HTTP {response.status}")
+            except Exception as e:
+                self.failure_count += 1
+                if self.failure_count >= self.failure_threshold:
+                    self.state = 'OPEN'
+                    self.last_failure_time = time.time()
+                
+                if attempt == self.retry_attempts - 1:
+                    raise e
+                await asyncio.sleep(2 ** attempt)  # Backoff exponentiel
+
+class RateLimiter:
+    """Rate limiter pour protéger contre les abus"""
+    
+    def __init__(self, max_requests: int = 10, window: int = 60):
+        self.max_requests = max_requests
+        self.window = window
+        self.requests = defaultdict(list)
+    
+    def is_allowed(self, user_id: int) -> bool:
+        """Vérifie si un utilisateur peut faire une requête"""
+        now = time.time()
+        user_requests = self.requests[user_id]
+        
+        # Nettoyer les anciennes requêtes
+        user_requests[:] = [req for req in user_requests if now - req < self.window]
+        
+        if len(user_requests) < self.max_requests:
+            user_requests.append(now)
+            return True
+        return False
+
+class TaskQueue:
+    """Queue de tâches asynchrone pour le traitement en arrière-plan"""
+    
+    def __init__(self, max_workers: int = 5):
+        self.queue = asyncio.Queue()
+        self.workers = []
+        self.max_workers = max_workers
+        self.running = False
+    
+    async def start(self):
+        """Démarre les workers"""
+        self.running = True
+        for _ in range(self.max_workers):
+            worker = asyncio.create_task(self.worker())
+            self.workers.append(worker)
+    
+    async def stop(self):
+        """Arrête les workers"""
+        self.running = False
+        for worker in self.workers:
+            worker.cancel()
+        await asyncio.gather(*self.workers, return_exceptions=True)
+    
+    async def add_task(self, task):
+        """Ajoute une tâche à la queue"""
+        await self.queue.put(task)
+    
+    async def worker(self):
+        """Worker qui traite les tâches"""
+        while self.running:
+            try:
+                task = await asyncio.wait_for(self.queue.get(), timeout=1.0)
+                try:
+                    await task()
+                except Exception as e:
+                    logger.error(f"Task failed: {e}")
+                finally:
+                    self.queue.task_done()
+            except asyncio.TimeoutError:
+                continue
+
+def measure_performance(func):
+    """Décorateur pour mesurer les performances"""
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        start_time = time.time()
+        try:
+            result = await func(*args, **kwargs)
+            duration = time.time() - start_time
+            logger.info(f"{func.__name__} completed in {duration:.2f}s")
+            return result
+        except Exception as e:
+            duration = time.time() - start_time
+            logger.error(f"{func.__name__} failed after {duration:.2f}s: {e}")
+            raise
+    return wrapper
 
 
 # SUPPRIMER ENTIÈREMENT la classe CryptoWalletManager
@@ -92,27 +314,25 @@ def validate_solana_address(address: str) -> bool:
     except:
         return False
 
-def get_solana_balance_display(address: str) -> float:
-    """Récupère solde Solana pour affichage (optionnel)"""
+async def get_solana_balance_display(address: str, http_client: HTTPClient) -> float:
+    """Récupère solde Solana pour affichage (optionnel) - Version asynchrone"""
     try:
-        # API publique Solana
-        response = requests.post(
+        # API publique Solana avec client HTTP optimisé
+        response = await http_client.make_request(
             "https://api.mainnet-beta.solana.com",
+            method="POST",
             json={
                 "jsonrpc": "2.0",
                 "id": 1, 
                 "method": "getBalance",
                 "params": [address]
-            },
-            timeout=10
+            }
         )
-
-        if response.status_code == 200:
-            data = response.json()
-            balance_lamports = data.get('result', {}).get('value', 0)
-            return balance_lamports / 1_000_000_000  # Lamports to SOL
-        return 0.0
-    except:
+        
+        balance_lamports = response.get('result', {}).get('value', 0)
+        return balance_lamports / 1_000_000_000  # Lamports to SOL
+    except Exception as e:
+        logger.warning(f"Erreur récupération solde Solana: {e}")
         return 0.0  # En cas d'erreur, afficher 0
 
 def validate_email(email: str) -> bool:
@@ -126,8 +346,19 @@ class MarketplaceBot:
 
     def __init__(self):
         self.db_path = "marketplace_database.db"
-        self.init_database()
+        self.db_manager = DatabaseManager(self.db_path, config.max_connections)
+        self.cache = SmartCache(config.cache_ttl)
+        self.http_client = HTTPClient()
+        self.rate_limiter = RateLimiter(config.rate_limit_requests, config.rate_limit_window)
+        self.task_queue = TaskQueue()
         self.memory_cache = {}
+        
+        # Initialiser la base de données
+        asyncio.create_task(self.init_database())
+        # Démarrer la queue de tâches
+        asyncio.create_task(self.task_queue.start())
+        # Démarrer le nettoyage automatique du cache
+        asyncio.create_task(self.cache_cleanup_task())
 
     def is_seller_logged_in(self, user_id: int) -> bool:
         state = self.memory_cache.get(user_id, {})
@@ -142,17 +373,21 @@ class MarketplaceBot:
         current = self.memory_cache.get(user_id, {})
         logged = bool(current.get('seller_logged_in'))
         self.memory_cache[user_id] = {'seller_logged_in': logged}
+    
+    async def cache_cleanup_task(self):
+        """Tâche de nettoyage automatique du cache"""
+        while True:
+            try:
+                await asyncio.sleep(3600)  # Nettoyer toutes les heures
+                self.cache.clear_expired()
+                logger.info("Cache nettoyé automatiquement")
+            except Exception as e:
+                logger.error(f"Erreur nettoyage cache: {e}")
+                await asyncio.sleep(300)  # Réessayer dans 5 minutes en cas d'erreur
 
-    def get_db_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
-        try:
-            conn.execute('PRAGMA journal_mode=WAL;')
-            conn.execute('PRAGMA synchronous=NORMAL;')
-            conn.execute('PRAGMA foreign_keys=ON;')
-            conn.execute('PRAGMA busy_timeout=5000;')
-        except Exception as e:
-            logger.warning(f"PRAGMA init error: {e}")
-        return conn
+    async def get_db_connection(self):
+        """Obtient une connexion de la base de données via le pool"""
+        return self.db_manager.get_connection()
 
     def escape_markdown(self, text: str) -> str:
         if text is None:
@@ -170,245 +405,289 @@ class MarketplaceBot:
         sanitized = ''.join(ch if ch in allowed else '_' for ch in safe_name)
         return sanitized or f"file_{int(time.time())}"
 
-    def init_database(self):
-        """Base de données simplifiée"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
+    async def init_database(self):
+        """Base de données simplifiée avec optimisations"""
+        async with self.get_db_connection() as conn:
+            cursor = conn.cursor()
 
-        # Table utilisateurs SIMPLIFIÉE
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id INTEGER PRIMARY KEY,
-                    username TEXT,
-                    first_name TEXT,
-                    language_code TEXT DEFAULT 'fr',
-                    registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-                    -- Vendeur (SIMPLIFIÉ)
-                    is_seller BOOLEAN DEFAULT FALSE,
-                    seller_name TEXT,
-                    seller_bio TEXT,
-                    seller_solana_address TEXT,  -- JUSTE L'ADRESSE, pas de seed phrase
-                    seller_rating REAL DEFAULT 0.0,
-                    total_sales INTEGER DEFAULT 0,
-                    total_revenue REAL DEFAULT 0.0,
-
-                    -- Système de récupération
-                    recovery_email TEXT,
-                    recovery_code_hash TEXT,
-
-                    -- Système de récupération
-                    recovery_email TEXT,
-                    recovery_code_hash TEXT,
-
-                    email TEXT
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table users: {e}")
-            conn.rollback()
-
-        # Table des payouts vendeurs (NOUVELLE)
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS seller_payouts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    seller_user_id INTEGER,
-                    order_ids TEXT,  -- JSON array des order_ids
-                    total_amount_sol REAL,
-                    payout_status TEXT DEFAULT 'pending',  -- pending, processing, completed, failed
-                    payout_tx_hash TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    processed_at TIMESTAMP,
-                    FOREIGN KEY (seller_user_id) REFERENCES users (user_id)
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table seller_payouts: {e}")
-            conn.rollback()
-
-        # Table products (garder l'existante mais corriger generate_product_id)
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS products (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    product_id TEXT UNIQUE,
-                    seller_user_id INTEGER,
-                    title TEXT NOT NULL,
-                    description TEXT,
-                    category TEXT,
-                    price_eur REAL NOT NULL,
-                    price_usd REAL NOT NULL,
-                    main_file_path TEXT,
-                    file_size_mb REAL,
-                    views_count INTEGER DEFAULT 0,
-                    sales_count INTEGER DEFAULT 0,
-                    rating REAL DEFAULT 0.0,
-                    reviews_count INTEGER DEFAULT 0,
-                    status TEXT DEFAULT 'active',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (seller_user_id) REFERENCES users (user_id)
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table products: {e}")
-            conn.rollback()
-
-        # Table orders (garder existante)
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS orders (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    order_id TEXT UNIQUE,
-                    buyer_user_id INTEGER,
-                    product_id TEXT,
-                    seller_user_id INTEGER,
-                    product_price_eur REAL,
-                    platform_commission REAL,
-                    seller_revenue REAL,
-
-                    crypto_currency TEXT,
-                    crypto_amount REAL,
-                    payment_status TEXT DEFAULT 'pending',
-                    nowpayments_id TEXT,
-                    payment_address TEXT,
-
-                    commission_paid BOOLEAN DEFAULT FALSE,
-                    file_delivered BOOLEAN DEFAULT FALSE,
-                    download_count INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    FOREIGN KEY (buyer_user_id) REFERENCES users (user_id),
-                    FOREIGN KEY (seller_user_id) REFERENCES users (user_id),
-                    FOREIGN KEY (product_id) REFERENCES products (product_id)
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table orders: {e}")
-            conn.rollback()
-
-        # Table avis/reviews
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS reviews (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    product_id TEXT,
-                    buyer_user_id INTEGER,
-                    order_id TEXT,
-
-                    rating INTEGER CHECK(rating >= 1 AND rating <= 5),
-                    comment TEXT,
-
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-                    FOREIGN KEY (product_id) REFERENCES products (product_id),
-                    FOREIGN KEY (buyer_user_id) REFERENCES users (user_id),
-                    FOREIGN KEY (order_id) REFERENCES orders (order_id)
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table reviews: {e}")
-            conn.rollback()
-
-        # Table transactions wallet
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS wallet_transactions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-
-                    transaction_type TEXT,  -- receive, send, commission
-                    crypto_currency TEXT,
-                    amount REAL,
-                    from_address TEXT,
-                    to_address TEXT,
-                    tx_hash TEXT,
-
-                    status TEXT DEFAULT 'pending',  -- pending, confirmed, failed
-
-                    -- Lié aux commissions
-                    related_order_id TEXT,
-
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    confirmed_at TIMESTAMP,
-
-                    FOREIGN KEY (user_id) REFERENCES users (user_id)
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table wallet_transactions: {e}")
-            conn.rollback()
-
-        # Table support tickets (gardée de l'original)
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS support_tickets (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    ticket_id TEXT UNIQUE,
-                    subject TEXT,
-                    message TEXT,
-                    status TEXT DEFAULT 'open',
-                    admin_response TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users (user_id)
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table support_tickets: {e}")
-            conn.rollback()
-
-        # Table catégories
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS categories (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT UNIQUE,
-                    description TEXT,
-                    icon TEXT,
-                    products_count INTEGER DEFAULT 0
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table categories: {e}")
-            conn.rollback()
-
-        # Insérer catégories par défaut
-        default_categories = [
-            ('Finance & Crypto', 'Formations trading, blockchain, DeFi', '💰'),
-            ('Marketing Digital', 'SEO, publicité, réseaux sociaux', '📈'),
-            ('Développement', 'Programming, web dev, apps', '💻'),
-            ('Design & Créatif', 'Graphisme, vidéo, arts', '🎨'),
-            ('Business', 'Entrepreneuriat, management', '📊'),
-            ('Formation Pro', 'Certifications, compétences', '🎓'),
-            ('Outils & Tech', 'Logiciels, automatisation', '🔧')
-        ]
-
-        for cat_name, cat_desc, cat_icon in default_categories:
+            # Table utilisateurs SIMPLIFIÉE
             try:
-                cursor.execute(
-                    '''
-                    INSERT OR IGNORE INTO categories (name, description, icon)
-                    VALUES (?, ?, ?)
-                ''', (cat_name, cat_desc, cat_icon))
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS users (
+                        user_id INTEGER PRIMARY KEY,
+                        username TEXT,
+                        first_name TEXT,
+                        language_code TEXT DEFAULT 'fr',
+                        registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                        -- Vendeur (SIMPLIFIÉ)
+                        is_seller BOOLEAN DEFAULT FALSE,
+                        seller_name TEXT,
+                        seller_bio TEXT,
+                        seller_solana_address TEXT,  -- JUSTE L'ADRESSE, pas de seed phrase
+                        seller_rating REAL DEFAULT 0.0,
+                        total_sales INTEGER DEFAULT 0,
+                        total_revenue REAL DEFAULT 0.0,
+
+                        -- Système de récupération
+                        recovery_email TEXT,
+                        recovery_code_hash TEXT,
+
+                        email TEXT
+                    )
+                ''')
+                
+                # Index pour optimiser les recherches
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_seller ON users(is_seller)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_recovery_email ON users(recovery_email)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_last_activity ON users(last_activity)')
+                
                 conn.commit()
             except sqlite3.Error as e:
-                logger.error(f"Erreur insertion catégorie {cat_name}: {e}")
+                logger.error(f"Erreur création table users: {e}")
                 conn.rollback()
 
-        conn.close()
+            # Table des payouts vendeurs (NOUVELLE)
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS seller_payouts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        seller_user_id INTEGER,
+                        order_ids TEXT,  -- JSON array des order_ids
+                        total_amount_sol REAL,
+                        payout_status TEXT DEFAULT 'pending',  -- pending, processing, completed, failed
+                        payout_tx_hash TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        processed_at TIMESTAMP,
+                        FOREIGN KEY (seller_user_id) REFERENCES users (user_id)
+                    )
+                ''')
+                
+                # Index pour les payouts
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_payouts_seller ON seller_payouts(seller_user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_payouts_status ON seller_payouts(payout_status)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_payouts_created ON seller_payouts(created_at)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table seller_payouts: {e}")
+                conn.rollback()
+
+            # Table products (garder l'existante mais corriger generate_product_id)
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS products (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        product_id TEXT UNIQUE,
+                        seller_user_id INTEGER,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        category TEXT,
+                        price_eur REAL NOT NULL,
+                        price_usd REAL NOT NULL,
+                        main_file_path TEXT,
+                        file_size_mb REAL,
+                        views_count INTEGER DEFAULT 0,
+                        sales_count INTEGER DEFAULT 0,
+                        rating REAL DEFAULT 0.0,
+                        reviews_count INTEGER DEFAULT 0,
+                        status TEXT DEFAULT 'active',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (seller_user_id) REFERENCES users (user_id)
+                    )
+                ''')
+                
+                # Index pour les produits
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_status ON products(status)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller_user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_sales ON products(sales_count)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_created ON products(created_at)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table products: {e}")
+                conn.rollback()
+
+            # Table orders (garder existante)
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS orders (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        order_id TEXT UNIQUE,
+                        buyer_user_id INTEGER,
+                        product_id TEXT,
+                        seller_user_id INTEGER,
+                        product_price_eur REAL,
+                        platform_commission REAL,
+                        seller_revenue REAL,
+
+                        crypto_currency TEXT,
+                        crypto_amount REAL,
+                        payment_status TEXT DEFAULT 'pending',
+                        nowpayments_id TEXT,
+                        payment_address TEXT,
+
+                        commission_paid BOOLEAN DEFAULT FALSE,
+                        file_delivered BOOLEAN DEFAULT FALSE,
+                        download_count INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        completed_at TIMESTAMP,
+                        FOREIGN KEY (buyer_user_id) REFERENCES users (user_id),
+                        FOREIGN KEY (seller_user_id) REFERENCES users (user_id),
+                        FOREIGN KEY (product_id) REFERENCES products (product_id)
+                    )
+                ''')
+                
+                # Index pour les commandes
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_orders_buyer ON orders(buyer_user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_orders_seller ON orders(seller_user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table orders: {e}")
+                conn.rollback()
+
+            # Table avis/reviews
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS reviews (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        product_id TEXT,
+                        buyer_user_id INTEGER,
+                        order_id TEXT,
+
+                        rating INTEGER CHECK(rating >= 1 AND rating <= 5),
+                        comment TEXT,
+
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                        FOREIGN KEY (product_id) REFERENCES products (product_id),
+                        FOREIGN KEY (buyer_user_id) REFERENCES users (user_id),
+                        FOREIGN KEY (order_id) REFERENCES orders (order_id)
+                    )
+                ''')
+                
+                # Index pour les avis
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_reviews_product ON reviews(product_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_reviews_buyer ON reviews(buyer_user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_reviews_created ON reviews(created_at)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table reviews: {e}")
+                conn.rollback()
+
+            # Table transactions wallet
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS wallet_transactions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER,
+
+                        transaction_type TEXT,  -- receive, send, commission
+                        crypto_currency TEXT,
+                        amount REAL,
+                        from_address TEXT,
+                        to_address TEXT,
+                        tx_hash TEXT,
+
+                        status TEXT DEFAULT 'pending',  -- pending, confirmed, failed
+
+                        -- Lié aux commissions
+                        related_order_id TEXT,
+
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        confirmed_at TIMESTAMP,
+
+                        FOREIGN KEY (user_id) REFERENCES users (user_id)
+                    )
+                ''')
+                
+                # Index pour les transactions
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user ON wallet_transactions(user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_status ON wallet_transactions(status)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_created ON wallet_transactions(created_at)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table wallet_transactions: {e}")
+                conn.rollback()
+
+            # Table support tickets (gardée de l'original)
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS support_tickets (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER,
+                        ticket_id TEXT UNIQUE,
+                        subject TEXT,
+                        message TEXT,
+                        status TEXT DEFAULT 'open',
+                        admin_response TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (user_id) REFERENCES users (user_id)
+                    )
+                ''')
+                
+                # Index pour les tickets
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_user ON support_tickets(user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_status ON support_tickets(status)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_tickets_created ON support_tickets(created_at)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table support_tickets: {e}")
+                conn.rollback()
+
+            # Table catégories
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS categories (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT UNIQUE,
+                        description TEXT,
+                        icon TEXT,
+                        products_count INTEGER DEFAULT 0
+                    )
+                ''')
+                
+                # Index pour les catégories
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_categories_products_count ON categories(products_count)')
+                
+                conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Erreur création table categories: {e}")
+                conn.rollback()
+
+            # Insérer catégories par défaut
+            default_categories = [
+                ('Finance & Crypto', 'Formations trading, blockchain, DeFi', '💰'),
+                ('Marketing Digital', 'SEO, publicité, réseaux sociaux', '📈'),
+                ('Développement', 'Programming, web dev, apps', '💻'),
+                ('Design & Créatif', 'Graphisme, vidéo, arts', '🎨'),
+                ('Business', 'Entrepreneuriat, management', '📊'),
+                ('Formation Pro', 'Certifications, compétences', '🎓'),
+                ('Outils & Tech', 'Logiciels, automatisation', '🔧')
+            ]
+
+            for cat_name, cat_desc, cat_icon in default_categories:
+                try:
+                    cursor.execute(
+                        '''
+                        INSERT OR IGNORE INTO categories (name, description, icon)
+                        VALUES (?, ?, ?)
+                    ''', (cat_name, cat_desc, cat_icon))
+                    conn.commit()
+                except sqlite3.Error as e:
+                    logger.error(f"Erreur insertion catégorie {cat_name}: {e}")
+                    conn.rollback()
 
     def generate_product_id(self) -> str:
         """Génère un ID produit vraiment unique"""
@@ -606,16 +885,16 @@ class MarketplaceBot:
         available_codes = self.get_available_referral_codes()
         return code in available_codes
 
-    def create_payment(self, amount_usd: float, currency: str,
+    async def create_payment(self, amount_usd: float, currency: str,
                        order_id: str) -> Optional[Dict]:
-        """Crée un paiement NOWPayments"""
+        """Crée un paiement NOWPayments - Version asynchrone optimisée"""
         try:
-            if not NOWPAYMENTS_API_KEY:
+            if not config.nowpayments_api_key:
                 logger.error("NOWPAYMENTS_API_KEY manquant!")
                 return None
 
             headers = {
-                "x-api-key": NOWPAYMENTS_API_KEY,
+                "x-api-key": config.nowpayments_api_key,
                 "Content-Type": "application/json"
             }
 
@@ -627,105 +906,120 @@ class MarketplaceBot:
                 "order_description": "Formation TechBot Marketplace"
             }
 
-            response = requests.post("https://api.nowpayments.io/v1/payment",
-                                     headers=headers,
-                                     json=payload,
-                                     timeout=30)
+            response = await self.http_client.make_request(
+                "https://api.nowpayments.io/v1/payment",
+                method="POST",
+                headers=headers,
+                json=payload
+            )
 
-            if response.status_code == 201:
-                return response.json()
+            if response:
+                return response
             else:
-                logger.error(
-                    f"Erreur paiement: {response.status_code} - {response.text}"
-                )
+                logger.error("Erreur paiement NOWPayments")
                 return None
         except Exception as e:
             logger.error(f"Erreur PaymentManager: {e}")
             return None
 
-    def check_payment_status(self, payment_id: str) -> Optional[Dict]:
-        """Vérifie le statut d'un paiement"""
+    async def check_payment_status(self, payment_id: str) -> Optional[Dict]:
+        """Vérifie le statut d'un paiement - Version asynchrone optimisée"""
         try:
-            if not NOWPAYMENTS_API_KEY:
+            if not config.nowpayments_api_key:
                 return None
 
-            headers = {"x-api-key": NOWPAYMENTS_API_KEY}
-            response = requests.get(
+            # Vérifier le cache d'abord
+            cache_key = f"payment_status_{payment_id}"
+            cached_result = self.cache.get(cache_key)
+            if cached_result:
+                return cached_result
+
+            headers = {"x-api-key": config.nowpayments_api_key}
+            response = await self.http_client.make_request(
                 f"https://api.nowpayments.io/v1/payment/{payment_id}",
-                headers=headers,
-                timeout=10)
+                method="GET",
+                headers=headers
+            )
 
-            if response.status_code == 200:
-                return response.json()
-            return None
+            # Mettre en cache pour 30 secondes
+            self.cache.set(cache_key, response, 30)
+            return response
         except Exception as e:
-            logger.error(f"Erreur vérification: {e}")
+            logger.error(f"Erreur vérification paiement: {e}")
             return None
 
-    def get_exchange_rate(self) -> float:
-        """Récupère le taux EUR/USD"""
+    async def get_exchange_rate(self) -> float:
+        """Récupère le taux EUR/USD - Version asynchrone optimisée"""
         try:
-            cache = self.memory_cache.setdefault('_fx_cache', {})
-            now = time.time()
-            hit = cache.get('eur_usd')
-            if hit and (now - hit['ts'] < 3600):
-                return hit['value']
-            response = requests.get(
-                "https://api.exchangerate-api.com/v4/latest/EUR", timeout=10)
-            if response.status_code == 200:
-                val = response.json()['rates']['USD']
-                cache['eur_usd'] = {'value': val, 'ts': now}
-                return val
+            # Vérifier le cache d'abord
+            cached_rate = self.cache.get('eur_usd_rate')
+            if cached_rate:
+                return cached_rate
+
+            response = await self.http_client.make_request(
+                "https://api.exchangerate-api.com/v4/latest/EUR",
+                method="GET"
+            )
+            
+            if response and 'rates' in response:
+                rate = response['rates']['USD']
+                # Mettre en cache pour 1 heure
+                self.cache.set('eur_usd_rate', rate, 3600)
+                return rate
             return 1.10
-        except Exception:
-            return self.memory_cache.get('_fx_cache', {}).get('eur_usd', {}).get('value', 1.10)
+        except Exception as e:
+            logger.warning(f"Erreur récupération taux de change: {e}")
+            return 1.10
 
-    def get_available_currencies(self) -> List[str]:
-        """Récupère les cryptos disponibles"""
+    async def get_available_currencies(self) -> List[str]:
+        """Récupère les cryptos disponibles - Version asynchrone optimisée"""
         try:
-            cache = self.memory_cache.setdefault('_currencies_cache', {})
-            now = time.time()
-            hit = cache.get('list')
-            if hit and (now - hit['ts'] < 3600):
-                return hit['value']
+            # Vérifier le cache d'abord
+            cached_currencies = self.cache.get('available_currencies')
+            if cached_currencies:
+                return cached_currencies
 
-            if not NOWPAYMENTS_API_KEY:
+            if not config.nowpayments_api_key:
                 return ['btc', 'eth', 'usdt', 'usdc']
 
-            headers = {"x-api-key": NOWPAYMENTS_API_KEY}
-            response = requests.get("https://api.nowpayments.io/v1/currencies",
-                                    headers=headers,
-                                    timeout=10)
-            if response.status_code == 200:
-                currencies = response.json()['currencies']
+            headers = {"x-api-key": config.nowpayments_api_key}
+            response = await self.http_client.make_request(
+                "https://api.nowpayments.io/v1/currencies",
+                method="GET",
+                headers=headers
+            )
+            
+            if response and 'currencies' in response:
+                currencies = response['currencies']
                 main_cryptos = [
                     'btc', 'eth', 'usdt', 'usdc', 'bnb', 'sol', 'ltc', 'xrp'
                 ]
-                val = [c for c in currencies if c in main_cryptos]
-                cache['list'] = {'value': val, 'ts': now}
-                return val
+                available = [c for c in currencies if c in main_cryptos]
+                # Mettre en cache pour 1 heure
+                self.cache.set('available_currencies', available, 3600)
+                return available
             return ['btc', 'eth', 'usdt', 'usdc']
-        except Exception:
-            return self.memory_cache.get('_currencies_cache', {}).get('list', {}).get('value', ['btc', 'eth', 'usdt', 'usdc'])
+        except Exception as e:
+            logger.warning(f"Erreur récupération devises: {e}")
+            return ['btc', 'eth', 'usdt', 'usdc']
 
-    def create_seller_payout(self, seller_user_id: int, order_ids: list, 
+    async def create_seller_payout(self, seller_user_id: int, order_ids: list, 
                         total_amount_sol: float) -> Optional[int]:
-        """Crée un payout vendeur en attente"""
+        """Crée un payout vendeur en attente - Version asynchrone optimisée"""
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
+            async with self.get_db_connection() as conn:
+                cursor = conn.cursor()
 
-            cursor.execute('''
-                INSERT INTO seller_payouts 
-                (seller_user_id, order_ids, total_amount_sol, payout_status)
-                VALUES (?, ?, ?, 'pending')
-            ''', (seller_user_id, json.dumps(order_ids), total_amount_sol))
+                cursor.execute('''
+                    INSERT INTO seller_payouts 
+                    (seller_user_id, order_ids, total_amount_sol, payout_status)
+                    VALUES (?, ?, ?, 'pending')
+                ''', (seller_user_id, json.dumps(order_ids), total_amount_sol))
 
-            payout_id = cursor.lastrowid
-            conn.commit()
-            conn.close()
+                payout_id = cursor.lastrowid
+                conn.commit()
 
-            return payout_id
+                return payout_id
 
         except Exception as e:
             logger.error(f"Erreur création payout: {e}")
@@ -771,11 +1065,21 @@ class MarketplaceBot:
             logger.error(f"Erreur auto payout: {e}")
             return False
 
+    @measure_performance
     async def start_command(self, update: Update,
                             context: ContextTypes.DEFAULT_TYPE):
         """Nouveau menu d'accueil marketplace"""
         user = update.effective_user
-        self.add_user(user.id, user.username, user.first_name,
+        user_id = user.id
+        
+        # Rate limiting
+        if not self.rate_limiter.is_allowed(user_id):
+            await update.message.reply_text(
+                "⚠️ **Trop de requêtes**\n\nVeuillez patienter quelques secondes avant de réessayer."
+            )
+            return
+        
+        self.add_user(user_id, user.username, user.first_name,
                       user.language_code or 'fr')
 
         # Ne pas déconnecter automatiquement à chaque /start
@@ -1113,18 +1417,27 @@ Choisissez votre domaine d'intérêt :"""
             '''
             query_params = (category_name,)
 
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
+        # Pagination optimisée
+        page = 1
+        limit = 10
+        offset = (page - 1) * limit
+        
+        async with self.get_db_connection() as conn:
+            cursor = conn.cursor()
 
-        # Exécuter la requête appropriée
-        try:
-            cursor.execute(f"{base_query} LIMIT 10", query_params)
-            products = cursor.fetchall()
-            conn.close()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur récupération produits catégorie: {e}")
-            conn.close()
-            return
+            # Exécuter la requête appropriée avec pagination
+            try:
+                cursor.execute(f"{base_query} LIMIT {limit} OFFSET {offset}", query_params)
+                products = cursor.fetchall()
+                
+                # Compter le total pour la pagination
+                count_query = base_query.replace("SELECT p.product_id, p.title, p.price_eur, p.sales_count, p.rating, u.seller_name", "SELECT COUNT(*)")
+                cursor.execute(count_query, query_params)
+                total_count = cursor.fetchone()[0]
+                
+            except sqlite3.Error as e:
+                logger.error(f"Erreur récupération produits catégorie: {e}")
+                return
 
         # Reste du code identique pour l'affichage...
 
@@ -3342,9 +3655,9 @@ Saisissez l'email de votre compte vendeur :
         # Vérifier taille avec gestion d'erreur
         try:
             file_size_mb = document.file_size / (1024 * 1024)
-            if document.file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+            if document.file_size > config.max_file_size_mb * 1024 * 1024:
                 await update.message.reply_text(
-                    f"❌ **Fichier trop volumineux**\n\nTaille max : {MAX_FILE_SIZE_MB}MB\nVotre fichier : {file_size_mb:.1f}MB",
+                    f"❌ **Fichier trop volumineux**\n\nTaille max : {config.max_file_size_mb}MB\nVotre fichier : {file_size_mb:.1f}MB",
                     parse_mode='Markdown'
                 )
                 return
@@ -3391,6 +3704,19 @@ Saisissez l'email de votre compte vendeur :
             try:
                 await file.download_to_drive(filepath)
                 logger.info(f"Fichier téléchargé avec succès: {filepath}")
+                
+                # Compression automatique pour les gros fichiers
+                if file_size_mb > 10:  # Compresser si > 10MB
+                    compressed_filepath = f"{filepath}.gz"
+                    with open(filepath, 'rb') as f_in:
+                        with gzip.open(compressed_filepath, 'wb') as f_out:
+                            shutil.copyfileobj(f_in, f_out)
+                    
+                    # Remplacer le fichier original par la version compressée
+                    os.remove(filepath)
+                    filepath = compressed_filepath
+                    logger.info(f"Fichier compressé: {filepath}")
+                    
             except Exception as download_error:
                 logger.error(f"Erreur téléchargement fichier: {download_error}")
                 await update.message.reply_text(
@@ -3928,15 +4254,15 @@ Choisissez ce que vous voulez modifier :"""
             logger.error(f"Erreur suppression vendeur: {e}")
             await query.edit_message_text("❌ Erreur suppression compte vendeur.")
 
-def main():
-    """Fonction principale"""
-    if not TOKEN:
+async def main():
+    """Fonction principale optimisée"""
+    if not config.token:
         logger.error("❌ TELEGRAM_TOKEN manquant dans .env")
         return
 
     # Créer l'application
     bot = MarketplaceBot()
-    application = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(config.token).build()
 
     # Handlers principaux
     application.add_handler(CommandHandler("start", bot.start_command))
@@ -3950,8 +4276,8 @@ def main():
     application.add_handler(
         MessageHandler(filters.Document.ALL, bot.handle_document_upload))
 
-    logger.info("🚀 Démarrage du TechBot Marketplace COMPLET...")
-    logger.info(f"📱 Bot: @{TOKEN.split(':')[0] if TOKEN else 'TOKEN_MISSING'}")
+    logger.info("🚀 Démarrage du TechBot Marketplace OPTIMISÉ...")
+    logger.info(f"📱 Bot: @{config.token.split(':')[0] if config.token else 'TOKEN_MISSING'}")
     logger.info("✅ FONCTIONNALITÉS ACTIVÉES :")
     logger.info("   🏪 Marketplace multi-vendeurs")
     logger.info("   🔐 Authentification email + code")
@@ -3962,9 +4288,24 @@ def main():
     logger.info("   📊 Analytics vendeurs complets")
     logger.info("   🎫 Support tickets intégré")
     logger.info("   👑 Panel admin marketplace")
+    logger.info("🚀 OPTIMISATIONS PERFORMANCE :")
+    logger.info("   🗄️ Pool de connexions DB")
+    logger.info("   ⚡ Cache intelligent avec TTL")
+    logger.info("   🌐 Client HTTP asynchrone")
+    logger.info("   🛡️ Rate limiting")
+    logger.info("   📊 Monitoring performances")
+    logger.info("   🔄 Queue de tâches asynchrones")
+    logger.info("   📦 Compression automatique")
 
     # Démarrer le bot
-    application.run_polling(drop_pending_updates=True)
+    await application.initialize()
+    await application.start()
+    await application.run_polling(drop_pending_updates=True)
+    
+    # Nettoyage à la fermeture
+    await bot.task_queue.stop()
+    await application.stop()
+    await application.shutdown()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

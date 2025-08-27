@@ -1,0 +1,42 @@
+# TechBot Marketplace - Dépendances optimisées pour performance
+# Version: 2.0
+
+# Core Telegram Bot
+python-telegram-bot==20.7
+aiohttp==3.9.1
+asyncio-mqtt==0.16.1
+
+# Base de données et cache
+aiosqlite==0.19.0
+redis==5.0.1
+
+# Configuration et environnement
+python-dotenv==1.0.0
+pydantic==2.5.2
+
+# Cryptographie et sécurité
+cryptography==41.0.8
+base58==2.1.1
+
+# HTTP et API
+requests==2.31.0
+httpx==0.25.2
+
+# Compression et fichiers
+gzip==1.0.0
+
+# Monitoring et logging
+structlog==23.2.0
+prometheus-client==0.19.0
+
+# Validation et sanitisation
+email-validator==2.1.0
+bleach==6.1.0
+
+# Performance et optimisation
+uvloop==0.19.0
+orjson==3.9.10
+
+# Tests (optionnel)
+pytest==7.4.3
+pytest-asyncio==0.21.1
