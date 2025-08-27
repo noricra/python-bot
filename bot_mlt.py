@@ -29,13 +29,6 @@ from telegram.error import TelegramError
 from dotenv import load_dotenv
 import re
 import base58 # Import manquant
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-if CURRENT_DIR not in sys.path:
-    sys.path.insert(0, CURRENT_DIR)
-
-from utils import validate_email as util_validate_email, validate_solana_address as util_validate_solana_address, get_solana_balance_display as util_get_solana_balance_display, escape_markdown as md_escape, sanitize_filename as fn_sanitize
-from db import get_db_connection as shared_db_get_connection
-from services import PricingService, PaymentsService
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -1960,18 +1953,18 @@ Choisissez un code pour continuer votre achat :
 
         sell_text = """📚 **VENDRE VOS FORMATIONS**
 
-🎯 **Transformez votre expertise en revenus !**
+🎯 **Valorisez votre expertise**
 
 💰 **Avantages vendeur :**
-• 85% des revenus pour vous (15% commission totale)
+• 95% des revenus pour vous (5% commission plateforme)
 • Paiements automatiques en crypto
 • Wallet intégré sécurisé
 • Gestion complète de vos produits
 • Support marketing inclus
 
-🔐 **Sécurité maximale :**
-• Authentification par seed phrase BIP-39
-• Wallets crypto dérivés automatiquement
+🔐 **Sécurité**
+• Récupération via email + code
+• Adresse Solana de paiement à votre nom
 • Contrôle total de vos fonds
 
 Prêt à commencer ?"""
