@@ -2978,8 +2978,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
     Choisissez une option pour commencer :""",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+            parse_mode='Markdown')
 
     async def account_recovery_menu(self, query, lang):
         """Menu de récupération de compte"""
