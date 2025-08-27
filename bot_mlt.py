@@ -3158,7 +3158,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 return
             # Login ok
             self.set_seller_logged_in(user_id, True)
-            self.memory_cache.pop(user_id, None)
+            self.reset_user_state_preserve_login(user_id)
             await update.message.reply_text(
                 "✅ Connecté. Accédez à votre espace vendeur.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')]])
