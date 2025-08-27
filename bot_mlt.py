@@ -130,6 +130,14 @@ class MarketplaceBot:
         self.init_database()
         self.memory_cache = {}
 
+    def is_seller_logged_in(self, user_id: int) -> bool:
+        state = self.memory_cache.get(user_id, {})
+        return bool(state.get('seller_logged_in'))
+
+    def set_seller_logged_in(self, user_id: int, logged_in: bool) -> None:
+        state = self.memory_cache.setdefault(user_id, {})
+        state['seller_logged_in'] = logged_in
+
     def get_db_connection(self) -> sqlite3.Connection:
         """Retourne une connexion SQLite configurée (WAL, FK, timeouts)."""
         conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
@@ -2001,8 +2009,11 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
         """Dashboard vendeur complet"""
         user_data = self.get_user(query.from_user.id)
 
-        if not user_data or not user_data['is_seller']:
-            await query.edit_message_text("❌ Accès non autorisé")
+        if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
+            await query.edit_message_text(
+                "❌ Vous devez vous connecter (email + code) pour accéder à l'espace vendeur.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
+            )
             return
 
         # Récupérer les stats vendeur
@@ -2080,9 +2091,11 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
         """Demande les informations pour ajouter un produit"""
         user_data = self.get_user(query.from_user.id)
 
-        if not user_data or not user_data['is_seller']:
+        if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
             await query.edit_message_text(
-                "❌ Vous devez être vendeur pour ajouter des produits")
+                "❌ Connectez-vous d'abord (email + code)",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
+            )
             return
 
         self.memory_cache[query.from_user.id] = {
@@ -2111,7 +2124,11 @@ Saisissez le titre de votre formation :
         """Affiche les produits du vendeur"""
         user_data = self.get_user(query.from_user.id)
 
-        if not user_data or not user_data['is_seller']:
+        if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
+            await query.edit_message_text(
+                "❌ Connectez-vous d'abord (email + code)",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
+            )
             return
 
         conn = self.get_db_connection()
@@ -2186,7 +2203,14 @@ Commencez dès maintenant à monétiser votre expertise !"""
         """Affiche l'adresse Solana du vendeur"""
         user_data = self.get_user(query.from_user.id)
 
-        if not user_data or not user_data['seller_solana_address']:
+        if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
+            await query.edit_message_text(
+                "❌ Connectez-vous d'abord (email + code)",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
+            )
+            return
+
+        if not user_data['seller_solana_address']:
             await query.edit_message_text(
                 """💳 **WALLET NON CONFIGURÉ**
 
@@ -2368,6 +2392,12 @@ Commencez dès maintenant à monétiser votre expertise !"""
         # === RÉCUPÉRATION CODE ===
         elif user_state.get('waiting_for_recovery_code'):
             await self.process_recovery_code(update, message_text)
+
+        # === CONNEXION (email + code fourni lors de la création) ===
+        elif user_state.get('login_wait_email'):
+            await self.process_login_email(update, message_text)
+        elif user_state.get('login_wait_code'):
+            await self.process_login_code(update, message_text)
 
         # === PARAMÈTRES VENDEUR ===
         elif user_state.get('editing_settings'):
@@ -3061,6 +3091,60 @@ Commencez dès maintenant à monétiser votre expertise !"""
             )
         except Exception as e:
             logger.error(f"Erreur vérification code: {e}")
+            await update.message.reply_text("❌ Erreur interne.")
+
+    async def process_login_email(self, update: Update, message_text: str):
+        """Étape 1 du login: saisir l'email enregistré lors de la création vendeur."""
+        user_id = update.effective_user.id
+        email = message_text.strip().lower()
+        if not validate_email(email):
+            await update.message.reply_text("❌ Email invalide. Recommencez.")
+            return
+        # Vérifier l'existence de l'email
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT user_id FROM users WHERE user_id = ? AND recovery_email = ?', (user_id, email))
+            row = cursor.fetchone()
+            conn.close()
+            if not row:
+                await update.message.reply_text("❌ Email non associé à votre compte Telegram.")
+                return
+            # Passer à l'étape code
+            self.memory_cache[user_id] = {'login_wait_code': True, 'login_email': email}
+            await update.message.reply_text("✉️ Email validé. Entrez votre code de récupération (6 chiffres):")
+        except Exception as e:
+            logger.error(f"Erreur login email: {e}")
+            await update.message.reply_text("❌ Erreur interne.")
+
+    async def process_login_code(self, update: Update, message_text: str):
+        """Étape 2 du login: vérifier email + code stocké lors de la création."""
+        user_id = update.effective_user.id
+        state = self.memory_cache.get(user_id, {})
+        email = state.get('login_email')
+        code = message_text.strip()
+        if not email or not code.isdigit() or len(code) != 6:
+            await update.message.reply_text("❌ Code invalide.")
+            return
+        try:
+            code_hash = hashlib.sha256(code.encode()).hexdigest()
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT user_id FROM users WHERE user_id = ? AND recovery_email = ? AND recovery_code_hash = ?', (user_id, email, code_hash))
+            row = cursor.fetchone()
+            conn.close()
+            if not row:
+                await update.message.reply_text("❌ Email ou code incorrect.")
+                return
+            # Login ok
+            self.set_seller_logged_in(user_id, True)
+            self.memory_cache.pop(user_id, None)
+            await update.message.reply_text(
+                "✅ Connecté. Accédez à votre espace vendeur.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')]])
+            )
+        except Exception as e:
+            logger.error(f"Erreur login code: {e}")
             await update.message.reply_text("❌ Erreur interne.")
 
 
@@ -3980,30 +4064,37 @@ Top produits:\n"""
         await query.edit_message_text("⛔ Entrez un product_id à suspendre:")
 
     async def access_account_prompt(self, query, lang):
-        """Menu d'accès au compte (connexion, recovery, logout, suppression)."""
+        """Menu d'accès au compte (connexion via email + code, dashboard si connecté)."""
         user_id = query.from_user.id
         user_data = self.get_user(user_id)
         is_seller = bool(user_data and user_data.get('is_seller'))
+        is_logged = self.is_seller_logged_in(user_id)
 
-        keyboard = []
-        if is_seller:
-            keyboard.append([InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')])
-            keyboard.append([InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')])
-            keyboard.append([InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')])
-            keyboard.append([InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')])
-        else:
-            keyboard.append([InlineKeyboardButton("🚀 Créer un compte vendeur", callback_data='create_seller')])
-            keyboard.append([InlineKeyboardButton("🔐 Récupérer compte vendeur", callback_data='account_recovery')])
-        keyboard.append([InlineKeyboardButton("🔙 Retour", callback_data='back_main')])
+        if is_seller and is_logged:
+            keyboard = [
+                [InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')],
+                [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
+                [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
+                [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
+                [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
+            ]
+            await query.edit_message_text("🔑 Compte vendeur", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
 
+        # Non connecté → proposer login email + code
+        self.memory_cache[user_id] = {'login_wait_email': True}
         await query.edit_message_text(
-            "🔑 Accéder à mon compte",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            """🔑 Connexion vendeur
+
+Entrez votre email de récupération :""",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='back_main')]])
         )
 
     async def seller_logout(self, query):
-        """Déconnexion: on nettoie simplement l'état mémoire côté bot."""
-        self.memory_cache.pop(query.from_user.id, None)
+        """Déconnexion: on nettoie l'état mémoire d'authentification côté bot."""
+        state = self.memory_cache.get(query.from_user.id, {})
+        state.pop('seller_logged_in', None)
+        self.memory_cache[query.from_user.id] = state
         await query.answer("Déconnecté.")
         await self.back_to_main(query)
 
