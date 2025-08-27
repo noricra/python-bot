@@ -689,8 +689,8 @@ class MarketplaceBot:
                     logger.error(f"Erreur insertion catégorie {cat_name}: {e}")
                     conn.rollback()
 
-    def generate_product_id(self) -> str:
-        """Génère un ID produit vraiment unique"""
+    async def generate_product_id(self) -> str:
+        """Génère un ID produit vraiment unique - Version asynchrone"""
         import secrets
 
         # Format aligné avec la recherche: TBF-YYMM-XXXXXX
@@ -701,66 +701,59 @@ class MarketplaceBot:
             return ''.join(random.choice(alphabet) for _ in range(length))
 
         # Double vérification d'unicité
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
+        async with self.get_db_connection() as conn:
+            cursor = conn.cursor()
 
-        max_attempts = 100
-        for attempt in range(max_attempts):
-            product_id = f"TBF-{yymm}-{random_code()}"
+            max_attempts = 100
+            for attempt in range(max_attempts):
+                product_id = f"TBF-{yymm}-{random_code()}"
 
-            try:
-                cursor.execute('SELECT COUNT(*) FROM products WHERE product_id = ?', (product_id,))
-                if cursor.fetchone()[0] == 0:
-                    conn.close()
-                    return product_id
-            except sqlite3.Error as e:
-                logger.error(f"Erreur vérification ID produit: {e}")
-                conn.close()
-                raise e
+                try:
+                    cursor.execute('SELECT COUNT(*) FROM products WHERE product_id = ?', (product_id,))
+                    if cursor.fetchone()[0] == 0:
+                        return product_id
+                except sqlite3.Error as e:
+                    logger.error(f"Erreur vérification ID produit: {e}")
+                    raise e
 
-            # Si collision, générer nouveau random
-            yymm = datetime.utcnow().strftime('%y%m')
+                # Si collision, générer nouveau random
+                yymm = datetime.utcnow().strftime('%y%m')
 
-        conn.close()
-        raise Exception("Impossible de générer un ID unique après 100 tentatives")
+            raise Exception("Impossible de générer un ID unique après 100 tentatives")
 
-    def add_user(self,
+    async def add_user(self,
                  user_id: int,
                  username: str,
                  first_name: str,
                  language_code: str = 'fr') -> bool:
-        """Ajoute un utilisateur"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
+        """Ajoute un utilisateur - Version asynchrone"""
         try:
-            cursor.execute(
-                '''
-                INSERT OR IGNORE INTO users 
-                (user_id, username, first_name, language_code)
-                VALUES (?, ?, ?, ?)
-            ''', (user_id, username, first_name, language_code))
-            conn.commit()
-            return True
+            async with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''
+                    INSERT OR IGNORE INTO users 
+                    (user_id, username, first_name, language_code)
+                    VALUES (?, ?, ?, ?)
+                ''', (user_id, username, first_name, language_code))
+                conn.commit()
+                return True
         except sqlite3.Error as e:
             logger.error(f"Erreur ajout utilisateur: {e}")
             return False
-        finally:
-            conn.close()
 
-    def get_user(self, user_id: int) -> Optional[Dict]:
-        """Récupère un utilisateur"""
-        conn = self.get_db_connection()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+    async def get_user(self, user_id: int) -> Optional[Dict]:
+        """Récupère un utilisateur - Version asynchrone"""
         try:
-            cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id, ))
-            row = cursor.fetchone()
+            async with self.get_db_connection() as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id, ))
+                row = cursor.fetchone()
+                return dict(row) if row else None
         except sqlite3.Error as e:
             logger.error(f"Erreur récupération utilisateur: {e}")
             return None
-        finally:
-            conn.close()
-        return dict(row) if row else None
 
     def create_seller_account_with_recovery(self, user_id: int, seller_name: str, 
                                       seller_bio: str, recovery_email: str, 
@@ -1079,7 +1072,7 @@ class MarketplaceBot:
             )
             return
         
-        self.add_user(user_id, user.username, user.first_name,
+        await self.add_user(user_id, user.username, user.first_name,
                       user.language_code or 'fr')
 
         # Ne pas déconnecter automatiquement à chaque /start
@@ -1113,7 +1106,7 @@ Choisissez une option pour commencer :"""
         await query.answer()
 
         user_id = query.from_user.id
-        user_data = self.get_user(user_id)
+        user_data = await self.get_user(user_id)
         lang = user_data['language_code'] if user_data else 'fr'
 
         try:
@@ -2082,7 +2075,7 @@ Choisissez un code pour continuer votre achat :
 
     async def sell_menu(self, query, lang):
         """Menu vendeur"""
-        user_data = self.get_user(query.from_user.id)
+        user_data = await self.get_user(query.from_user.id)
 
         if user_data and user_data['is_seller']:
             await self.seller_dashboard(query, lang)
@@ -2158,7 +2151,7 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
 
     async def seller_dashboard(self, query, lang):
         """Dashboard vendeur complet"""
-        user_data = self.get_user(query.from_user.id)
+        user_data = await self.get_user(query.from_user.id)
         # Si on arrive via un bouton et que le flag login est set, on autorise;
         # sinon on redirige vers la connexion
         if not user_data or not user_data['is_seller']:
@@ -2235,7 +2228,7 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
 
     async def add_product_prompt(self, query, lang):
         """Demande les informations pour ajouter un produit"""
-        user_data = self.get_user(query.from_user.id)
+        user_data = await self.get_user(query.from_user.id)
 
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
             await query.edit_message_text(
@@ -2268,7 +2261,7 @@ Saisissez le titre de votre formation :
 
     async def show_my_products(self, query, lang):
         """Affiche les produits du vendeur"""
-        user_data = self.get_user(query.from_user.id)
+        user_data = await self.get_user(query.from_user.id)
 
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
             await query.edit_message_text(
@@ -2345,7 +2338,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
     async def show_wallet(self, query, lang):
         """Affiche l'adresse Solana du vendeur"""
-        user_data = self.get_user(query.from_user.id)
+        user_data = await self.get_user(query.from_user.id)
 
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
             await query.edit_message_text(
@@ -2372,22 +2365,20 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
         solana_address = user_data['seller_solana_address']
 
         # Récupérer solde (optionnel)
-        balance = get_solana_balance_display(solana_address)
+        balance = await get_solana_balance_display(solana_address, self.http_client)
 
         # Calculer payouts en attente
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
         try:
-            cursor.execute('''
-                SELECT COALESCE(SUM(total_amount_sol), 0) 
-                FROM seller_payouts 
-                WHERE seller_user_id = ? AND payout_status = 'pending'
-            ''', (query.from_user.id,))
-            pending_amount = cursor.fetchone()[0]
-            conn.close()
+            async with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT COALESCE(SUM(total_amount_sol), 0) 
+                    FROM seller_payouts 
+                    WHERE seller_user_id = ? AND payout_status = 'pending'
+                ''', (query.from_user.id,))
+                pending_amount = cursor.fetchone()[0]
         except sqlite3.Error as e:
             logger.error(f"Erreur récupération payouts en attente: {e}")
-            conn.close()
             pending_amount = 0
 
         wallet_text = f"""💰 **MON COMPTE DE PAIEMENT**
@@ -2416,44 +2407,42 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
 
     async def marketplace_stats(self, query, lang):
         """Statistiques globales de la marketplace"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-
-        # Stats générales
         try:
-            cursor.execute('SELECT COUNT(*) FROM users')
-            total_users = cursor.fetchone()[0]
+            async with self.get_db_connection() as conn:
+                cursor = conn.cursor()
 
-            cursor.execute('SELECT COUNT(*) FROM users WHERE is_seller = TRUE')
-            total_sellers = cursor.fetchone()[0]
+                # Stats générales
+                cursor.execute('SELECT COUNT(*) FROM users')
+                total_users = cursor.fetchone()[0]
 
-            cursor.execute('SELECT COUNT(*) FROM products WHERE status = "active"')
-            total_products = cursor.fetchone()[0]
+                cursor.execute('SELECT COUNT(*) FROM users WHERE is_seller = TRUE')
+                total_sellers = cursor.fetchone()[0]
 
-            cursor.execute(
-                'SELECT COUNT(*) FROM orders WHERE payment_status = "completed"')
-            total_sales = cursor.fetchone()[0]
+                cursor.execute('SELECT COUNT(*) FROM products WHERE status = "active"')
+                total_products = cursor.fetchone()[0]
 
-            cursor.execute(
-                'SELECT COALESCE(SUM(product_price_eur), 0) FROM orders WHERE payment_status = "completed"'
-            )
-            total_volume = cursor.fetchone()[0]
+                cursor.execute(
+                    'SELECT COUNT(*) FROM orders WHERE payment_status = "completed"')
+                total_sales = cursor.fetchone()[0]
 
-            # Top catégories
-            cursor.execute('''
-                SELECT c.name, c.icon, COUNT(p.id) as product_count
-                FROM categories c
-                LEFT JOIN products p ON c.name = p.category
-                GROUP BY c.name
-                ORDER BY product_count DESC
-                LIMIT 5
-            ''')
-            top_categories = cursor.fetchall()
+                cursor.execute(
+                    'SELECT COALESCE(SUM(product_price_eur), 0) FROM orders WHERE payment_status = "completed"'
+                )
+                total_volume = cursor.fetchone()[0]
 
-            conn.close()
+                # Top catégories
+                cursor.execute('''
+                    SELECT c.name, c.icon, COUNT(p.id) as product_count
+                    FROM categories c
+                    LEFT JOIN products p ON c.name = p.category
+                    GROUP BY c.name
+                    ORDER BY product_count DESC
+                    LIMIT 5
+                ''')
+                top_categories = cursor.fetchall()
+
         except sqlite3.Error as e:
             logger.error(f"Erreur récupération stats marketplace: {e}")
-            conn.close()
             return
 
         stats_text = f"""📊 **STATISTIQUES MARKETPLACE**
@@ -2921,19 +2910,19 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
         admin_id = update.effective_user.id
         self.memory_cache.pop(admin_id, None)
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            # Essayer par user_id
-            if message_text.isdigit():
-                            cursor.execute('SELECT user_id, username, first_name, is_seller FROM users WHERE user_id = ?', (int(message_text),))
-        else:
-            cursor.execute('SELECT user_id, username, first_name, is_seller FROM users WHERE user_id = ?', (0,))
-            row = cursor.fetchone()
-            conn.close()
-            if not row:
-                await update.message.reply_text("❌ Utilisateur non trouvé.")
-                return
-            await update.message.reply_text(f"ID: {row[0]}\nUser: {row[1]}\nNom: {row[2]}\nVendeur: {bool(row[3])}\nPartenaire: {bool(row[4])}\nCode: {row[5]}")
+            async with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                # Essayer par user_id
+                if message_text.isdigit():
+                    cursor.execute('SELECT user_id, username, first_name, is_seller FROM users WHERE user_id = ?', (int(message_text),))
+                else:
+                    cursor.execute('SELECT user_id, username, first_name, is_seller FROM users WHERE user_id = ?', (0,))
+                
+                row = cursor.fetchone()
+                if not row:
+                    await update.message.reply_text("❌ Utilisateur non trouvé.")
+                    return
+                await update.message.reply_text(f"ID: {row[0]}\nUser: {row[1]}\nNom: {row[2]}\nVendeur: {bool(row[3])}")
         except Exception as e:
             logger.error(f"Erreur admin search user: {e}")
             await update.message.reply_text("❌ Erreur recherche utilisateur.")
@@ -2942,15 +2931,14 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
         admin_id = update.effective_user.id
         self.memory_cache.pop(admin_id, None)
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('SELECT product_id, title, price_eur, status FROM products WHERE product_id = ?', (message_text.strip(),))
-            row = cursor.fetchone()
-            conn.close()
-            if not row:
-                await update.message.reply_text("❌ Produit non trouvé.")
-                return
-            await update.message.reply_text(f"{row[0]} — {row[1]} — {row[2]}€ — {row[3]}")
+            async with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT product_id, title, price_eur, status FROM products WHERE product_id = ?', (message_text.strip(),))
+                row = cursor.fetchone()
+                if not row:
+                    await update.message.reply_text("❌ Produit non trouvé.")
+                    return
+                await update.message.reply_text(f"{row[0]} — {row[1]} — {row[2]}€ — {row[3]}")
         except Exception as e:
             logger.error(f"Erreur admin search product: {e}")
             await update.message.reply_text("❌ Erreur recherche produit.")
@@ -2959,12 +2947,11 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
         admin_id = update.effective_user.id
         self.memory_cache.pop(admin_id, None)
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("UPDATE products SET status='inactive' WHERE product_id = ?", (message_text.strip(),))
-            conn.commit()
-            conn.close()
-            await update.message.reply_text("✅ Produit suspendu si trouvé.")
+            async with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE products SET status='inactive' WHERE product_id = ?", (message_text.strip(),))
+                conn.commit()
+                await update.message.reply_text("✅ Produit suspendu si trouvé.")
         except Exception as e:
             logger.error(f"Erreur suspend product: {e}")
             await update.message.reply_text("❌ Erreur suspension produit.")
@@ -3010,11 +2997,10 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
             return
 
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('UPDATE users SET language_code = ? WHERE user_id = ?', (lang, user_id))
-            conn.commit()
-            conn.close()
+            async with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET language_code = ? WHERE user_id = ?', (lang, user_id))
+                conn.commit()
 
             await query.answer(f"✅ Language changed to {lang}")
             await self.back_to_main(query)
@@ -4240,16 +4226,15 @@ Choisissez ce que vous voulez modifier :"""
 
     async def delete_seller_confirm(self, query):
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE users
-                SET is_seller = FALSE, seller_name = NULL, seller_bio = NULL, seller_solana_address = NULL
-                WHERE user_id = ?
-            ''', (query.from_user.id,))
-            conn.commit()
-            conn.close()
-            await query.edit_message_text("✅ Compte vendeur supprimé.")
+            async with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE users
+                    SET is_seller = FALSE, seller_name = NULL, seller_bio = NULL, seller_solana_address = NULL
+                    WHERE user_id = ?
+                ''', (query.from_user.id,))
+                conn.commit()
+                await query.edit_message_text("✅ Compte vendeur supprimé.")
         except Exception as e:
             logger.error(f"Erreur suppression vendeur: {e}")
             await query.edit_message_text("❌ Erreur suppression compte vendeur.")
