@@ -35,6 +35,7 @@ if CURRENT_DIR not in sys.path:
 
 from utils import validate_email as util_validate_email, validate_solana_address as util_validate_solana_address, get_solana_balance_display as util_get_solana_balance_display, escape_markdown as md_escape, sanitize_filename as fn_sanitize
 from db import get_db_connection as shared_db_get_connection
+from services import PricingService, PaymentsService
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -127,7 +128,7 @@ def validate_email(email: str) -> bool:
     """Valide un email"""
     import re
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
+    return re.match(pattern, email or '') is not None
 
 
 class MarketplaceBot:
@@ -146,9 +147,31 @@ class MarketplaceBot:
         state['seller_logged_in'] = logged_in
 
     def get_db_connection(self) -> sqlite3.Connection:
-        return shared_db_get_connection(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
+        try:
+            conn.execute('PRAGMA journal_mode=WAL;')
+            conn.execute('PRAGMA synchronous=NORMAL;')
+            conn.execute('PRAGMA foreign_keys=ON;')
+            conn.execute('PRAGMA busy_timeout=5000;')
+        except Exception as e:
+            logger.warning(f"PRAGMA init error: {e}")
+        return conn
 
-    # escape_markdown et sanitize_filename déplacés dans utils
+    def escape_markdown(self, text: str) -> str:
+        if text is None:
+            return ''
+        replacements = {
+            '_': r'\_', '*': r'\*', '[': r'\[', ']': r'\]', '(': r'\(', ')': r'\)',
+            '~': r'\~', '`': r'\`', '>': r'\>', '#': r'\#', '+': r'\+', '-': r'\-',
+            '=': r'\=', '|': r'\|', '{': r'\{', '}': r'\}', '.': r'\.', '!': r'\!'
+        }
+        return ''.join(replacements.get(ch, ch) for ch in text)
+
+    def sanitize_filename(self, name: str) -> str:
+        safe_name = os.path.basename(name or '')
+        allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+        sanitized = ''.join(ch if ch in allowed else '_' for ch in safe_name)
+        return sanitized or f"file_{int(time.time())}"
 
     def init_database(self):
         """Base de données simplifiée"""
@@ -3608,7 +3631,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
             # Générer nom de fichier unique
             product_id = self.generate_product_id()
-            filename = f"{product_id}_{fn_sanitize(document.file_name)}"
+            filename = f"{product_id}_{self.sanitize_filename(document.file_name)}"
             filepath = os.path.join(uploads_dir, filename)
 
             # Télécharger avec gestion d'erreur spécifique
