@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TechBot Marketplace - Formations & Crypto Wallet Intégré
-Version 2.0 - Marketplace décentralisée avec wallets
+TechBot Marketplace - Plateforme de Formations Digitales
+Version 2.0 - Marketplace sécurisée avec paiements crypto
 """
 
 import os
@@ -782,11 +782,11 @@ class MarketplaceBot:
         # Garder l'état de connexion vendeur
 
         welcome_text = """🏪 **TECHBOT MARKETPLACE**
-*La première marketplace crypto pour formations*
+*Plateforme de formations digitales avec paiements crypto*
 
 🎯 **Découvrez des formations premium**
-📚 **Vendez vos connaissances**  
-💰 **Wallet crypto intégré**
+📚 **Monétisez votre expertise**  
+💳 **Paiements sécurisés en crypto**
 
 Choisissez une option pour commencer :"""
 
@@ -1009,7 +1009,7 @@ Plusieurs façons de découvrir nos formations :
 🔥 **Tendances** - Les plus populaires
 🆕 **Nouveautés** - Dernières publications
 
-💰 **Paiement crypto sécurisé** avec votre wallet intégré"""
+💳 **Paiement sécurisé** en crypto-monnaies"""
 
         await query.edit_message_text(
             buy_text,
@@ -1279,7 +1279,7 @@ Soyez le premier à publier dans ce domaine !"""
             ]
         ]
 
-        referral_text = """🎯 **CODE DE PARRAINAGE OBLIGATOIRE**
+        referral_text = """🎯 **CODE DE PARRAINAGE REQUIS**
 
 ⚠️ **IMPORTANT :** Un code de parrainage est requis pour acheter.
 
@@ -1535,16 +1535,16 @@ Choisissez un code pour continuer votre achat :
         keyboard.append(
             [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')])
 
-        crypto_text = f"""💳 **CHOISIR VOTRE CRYPTO**
+        crypto_text = f"""💳 **CHOISIR VOTRE MOYEN DE PAIEMENT**
 
 📦 **Produit :** {product['title']}
 💰 **Prix :** {product['price_eur']}€
 🎯 **Code parrainage :** `{user_cache['validated_referral']}`
 
-🔐 **Sélectionnez votre crypto préférée :**
+🔐 **Sélectionnez votre crypto-monnaie préférée :**
 
 ✅ **Avantages :**
-• Paiement 100% sécurisé et anonyme
+• Paiement 100% sécurisé
 • Confirmation automatique
 • Livraison instantanée après paiement
 • Support prioritaire 24/7"""
@@ -1731,10 +1731,10 @@ Choisissez un code pour continuer votre achat :
                 finally:
                     conn.close()
 
-                success_text = f"""🎉 **FÉLICITATIONS !**
+                                success_text = f"""🎉 **FÉLICITATIONS !**
 
 ✅ **Paiement confirmé** - Commande : {order_id}
-{"✅ Payout vendeur créé automatiquement" if payout_created else "⚠️ Payout vendeur en attente"}
+{"✅ Paiement vendeur créé automatiquement" if payout_created else "⚠️ Paiement vendeur en attente"}
 
 📚 **ACCÈS IMMÉDIAT À VOTRE FORMATION**"""
 
@@ -1783,18 +1783,18 @@ Choisissez un code pour continuer votre achat :
 
         sell_text = """📚 **VENDRE VOS FORMATIONS**
 
-🎯 **Valorisez votre expertise**
+🎯 **Monétisez votre expertise**
 
 💰 **Avantages vendeur :**
 • 95% des revenus pour vous (5% commission plateforme)
 • Paiements automatiques en crypto
-• Wallet intégré sécurisé
 • Gestion complète de vos produits
 • Support marketing inclus
+• Interface intuitive
 
 🔐 **Sécurité**
 • Récupération via email + code
-• Adresse Solana de paiement à votre nom
+• Adresse Solana de paiement sécurisée
 • Contrôle total de vos fonds
 
 Prêt à commencer ?"""
@@ -1814,7 +1814,7 @@ Prêt à commencer ?"""
 
         await query.edit_message_text("""🚀 **CRÉATION COMPTE VENDEUR**
 
-Pour créer votre compte vendeur sécurisé, nous avons besoin de quelques informations.
+Pour créer votre compte vendeur, nous avons besoin de quelques informations.
 
 👤 **Étape 1/4 : Nom public**
 
@@ -2043,9 +2043,9 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
         if not user_data['seller_solana_address']:
             await query.edit_message_text(
-                """💳 **WALLET NON CONFIGURÉ**
+                """💳 **COMPTE DE PAIEMENT NON CONFIGURÉ**
 
-Pour avoir un wallet, vous devez d'abord devenir vendeur.
+Pour configurer votre compte de paiement, vous devez d'abord devenir vendeur.
 
 Votre adresse Solana sera configurée lors de l'inscription.""",
                 reply_markup=InlineKeyboardMarkup([
@@ -2077,14 +2077,14 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
             conn.close()
             pending_amount = 0
 
-        wallet_text = f"""💰 **MON WALLET SOLANA**
+        wallet_text = f"""💰 **MON COMPTE DE PAIEMENT**
 
-📍 **Adresse :** `{solana_address}`
+📍 **Adresse Solana :** `{solana_address}`
 
 💎 **Solde actuel :** {balance:.6f} SOL
-⏳ **Payout en attente :** {pending_amount:.6f} SOL
+⏳ **Paiements en attente :** {pending_amount:.6f} SOL
 
-💸 **Payouts :**
+💸 **Système de paiements :**
 - Traités quotidiennement
 - 95% de vos ventes
 - Commission plateforme : 5%"""
@@ -2784,11 +2784,11 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
 
         await query.edit_message_text(
             """🏪 **TECHBOT MARKETPLACE**
-*La première marketplace crypto pour formations*
+*Plateforme de formations digitales avec paiements crypto*
 
 🎯 **Découvrez des formations premium**
-📚 **Vendez vos connaissances**  
-💰 **Paiements Solana ultra-rapides**
+📚 **Monétisez votre expertise**  
+💳 **Paiements sécurisés en crypto**
 
 Choisissez une option pour commencer :""",
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -2798,15 +2798,15 @@ Choisissez une option pour commencer :""",
         """Menu de récupération de compte"""
         await query.edit_message_text("""🔐 **RÉCUPÉRATION COMPTE VENDEUR**
 
-    Si vous avez perdu l'accès à votre compte Telegram :
+Si vous avez perdu l'accès à votre compte :
 
-    📧 **Récupération automatique :**
-    - Saisissez votre email de récupération
-    - Entrez votre code à 6 chiffres
-    - Accès restauré instantanément
+📧 **Récupération automatique :**
+- Saisissez votre email de récupération
+- Entrez votre code à 6 chiffres
+- Accès restauré instantanément
 
-    🎫 **Support manuel :**
-    - Contactez notre équipe avec preuves""",
+🎫 **Support manuel :**
+- Contactez notre équipe avec preuves""",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📧 Récupération par email", callback_data='recovery_by_email')],
                 [InlineKeyboardButton("🎫 Contacter support", callback_data='create_ticket')],
@@ -2824,9 +2824,9 @@ Choisissez une option pour commencer :""",
 
         await query.edit_message_text("""📧 **RÉCUPÉRATION PAR EMAIL**
 
-    Saisissez l'email de votre compte vendeur :
+Saisissez l'email de votre compte vendeur :
 
-    ✍️ **Tapez votre email :**""",
+✍️ **Tapez votre email :**""",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 Retour", callback_data='account_recovery')]
             ]))
@@ -3888,7 +3888,7 @@ Choisissez ce que vous voulez modifier :"""
             [InlineKeyboardButton("🚀 Créer un compte vendeur", callback_data='create_seller')],
             [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
         ]
-        await query.edit_message_text("🔑 Connexion vendeur\n\nConnectez-vous avec votre email et votre code de récupération.", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text("🔑 **ACCÈS COMPTE VENDEUR**\n\nConnectez-vous avec votre email et votre code de récupération.", reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def seller_logout(self, query):
         """Déconnexion: on nettoie l'état mémoire d'authentification côté bot."""
@@ -3954,10 +3954,10 @@ def main():
     logger.info(f"📱 Bot: @{TOKEN.split(':')[0] if TOKEN else 'TOKEN_MISSING'}")
     logger.info("✅ FONCTIONNALITÉS ACTIVÉES :")
     logger.info("   🏪 Marketplace multi-vendeurs")
-    logger.info("   🔐 Authentification BIP-39 seed phrase")
-    logger.info("   💰 Wallets crypto intégrés (8 devises)")
-    logger.info("   🎁 Système parrainage restructuré")
-    logger.info("   💳 Paiements NOWPayments + wallet")
+    logger.info("   🔐 Authentification email + code")
+    logger.info("   💰 Paiements crypto (8 devises)")
+    logger.info("   🎁 Système parrainage")
+    logger.info("   💳 Paiements NOWPayments")
     logger.info("   📁 Upload/download formations")
     logger.info("   📊 Analytics vendeurs complets")
     logger.info("   🎫 Support tickets intégré")
