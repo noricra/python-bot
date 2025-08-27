@@ -900,6 +900,8 @@ Choisissez une option pour commencer :"""
             # Connexion vendeur
             elif query.data == 'seller_login':
                 await self.seller_login_menu(query, lang)
+            elif query.data == 'access_account':
+                await self.access_account_prompt(query, lang)
 
             # Achat
             elif query.data == 'search_product':
@@ -925,6 +927,12 @@ Choisissez une option pour commencer :"""
                 await self.show_my_products(query, lang)
             elif query.data == 'my_wallet':
                 await self.show_wallet(query, lang)
+            elif query.data == 'seller_logout':
+                await self.seller_logout(query)
+            elif query.data == 'delete_seller':
+                await self.delete_seller_prompt(query)
+            elif query.data == 'delete_seller_confirm':
+                await self.delete_seller_confirm(query)
 
             # NOUVEAU : Création produit avec catégories
             elif query.data.startswith('set_product_category_'):
@@ -1465,8 +1473,7 @@ Soyez le premier à publier dans ce domaine !"""
                 await query.edit_message_text(
                     success_text,
                     reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
-                )
+                    parse_mode='Markdown')
             else:
                 # Paiement en cours
                 conn.close()
@@ -2235,8 +2242,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         await query.edit_message_text(
             wallet_text,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+            parse_mode='Markdown')
 
     async def marketplace_stats(self, query, lang):
         """Statistiques globales de la marketplace"""
@@ -2657,8 +2663,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
             await update.message.reply_text(
                 "✅ **Description sauvegardée**\n\n📂 **Étape 3/5 : Catégorie**\n\nChoisissez la catégorie :",
                 reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+                parse_mode='Markdown')
 
         elif step == 'price':
             try:
@@ -2897,7 +2902,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
         keyboard = [
             [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
-            [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')]
+            [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')],
+            [InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]
         ]
 
         # Ajouter bouton récupération si pas vendeur
@@ -3121,8 +3127,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         await query.edit_message_text(
             text,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+            parse_mode='Markdown')
 
     async def admin_users_handler(self, query):
         """Gestion des utilisateurs - VRAIE implémentation"""
@@ -3181,8 +3186,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         await query.edit_message_text(
             text,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+            parse_mode='Markdown')
 
     async def admin_products_handler(self, query):
         """Gestion des produits - VRAIE implémentation"""
@@ -3240,8 +3244,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         await query.edit_message_text(
             text[:4000],
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+            parse_mode='Markdown')
 
     async def admin_menu_display(self, update):
         """Affiche le menu admin"""
@@ -3975,6 +3978,60 @@ Top produits:\n"""
             return
         self.memory_cache[query.from_user.id] = {'admin_suspend_product': True}
         await query.edit_message_text("⛔ Entrez un product_id à suspendre:")
+
+    async def access_account_prompt(self, query, lang):
+        """Menu d'accès au compte (connexion, recovery, logout, suppression)."""
+        user_id = query.from_user.id
+        user_data = self.get_user(user_id)
+        is_seller = bool(user_data and user_data.get('is_seller'))
+
+        keyboard = []
+        if is_seller:
+            keyboard.append([InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')])
+            keyboard.append([InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')])
+            keyboard.append([InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')])
+            keyboard.append([InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')])
+        else:
+            keyboard.append([InlineKeyboardButton("🚀 Créer un compte vendeur", callback_data='create_seller')])
+            keyboard.append([InlineKeyboardButton("🔐 Récupérer compte vendeur", callback_data='account_recovery')])
+        keyboard.append([InlineKeyboardButton("🔙 Retour", callback_data='back_main')])
+
+        await query.edit_message_text(
+            "🔑 Accéder à mon compte",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    async def seller_logout(self, query):
+        """Déconnexion: on nettoie simplement l'état mémoire côté bot."""
+        self.memory_cache.pop(query.from_user.id, None)
+        await query.answer("Déconnecté.")
+        await self.back_to_main(query)
+
+    async def delete_seller_prompt(self, query):
+        keyboard = [
+            [InlineKeyboardButton("✅ Confirmer suppression", callback_data='delete_seller_confirm')],
+            [InlineKeyboardButton("❌ Annuler", callback_data='back_main')]
+        ]
+        await query.edit_message_text(
+            "⚠️ Confirmez la suppression du compte vendeur (produits non supprimés).",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    async def delete_seller_confirm(self, query):
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE users
+                SET is_seller = FALSE, seller_name = NULL, seller_bio = NULL, seller_solana_address = NULL
+                WHERE user_id = ?
+            ''', (query.from_user.id,))
+            conn.commit()
+            conn.close()
+            await query.edit_message_text("✅ Compte vendeur supprimé.")
+        except Exception as e:
+            logger.error(f"Erreur suppression vendeur: {e}")
+            await query.edit_message_text("❌ Erreur suppression compte vendeur.")
 
 def main():
     """Fonction principale"""
