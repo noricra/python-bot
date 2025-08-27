@@ -139,6 +139,12 @@ class MarketplaceBot:
         state = self.memory_cache.setdefault(user_id, {})
         state['seller_logged_in'] = logged_in
 
+    def reset_user_state_preserve_login(self, user_id: int) -> None:
+        """Nettoie l'état utilisateur tout en préservant le flag de connexion vendeur."""
+        current = self.memory_cache.get(user_id, {})
+        logged = bool(current.get('seller_logged_in'))
+        self.memory_cache[user_id] = {'seller_logged_in': logged}
+
     def get_db_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
         try:
@@ -2016,12 +2022,18 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
     async def seller_dashboard(self, query, lang):
         """Dashboard vendeur complet"""
         user_data = self.get_user(query.from_user.id)
-
-        if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
+        # Si on arrive via un bouton et que le flag login est set, on autorise;
+        # sinon on redirige vers la connexion
+        if not user_data or not user_data['is_seller']:
             await query.edit_message_text(
-                "❌ Vous devez vous connecter (email + code) pour accéder à l'espace vendeur.",
+                "❌ Accès non autorisé.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
             )
+            return
+        if not self.is_seller_logged_in(query.from_user.id):
+            # Si on a un état de login en cours, on le garde, sinon demander email
+            self.memory_cache[query.from_user.id] = {'login_wait_email': True}
+            await query.edit_message_text("🔑 Entrez votre email de récupération :")
             return
 
         # Récupérer les stats vendeur
@@ -2589,8 +2601,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 solana_address
             )
 
-            # Nettoyer le cache
-            del self.memory_cache[user_id]
+            # Nettoyer le cache mais conserver l'état de connexion
+            self.reset_user_state_preserve_login(user_id)
 
             if result['success']:
                 # Marquer l'utilisateur comme connecté (évite la boucle d'accès)
@@ -3092,7 +3104,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
             # Marquer l'utilisateur comme connecté pour éviter toute boucle
             self.set_seller_logged_in(user_id, True)
 
-            self.memory_cache.pop(user_id, None)
+            self.reset_user_state_preserve_login(user_id)
             await update.message.reply_text(
                 "✅ Vérification réussie. Accédez à votre dashboard.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')]])
