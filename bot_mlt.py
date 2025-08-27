@@ -924,6 +924,10 @@ Choisissez une option pour commencer :"""
             # Accès compte (unifié)
             elif query.data == 'access_account':
                 await self.access_account_prompt(query, lang)
+            elif query.data == 'seller_login':
+                # Démarrer explicitement le flux de connexion (email puis code)
+                self.memory_cache[user_id] = {'login_wait_email': True}
+                await query.edit_message_text("🔑 Entrez votre email de récupération :")
             # Plus de saisie de code seul: on impose email + code
 
             # Achat
@@ -2031,9 +2035,8 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
             )
             return
         if not self.is_seller_logged_in(query.from_user.id):
-            # Si on a un état de login en cours, on le garde, sinon demander email
-            self.memory_cache[query.from_user.id] = {'login_wait_email': True}
-            await query.edit_message_text("🔑 Entrez votre email de récupération :")
+            # Ne plus forcer la saisie: proposer le menu d'accès compte
+            await self.access_account_prompt(query, lang)
             return
 
         # Récupérer les stats vendeur
@@ -4111,14 +4114,13 @@ Top produits:\n"""
             await query.edit_message_text("🔑 Compte vendeur", reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
-        # Non connecté → proposer login email + code
-        self.memory_cache[user_id] = {'login_wait_email': True}
-        await query.edit_message_text(
-            """🔑 Connexion vendeur
-
-Entrez votre email de récupération :""",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='back_main')]])
-        )
+        # Non connecté → proposer de se connecter (sans forcer la saisie)
+        keyboard = [
+            [InlineKeyboardButton("🔐 Se connecter", callback_data='seller_login')],
+            [InlineKeyboardButton("🚀 Créer un compte vendeur", callback_data='create_seller')],
+            [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
+        ]
+        await query.edit_message_text("🔑 Connexion vendeur\n\nConnectez-vous avec votre email et votre code de récupération.", reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def seller_logout(self, query):
         """Déconnexion: on nettoie l'état mémoire d'authentification côté bot."""
