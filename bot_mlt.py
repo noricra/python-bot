@@ -350,13 +350,6 @@ class MarketplaceBot:
         self.rate_limiter = RateLimiter(config.rate_limit_requests, config.rate_limit_window)
         self.task_queue = TaskQueue()
         self.memory_cache = {}
-        
-        # Initialiser la base de données
-        asyncio.create_task(self.init_database())
-        # Démarrer la queue de tâches
-        asyncio.create_task(self.task_queue.start())
-        # Démarrer le nettoyage automatique du cache
-        asyncio.create_task(self.cache_cleanup_task())
 
     def is_seller_logged_in(self, user_id: int) -> bool:
         state = self.memory_cache.get(user_id, {})
@@ -4241,6 +4234,13 @@ async def main():
     bot = MarketplaceBot()
     application = Application.builder().token(config.token).build()
 
+    # Initialiser les tâches asynchrones
+    await bot.init_database()
+    await bot.task_queue.start()
+    
+    # Démarrer le nettoyage automatique du cache en arrière-plan
+    cache_task = asyncio.create_task(bot.cache_cleanup_task())
+
     # Handlers principaux
     application.add_handler(CommandHandler("start", bot.start_command))
     application.add_handler(CommandHandler("admin", bot.admin_command))
@@ -4274,15 +4274,19 @@ async def main():
     logger.info("   🔄 Queue de tâches asynchrones")
     logger.info("   📦 Compression automatique")
 
-    # Démarrer le bot
-    await application.initialize()
-    await application.start()
-    await application.run_polling(drop_pending_updates=True)
-    
-    # Nettoyage à la fermeture
-    await bot.task_queue.stop()
-    await application.stop()
-    await application.shutdown()
+    try:
+        # Démarrer le bot
+        await application.initialize()
+        await application.start()
+        await application.run_polling(drop_pending_updates=True)
+    except KeyboardInterrupt:
+        logger.info("🛑 Arrêt du bot...")
+    finally:
+        # Nettoyage à la fermeture
+        cache_task.cancel()
+        await bot.task_queue.stop()
+        await application.stop()
+        await application.shutdown()
 
 if __name__ == '__main__':
     asyncio.run(main())
