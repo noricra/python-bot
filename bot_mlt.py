@@ -595,8 +595,11 @@ class MarketplaceBot:
 
     def get_available_referral_codes(self) -> List[str]:
         """Récupère les codes de parrainage disponibles"""
-        # Codes fixes pour simplifier
-        return ['BRF2025', 'CRYPTO57', 'BITREF', 'PROFIT42', 'MONEY57', 'GAIN420']
+        # Codes fixes pour simplifier - plus descriptifs
+        return [
+            'TECH2025', 'CRYPTO57', 'BITCOIN', 'PROFIT42', 'MONEY57', 'GAIN420',
+            'TRADE25', 'SOLANA', 'ETHEREUM', 'BLOCKCHAIN', 'DEFI2025', 'NFT2025'
+        ]
 
     def validate_referral_code(self, code: str) -> bool:
         """Valide un code de parrainage"""
@@ -775,6 +778,9 @@ class MarketplaceBot:
         self.add_user(user.id, user.username, user.first_name,
                       user.language_code or 'fr')
 
+        # Ne pas déconnecter automatiquement à chaque /start
+        # Garder l'état de connexion vendeur
+
         welcome_text = """🏪 **TECHBOT MARKETPLACE**
 *La première marketplace crypto pour formations*
 
@@ -858,6 +864,8 @@ Choisissez une option pour commencer :"""
                 await self.show_wallet(query, lang)
             elif query.data == 'seller_logout':
                 await self.seller_logout(query)
+            elif query.data == 'seller_back':
+                await self.seller_back(query)
             elif query.data == 'delete_seller':
                 await self.delete_seller_prompt(query)
             elif query.data == 'delete_seller_confirm':
@@ -1502,7 +1510,7 @@ Choisissez un code pour continuer votre achat :
             'btc': ('₿ Bitcoin', '⚡ 10-30 min'),
             'eth': ('⟠ Ethereum', '⚡ 5-15 min'),
             'usdt': ('₮ Tether USDT', '⚡ 5-10 min'),
-            'usdc': ('🟢 USD Coin', '⚡ 5-10 min'),
+            'usdc': ('🟢 USD Coin (Ethereum)', '⚡ 5-10 min'),
             'bnb': ('🟡 BNB', '⚡ 2-5 min'),
             'sol': ('◎ Solana', '⚡ 1-2 min'),
             'ltc': ('Ł Litecoin', '⚡ 10-20 min'),
@@ -1808,7 +1816,7 @@ Prêt à commencer ?"""
 
 Pour créer votre compte vendeur sécurisé, nous avons besoin de quelques informations.
 
-👤 **Étape 1/2 : Nom public**
+👤 **Étape 1/4 : Nom public**
 
 Saisissez le nom qui apparaîtra sur vos formations :""",
                                       reply_markup=InlineKeyboardMarkup([[
@@ -2037,12 +2045,13 @@ Commencez dès maintenant à monétiser votre expertise !"""
             await query.edit_message_text(
                 """💳 **WALLET NON CONFIGURÉ**
 
-    Pour avoir un wallet, vous devez d'abord devenir vendeur.
+Pour avoir un wallet, vous devez d'abord devenir vendeur.
 
-    Votre adresse Solana sera configurée lors de l'inscription.""",
+Votre adresse Solana sera configurée lors de l'inscription.""",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🚀 Devenir vendeur", callback_data='create_seller')],
-                    [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
+                    [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')],
+                    [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
                 ])
             )
             return
@@ -2070,15 +2079,15 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
         wallet_text = f"""💰 **MON WALLET SOLANA**
 
-    📍 **Adresse :** `{solana_address}`
+📍 **Adresse :** `{solana_address}`
 
-    💎 **Solde actuel :** {balance:.6f} SOL
-    ⏳ **Payout en attente :** {pending_amount:.6f} SOL
+💎 **Solde actuel :** {balance:.6f} SOL
+⏳ **Payout en attente :** {pending_amount:.6f} SOL
 
-    💸 **Payouts :**
-    - Traités quotidiennement
-    - 95% de vos ventes
-    - Commission plateforme : 5%"""
+💸 **Payouts :**
+- Traités quotidiennement
+- 95% de vos ventes
+- Commission plateforme : 5%"""
 
         keyboard = [
             [InlineKeyboardButton("📊 Historique payouts", callback_data='payout_history')],
@@ -2742,11 +2751,15 @@ Commencez dès maintenant à monétiser votre expertise !"""
         return texts.get(lang, texts['fr']).get(key, key)
 
     async def back_to_main(self, query):
-        """Menu principal avec récupération"""
+        """Menu principal avec récupération - NE DÉCONNECTE JAMAIS"""
         user_id = query.from_user.id
         user_data = self.get_user(user_id)
         lang = user_data['language_code'] if user_data else 'fr'
         is_seller = user_data and user_data['is_seller']
+        is_logged = self.is_seller_logged_in(user_id)
+
+        # Ne jamais déconnecter automatiquement
+        # L'état de connexion est préservé
 
         keyboard = [
             [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
@@ -2754,8 +2767,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
             [InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]
         ]
 
-        # Accès rapide espace vendeur si déjà vendeur
-        if is_seller:
+        # Accès rapide espace vendeur si déjà vendeur ET connecté
+        if is_seller and is_logged:
             keyboard.append([
                 InlineKeyboardButton("🏪 Mon espace vendeur", callback_data='seller_dashboard')
             ])
@@ -2771,13 +2784,13 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
         await query.edit_message_text(
             """🏪 **TECHBOT MARKETPLACE**
-    *La première marketplace crypto pour formations*
+*La première marketplace crypto pour formations*
 
-    🎯 **Découvrez des formations premium**
-    📚 **Vendez vos connaissances**  
-    💰 **Paiements Solana ultra-rapides**
+🎯 **Découvrez des formations premium**
+📚 **Vendez vos connaissances**  
+💰 **Paiements Solana ultra-rapides**
 
-    Choisissez une option pour commencer :""",
+Choisissez une option pour commencer :""",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown')
 
@@ -3863,8 +3876,7 @@ Choisissez ce que vous voulez modifier :"""
             keyboard = [
                 [InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')],
                 [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
-                [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
-                [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
+                [InlineKeyboardButton("⚙️ Paramètres", callback_data='seller_settings')],
                 [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
             ]
             await query.edit_message_text("🔑 Compte vendeur", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -3885,6 +3897,10 @@ Choisissez ce que vous voulez modifier :"""
         self.memory_cache[query.from_user.id] = state
         await query.answer("Déconnecté.")
         await self.back_to_main(query)
+
+    async def seller_back(self, query):
+        """Retour vendeur qui préserve l'état de connexion"""
+        await self.seller_dashboard(query, 'fr')
 
     async def delete_seller_prompt(self, query):
         keyboard = [
