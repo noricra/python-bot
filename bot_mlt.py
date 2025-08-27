@@ -47,7 +47,6 @@ SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
 
 # Configuration marketplace
 PLATFORM_COMMISSION_RATE = 0.05  # 5%
-PARTNER_COMMISSION_RATE = 0.10  # 10%
 MAX_FILE_SIZE_MB = 100
 SUPPORTED_FILE_TYPES = ['.pdf', '.zip', '.rar', '.mp4', '.txt', '.docx']
 
@@ -61,7 +60,6 @@ MARKETPLACE_CONFIG = {
 # Variables commission
 # (Définies une seule fois pour éviter les doublons)
 PLATFORM_COMMISSION_RATE = 0.05  # 5% pour la plateforme
-PARTNER_COMMISSION_RATE = 0.10   # 10% pour parrainage (si gardé)
 
 # Configuration logging
 os.makedirs('logs', exist_ok=True)
@@ -201,11 +199,9 @@ class MarketplaceBot:
                     recovery_email TEXT,
                     recovery_code_hash TEXT,
 
-                    -- Parrainage (gardé de l'original)
-                    is_partner BOOLEAN DEFAULT FALSE,
-                    partner_code TEXT UNIQUE,
-                    referred_by TEXT,
-                    total_commission REAL DEFAULT 0.0,
+                    -- Système de récupération
+                    recovery_email TEXT,
+                    recovery_code_hash TEXT,
 
                     email TEXT
                 )
@@ -276,13 +272,13 @@ class MarketplaceBot:
                     product_price_eur REAL,
                     platform_commission REAL,
                     seller_revenue REAL,
-                    partner_commission REAL DEFAULT 0.0,
+
                     crypto_currency TEXT,
                     crypto_amount REAL,
                     payment_status TEXT DEFAULT 'pending',
                     nowpayments_id TEXT,
                     payment_address TEXT,
-                    partner_code TEXT,
+
                     commission_paid BOOLEAN DEFAULT FALSE,
                     file_delivered BOOLEAN DEFAULT FALSE,
                     download_count INTEGER DEFAULT 0,
@@ -389,21 +385,6 @@ class MarketplaceBot:
             logger.error(f"Erreur création table categories: {e}")
             conn.rollback()
 
-        # Table codes de parrainage par défaut
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS default_referral_codes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    code TEXT UNIQUE,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    usage_count INTEGER DEFAULT 0
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table default_referral_codes: {e}")
-            conn.rollback()
-
         # Insérer catégories par défaut
         default_categories = [
             ('Finance & Crypto', 'Formations trading, blockchain, DeFi', '💰'),
@@ -426,23 +407,6 @@ class MarketplaceBot:
             except sqlite3.Error as e:
                 logger.error(f"Erreur insertion catégorie {cat_name}: {e}")
                 conn.rollback()
-
-        # Créer quelques codes par défaut si la table est vide
-        cursor.execute('SELECT COUNT(*) FROM default_referral_codes')
-        if cursor.fetchone()[0] == 0:
-            default_codes = [
-                'BRF2025', 'CRYPTO57', 'BITREF', 'PROFIT42', 'MONEY57',
-                'GAIN420'
-            ]
-            for code in default_codes:
-                try:
-                    cursor.execute(
-                        'INSERT INTO default_referral_codes (code) VALUES (?)',
-                        (code, ))
-                    conn.commit()
-                except sqlite3.Error as e:
-                    logger.error(f"Erreur insertion code {code}: {e}")
-                    conn.rollback()
 
         conn.close()
 
@@ -631,61 +595,13 @@ class MarketplaceBot:
 
     def get_available_referral_codes(self) -> List[str]:
         """Récupère les codes de parrainage disponibles"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-
-        try:
-            # Codes par défaut
-            cursor.execute(
-                'SELECT code FROM default_referral_codes WHERE is_active = TRUE')
-            default_codes = [row[0] for row in cursor.fetchall()]
-
-            # Codes de partenaires actifs
-            cursor.execute(
-                'SELECT partner_code FROM users WHERE is_partner = TRUE AND partner_code IS NOT NULL'
-            )
-            partner_codes = [row[0] for row in cursor.fetchall()]
-
-            conn.close()
-            return default_codes + partner_codes
-        except sqlite3.Error as e:
-            logger.error(f"Erreur récupération codes parrainage: {e}")
-            conn.close()
-            return []
+        # Codes fixes pour simplifier
+        return ['BRF2025', 'CRYPTO57', 'BITREF', 'PROFIT42', 'MONEY57', 'GAIN420']
 
     def validate_referral_code(self, code: str) -> bool:
         """Valide un code de parrainage"""
         available_codes = self.get_available_referral_codes()
         return code in available_codes
-
-    def create_partner_code(self, user_id: int) -> Optional[str]:
-        """Crée un code partenaire unique"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-
-        for _ in range(10):
-            partner_code = f"REF{user_id % 1000}{random.randint(100, 999)}"
-            try:
-                cursor.execute(
-                    '''
-                    UPDATE users 
-                    SET is_partner = TRUE, partner_code = ?
-                    WHERE user_id = ?
-                ''', (partner_code, user_id))
-
-                if cursor.rowcount > 0:
-                    conn.commit()
-                    conn.close()
-                    return partner_code
-            except sqlite3.IntegrityError:
-                continue
-            except sqlite3.Error as e:
-                logger.error(f"Erreur création code partenaire: {e}")
-                conn.close()
-                return None
-
-        conn.close()
-        return None
 
     def create_payment(self, amount_usd: float, currency: str,
                        order_id: str) -> Optional[Dict]:
@@ -868,27 +784,13 @@ class MarketplaceBot:
 
 Choisissez une option pour commencer :"""
 
-        keyboard = [[
-            InlineKeyboardButton("🛒 Acheter une formation",
-                                 callback_data='buy_menu')
-        ],
-                    [
-                        InlineKeyboardButton("📚 Vendre vos formations",
-                                             callback_data='sell_menu')
-                    ],
-                    [
-                        InlineKeyboardButton("🔑 Accéder à mon compte",
-                                             callback_data='access_account')
-                    ],
-
-                    [
-                        InlineKeyboardButton("📊 Stats marketplace",
-                                             callback_data='marketplace_stats')
-                    ],
-                    [
-                        InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'),
-                        InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')
-                    ]]
+        keyboard = [
+            [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
+            [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')],
+            [InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')],
+            [InlineKeyboardButton("📊 Stats marketplace", callback_data='marketplace_stats')],
+            [InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')]
+        ]
 
         await update.message.reply_text(
             welcome_text,
@@ -989,8 +891,7 @@ Choisissez une option pour commencer :"""
             elif query.data.startswith('use_referral_'):
                 code = query.data[13:]
                 await self.validate_and_proceed(query, code, lang)
-            elif query.data == 'become_partner':
-                await self.become_partner(query, lang)
+
 
             # Paiement
             elif query.data == 'proceed_to_payment':
@@ -1083,22 +984,10 @@ Choisissez une option pour commencer :"""
     async def buy_menu(self, query, lang):
         """Menu d'achat"""
         keyboard = [
-            [
-                InlineKeyboardButton("🔍 Rechercher par ID produit",
-                                     callback_data='search_product')
-            ],
-            [
-                InlineKeyboardButton("📂 Parcourir catégories",
-                                     callback_data='browse_categories')
-            ],
-            [
-                InlineKeyboardButton("🔥 Meilleures ventes",
-                                     callback_data='category_bestsellers')
-            ],
-            [
-                InlineKeyboardButton("🆕 Nouveautés",
-                                     callback_data='category_new')
-            ],
+            [InlineKeyboardButton("🔍 Rechercher par ID", callback_data='search_product')],
+            [InlineKeyboardButton("📂 Parcourir catégories", callback_data='browse_categories')],
+            [InlineKeyboardButton("🔥 Meilleures ventes", callback_data='category_bestsellers')],
+            [InlineKeyboardButton("🆕 Nouveautés", callback_data='category_new')],
             [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
             [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
         ]
@@ -1134,9 +1023,10 @@ Saisissez l'ID de la formation que vous souhaitez acheter.
 💡 **Format attendu :** `TBF-2501-ABC123`
 
 ✍️ **Tapez l'ID produit :**""",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Retour",
-                                       callback_data='buy_menu')]]),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]),
             parse_mode='Markdown')
 
     async def browse_categories(self, query, lang):
@@ -1166,6 +1056,9 @@ Saisissez l'ID de la formation que vous souhaitez acheter.
 
         keyboard.append(
             [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')])
+
+        keyboard.append(
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')])
 
         categories_text = """📂 **CATÉGORIES DE FORMATIONS**
 
@@ -1234,15 +1127,11 @@ Aucune formation disponible dans cette catégorie pour le moment.
 
 Soyez le premier à publier dans ce domaine !"""
 
-            keyboard = [[
-                InlineKeyboardButton("🚀 Créer une formation",
-                                     callback_data='sell_menu')
-            ],
-                        [
-                            InlineKeyboardButton(
-                                "📂 Autres catégories",
-                                callback_data='browse_categories')
-                        ]]
+            keyboard = [
+                [InlineKeyboardButton("🚀 Créer une formation", callback_data='sell_menu')],
+                [InlineKeyboardButton("📂 Autres catégories", callback_data='browse_categories')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]
         else:
             products_text = f"📂 **{category_name.upper()}** ({len(products)} formations)\n\n"
 
@@ -1263,6 +1152,8 @@ Soyez le premier à publier dans ce domaine !"""
                                      callback_data='browse_categories')
             ], [
                 InlineKeyboardButton("🔙 Menu achat", callback_data='buy_menu')
+            ], [
+                InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
             ]])
 
         await query.edit_message_text(
@@ -1318,18 +1209,12 @@ Soyez le premier à publier dans ce domaine !"""
 
 📁 **Fichier :** {product['file_size_mb']:.1f} MB"""
 
-        keyboard = [[
-            InlineKeyboardButton("🛒 Acheter maintenant",
-                                 callback_data=f'buy_product_{product_id}')
-        ],
-                    [
-                        InlineKeyboardButton("📂 Autres produits",
-                                             callback_data='browse_categories')
-                    ],
-                    [
-                        InlineKeyboardButton("🔙 Retour",
-                                             callback_data='buy_menu')
-                    ]]
+        keyboard = [
+            [InlineKeyboardButton("🛒 Acheter maintenant", callback_data=f'buy_product_{product_id}')],
+            [InlineKeyboardButton("📂 Autres produits", callback_data='browse_categories')],
+            [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+        ]
 
         await query.edit_message_text(
             product_text,
@@ -1379,10 +1264,7 @@ Soyez le premier à publier dans ce domaine !"""
                 InlineKeyboardButton("🎲 Choisir un code aléatoire",
                                      callback_data='choose_random_referral')
             ],
-            [
-                InlineKeyboardButton("🚀 Devenir partenaire (10% commission!)",
-                                     callback_data='become_partner')
-            ],
+
             [
                 InlineKeyboardButton("🔙 Retour",
                                      callback_data=f'product_{product_id}')
@@ -1393,16 +1275,11 @@ Soyez le premier à publier dans ce domaine !"""
 
 ⚠️ **IMPORTANT :** Un code de parrainage est requis pour acheter.
 
-💡 **3 OPTIONS DISPONIBLES :**
+💡 **2 OPTIONS DISPONIBLES :**
 
 1️⃣ **Vous avez un code ?** Saisissez-le !
 
-2️⃣ **Pas de code ?** Choisissez-en un gratuitement !
-
-3️⃣ **MEILLEURE OPTION :** Devenez partenaire !
-   • ✅ Gagnez 10% sur chaque vente
-   • ✅ Votre propre code de parrainage
-   • ✅ Dashboard vendeur complet"""
+2️⃣ **Pas de code ?** Choisissez-en un gratuitement !"""
 
         await query.edit_message_text(
             referral_text,
@@ -1415,9 +1292,10 @@ Soyez le premier à publier dans ce domaine !"""
 
         await query.edit_message_text(
             "✍️ **Veuillez saisir votre code de parrainage :**\n\nTapez le code exactement comme vous l'avez reçu.",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Retour",
-                                       callback_data='buy_menu')]]))
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]))
 
     async def check_payment_handler(self, query, order_id, lang):
         """Vérification paiement + création payout vendeur"""
@@ -1489,12 +1367,10 @@ Soyez le premier à publier dans ce domaine !"""
 
     📚 **ACCÈS IMMÉDIAT À VOTRE FORMATION**"""
 
-                keyboard = [[
-                    InlineKeyboardButton("📥 Télécharger maintenant", 
-                                    callback_data=f'download_product_{order[3]}')
-                ], [
-                    InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')
-                ]]
+                keyboard = [
+                    [InlineKeyboardButton("📥 Télécharger maintenant", callback_data=f'download_product_{order[3]}')],
+                    [InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')]
+                ]
 
                 await query.edit_message_text(
                     success_text,
@@ -1539,7 +1415,9 @@ Soyez le premier à publier dans ce domaine !"""
         keyboard.extend([[
             InlineKeyboardButton("🔄 Autres codes",
                                  callback_data='choose_random_referral')
-        ], [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')]])
+        ], [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')], [
+            InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
+        ]])
 
         codes_text = """🎲 **CODES DE PARRAINAGE DISPONIBLES**
 
@@ -1572,69 +1450,14 @@ Choisissez un code pour continuer votre achat :
 
         await query.edit_message_text(
             f"✅ **Code validé :** `{referral_code}`\n\nProcédons au paiement !",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("💳 Continuer vers le paiement",
-                                     callback_data='proceed_to_payment'),
-                InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
-            ]]),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💳 Continuer vers le paiement", callback_data='proceed_to_payment')],
+                [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]),
             parse_mode='Markdown')
 
-    async def become_partner(self, query, lang):
-        """Inscription partenaire"""
-        user_id = query.from_user.id
-        user_data = self.get_user(user_id)
 
-        if user_data and user_data['is_partner']:
-            await query.edit_message_text(
-                "✅ Vous êtes déjà partenaire !",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("📊 Mon dashboard",
-                                         callback_data='seller_dashboard')
-                ]]))
-            return
-
-        partner_code = self.create_partner_code(user_id)
-
-        if partner_code:
-            # Valider automatiquement son propre code
-            user_cache = self.memory_cache.get(user_id, {})
-            user_cache['validated_referral'] = partner_code
-            user_cache['lang'] = lang
-            user_cache['self_referral'] = True
-            self.memory_cache[user_id] = user_cache
-
-            welcome_text = f"""🎊 **BIENVENUE DANS L'ÉQUIPE !**
-
-✅ Votre compte partenaire est activé !
-
-🎯 **VOTRE CODE UNIQUE :** `{partner_code}`
-
-💰 **Avantages partenaire :**
-• Gagnez 10% sur chaque vente
-• Utilisez VOTRE code pour vos achats
-• Dashboard vendeur complet
-• Support prioritaire"""
-
-            keyboard = [[
-                InlineKeyboardButton("💳 Continuer l'achat",
-                                     callback_data='proceed_to_payment')
-            ],
-                        [
-                            InlineKeyboardButton(
-                                "📊 Mon dashboard",
-                                callback_data='seller_dashboard')
-                        ]]
-
-            await query.edit_message_text(
-                welcome_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown')
-        else:
-            await query.edit_message_text(
-                "❌ Erreur lors de la création du compte partenaire.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
-                ]]))
 
     async def show_crypto_options(self, query, lang):
         """Affiche les options de crypto pour le paiement"""
@@ -1701,6 +1524,8 @@ Choisissez un code pour continuer votre achat :
 
         keyboard.append(
             [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')])
+        keyboard.append(
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')])
 
         crypto_text = f"""💳 **CHOISIR VOTRE CRYPTO**
 
@@ -1756,8 +1581,7 @@ Choisissez un code pour continuer votre achat :
         product_price_usd = product_price_eur * rate
 
         platform_commission = product_price_eur * PLATFORM_COMMISSION_RATE
-        partner_commission = product_price_eur * PARTNER_COMMISSION_RATE
-        seller_revenue = product_price_eur - platform_commission - partner_commission
+        seller_revenue = product_price_eur - platform_commission
 
         # Créer paiement NOWPayments
         payment_data = await asyncio.to_thread(
@@ -1773,15 +1597,14 @@ Choisissez un code pour continuer votre achat :
                     '''
                     INSERT INTO orders 
                     (order_id, buyer_user_id, product_id, seller_user_id,
-                     product_price_eur, platform_commission, seller_revenue, partner_commission,
-                     crypto_currency, crypto_amount, nowpayments_id, payment_address, partner_code)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     product_price_eur, platform_commission, seller_revenue,
+                     crypto_currency, crypto_amount, nowpayments_id, payment_address)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (order_id, user_id, product_id, product['seller_user_id'],
                       product_price_eur, platform_commission, seller_revenue,
-                      partner_commission, crypto_currency,
-                      payment_data.get('pay_amount',
-                                       0), payment_data.get('payment_id'),
-                      payment_data.get('pay_address', ''), referral_code))
+                      crypto_currency,
+                      payment_data.get('pay_amount', 0), payment_data.get('payment_id'),
+                      payment_data.get('pay_address', '')))
                 conn.commit()
                 conn.close()
             except sqlite3.Error as e:
@@ -1813,12 +1636,11 @@ Choisissez un code pour continuer votre achat :
 • Utilisez uniquement du {crypto_currency.upper()}
 • La détection est automatique"""
 
-            keyboard = [[
-                InlineKeyboardButton("🔄 Vérifier paiement",
-                                     callback_data=f'check_payment_{order_id}')
-            ], [
-                InlineKeyboardButton("💬 Support", callback_data='support_menu')
-            ]]
+            keyboard = [
+                [InlineKeyboardButton("🔄 Vérifier paiement", callback_data=f'check_payment_{order_id}')],
+                [InlineKeyboardButton("💬 Support", callback_data='support_menu')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]
 
             await query.edit_message_text(
                 payment_text,
@@ -1850,8 +1672,8 @@ Choisissez un code pour continuer votre achat :
             await query.edit_message_text("❌ Commande introuvable!")
             return
 
-        # Index corrects: nowpayments_id = 12, partner_code = 14
-        payment_id = order[12]
+        # Index corrects: nowpayments_id = 11
+        payment_id = order[11]
         # Exécuter l'appel bloquant dans un thread pour ne pas bloquer la boucle
         payment_status = await asyncio.to_thread(self.check_payment_status, payment_id)
 
@@ -1882,16 +1704,9 @@ Choisissez un code pour continuer votre achat :
                         SET total_sales = total_sales + 1,
                             total_revenue = total_revenue + ?
                         WHERE user_id = ?
-                    ''', (order[7], order[4]))
+                    ''', (order[6], order[4]))
 
-                    partner_code = order[14]
-                    if partner_code:
-                        cursor.execute(
-                            '''
-                            UPDATE users 
-                            SET total_commission = total_commission + ?
-                            WHERE partner_code = ?
-                        ''', (order[8], partner_code))
+
 
                     conn.commit()
                 except sqlite3.Error as e:
@@ -1931,14 +1746,18 @@ Choisissez un code pour continuer votre achat :
                 conn.close()
                 await query.edit_message_text(
                     f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                        "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]]))
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')],
+                        [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+                    ]))
         else:
             conn.close()
             await query.edit_message_text(
                 "❌ Erreur de vérification. Réessayez.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                    "🔄 Réessayer", callback_data=f'check_payment_{order_id}')]]))
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Réessayer", callback_data=f'check_payment_{order_id}')],
+                    [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+                ]))
 
     async def sell_menu(self, query, lang):
         """Menu vendeur"""
@@ -1948,18 +1767,11 @@ Choisissez un code pour continuer votre achat :
             await self.seller_dashboard(query, lang)
             return
 
-        keyboard = [[
-            InlineKeyboardButton("🚀 Devenir vendeur",
-                                 callback_data='create_seller')
-        ],
-                    [
-                        InlineKeyboardButton("📋 Conditions & avantages",
-                                             callback_data='seller_info')
-                    ],
-                    [
-                        InlineKeyboardButton("🏠 Accueil",
-                                             callback_data='back_main')
-                    ]]
+        keyboard = [
+            [InlineKeyboardButton("🚀 Devenir vendeur", callback_data='create_seller')],
+            [InlineKeyboardButton("📋 Conditions & avantages", callback_data='seller_info')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+        ]
 
         sell_text = """📚 **VENDRE VOS FORMATIONS**
 
@@ -2086,24 +1898,14 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
 
 💳 **Wallet :** {'✅ Configuré' if user_data['seller_solana_address'] else '❌ À configurer'}"""
 
-        keyboard = [[
-            InlineKeyboardButton("➕ Ajouter un produit",
-                                 callback_data='add_product')
-        ], [
-            InlineKeyboardButton("📦 Mes produits", callback_data='my_products')
-        ], [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
-                    [
-                        InlineKeyboardButton("📊 Analytics détaillées",
-                                             callback_data='seller_analytics')
-                    ],
-                    [
-                        InlineKeyboardButton("⚙️ Paramètres",
-                                             callback_data='seller_settings')
-                    ],
-                    [
-                        InlineKeyboardButton("🏠 Accueil",
-                                             callback_data='back_main')
-                    ]]
+        keyboard = [
+            [InlineKeyboardButton("➕ Ajouter un produit", callback_data='add_product')],
+            [InlineKeyboardButton("📦 Mes produits", callback_data='my_products')],
+            [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
+            [InlineKeyboardButton("📊 Analytics", callback_data='seller_analytics')],
+            [InlineKeyboardButton("⚙️ Paramètres", callback_data='seller_settings')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+        ]
 
         await query.edit_message_text(
             dashboard_text,
@@ -2179,15 +1981,11 @@ Aucun produit créé pour le moment.
 
 Commencez dès maintenant à monétiser votre expertise !"""
 
-            keyboard = [[
-                InlineKeyboardButton("➕ Créer mon premier produit",
-                                     callback_data='add_product')
-            ],
-                        [
-                            InlineKeyboardButton(
-                                "🔙 Dashboard",
-                                callback_data='seller_dashboard')
-                        ]]
+            keyboard = [
+                [InlineKeyboardButton("➕ Créer mon premier produit", callback_data='add_product')],
+                [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]
         else:
             products_text = f"📦 **MES PRODUITS** ({len(products)})\n\n"
 
@@ -2215,6 +2013,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
                                  InlineKeyboardButton(
                                      "🔙 Dashboard",
                                      callback_data='seller_dashboard')
+                             ], [
+                                 InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
                              ]])
 
         await query.edit_message_text(
@@ -2250,7 +2050,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         solana_address = user_data['seller_solana_address']
 
         # Récupérer solde (optionnel)
-        balance = util_get_solana_balance_display(solana_address)
+        balance = get_solana_balance_display(solana_address)
 
         # Calculer payouts en attente
         conn = self.get_db_connection()
@@ -2283,7 +2083,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
         keyboard = [
             [InlineKeyboardButton("📊 Historique payouts", callback_data='payout_history')],
             [InlineKeyboardButton("📋 Copier adresse", callback_data='copy_address')],
-            [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')]
+            [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
         ]
 
         await query.edit_message_text(
@@ -2347,20 +2148,12 @@ Commencez dès maintenant à monétiser votre expertise !"""
         for cat in top_categories:
             stats_text += f"\n{cat[1]} {cat[0]} : {cat[2]} formations"
 
-        keyboard = [[
-            InlineKeyboardButton("🔥 Meilleures ventes",
-                                 callback_data='category_bestsellers')
-        ], [
-            InlineKeyboardButton("🆕 Nouveautés", callback_data='category_new')
-        ],
-                    [
-                        InlineKeyboardButton("🏪 Devenir vendeur",
-                                             callback_data='sell_menu')
-                    ],
-                    [
-                        InlineKeyboardButton("🏠 Accueil",
-                                             callback_data='back_main')
-                    ]]
+        keyboard = [
+            [InlineKeyboardButton("🔥 Meilleures ventes", callback_data='category_bestsellers')],
+            [InlineKeyboardButton("🆕 Nouveautés", callback_data='category_new')],
+            [InlineKeyboardButton("🏪 Devenir vendeur", callback_data='sell_menu')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+        ]
 
         await query.edit_message_text(
             stats_text,
@@ -2810,9 +2603,9 @@ Commencez dès maintenant à monétiser votre expertise !"""
             cursor = conn.cursor()
             # Essayer par user_id
             if message_text.isdigit():
-                cursor.execute('SELECT user_id, username, first_name, is_seller, is_partner, partner_code FROM users WHERE user_id = ?', (int(message_text),))
-            else:
-                cursor.execute('SELECT user_id, username, first_name, is_seller, is_partner, partner_code FROM users WHERE partner_code = ?', (message_text.strip(),))
+                            cursor.execute('SELECT user_id, username, first_name, is_seller FROM users WHERE user_id = ?', (int(message_text),))
+        else:
+            cursor.execute('SELECT user_id, username, first_name, is_seller FROM users WHERE user_id = ?', (0,))
             row = cursor.fetchone()
             conn.close()
             if not row:
@@ -3415,67 +3208,15 @@ Commencez dès maintenant à monétiser votre expertise !"""
             parse_mode='Markdown')
 
     async def admin_commissions_handler(self, query):
-        """Affiche les commissions à payer"""
+        """Affiche les commissions à payer - Système supprimé"""
         if query.from_user.id != ADMIN_USER_ID:
             return
 
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-
-        # Commissions non payées
-        try:
-            cursor.execute('''
-                SELECT o.order_id, o.partner_code, o.partner_commission, o.created_at,
-                       u.first_name, p.title
-                FROM orders o
-                LEFT JOIN users u ON u.partner_code = o.partner_code
-                LEFT JOIN products p ON p.product_id = o.product_id
-                WHERE o.payment_status = 'completed' 
-                AND o.commission_paid = FALSE
-                AND o.partner_commission > 0
-                ORDER BY o.created_at DESC
-            ''')
-
-            unpaid = cursor.fetchall()
-
-            # Total à payer
-            cursor.execute('''
-                SELECT SUM(partner_commission) 
-                FROM orders 
-                WHERE payment_status = 'completed' 
-                AND commission_paid = FALSE
-            ''')
-            total_due = cursor.fetchone()[0] or 0
-
-            conn.close()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur récupération commissions (admin): {e}")
-            conn.close()
-            return
-
-        if not unpaid:
-            text = "💰 **COMMISSIONS**\n\n✅ Aucune commission en attente !"
-        else:
-            text = f"💰 **COMMISSIONS À PAYER**\n\n💸 **Total à payer : {total_due:.2f}€**\n\n"
-
-            for comm in unpaid:
-                text += f"📋 **Commande :** `{comm[0]}`\n"
-                text += f"👤 **Partenaire :** {comm[4] or 'Anonyme'} (`{comm[1]}`)\n"
-                text += f"📦 **Produit :** {comm[5]}\n"
-                text += f"💰 **Commission :** {comm[2]:.2f}€\n"
-                text += f"📅 **Date :** {comm[3][:10]}\n"
-                text += "---\n"
-
-        keyboard = [[
-            InlineKeyboardButton("✅ Marquer comme payées",
-                                 callback_data='admin_mark_paid')
-        ], [
-            InlineKeyboardButton("🔙 Retour admin", callback_data='admin_menu')
-        ]]
-
         await query.edit_message_text(
-            text[:4000],  # Limite Telegram
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            "💰 **COMMISSIONS**\n\n✅ Système de commissions supprimé",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Retour admin", callback_data='admin_menu')
+            ]]),
             parse_mode='Markdown')
 
     async def admin_marketplace_stats(self, query):
@@ -3511,11 +3252,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
             )
             platform_revenue = cursor.fetchone()[0]
 
-            # Commissions en attente
-            cursor.execute(
-                'SELECT COALESCE(SUM(partner_commission), 0) FROM orders WHERE payment_status = "completed" AND commission_paid = FALSE'
-            )
-            pending_commissions = cursor.fetchone()[0]
+
 
             conn.close()
         except sqlite3.Error as e:
@@ -3533,15 +3270,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
 💰 **Finances :**
 • Volume total : {total_volume:,.2f}€
 • Revenus plateforme : {platform_revenue:.2f}€
-• Commissions en attente : {pending_commissions:.2f}€
 
 📈 **Taux plateforme :** {PLATFORM_COMMISSION_RATE*100}%
 💸 **Moyenne par vente :** {total_volume/max(total_sales,1):.2f}€"""
 
-        keyboard = [[
-            InlineKeyboardButton("💰 Traiter commissions",
-                                 callback_data='admin_commissions')
-        ],
+        keyboard = [
                     [
                         InlineKeyboardButton("📦 Gérer produits",
                                              callback_data='admin_products')
@@ -3552,7 +3285,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
                     ]]
 
         await query.edit_message_text(
-            stats_text,
+            text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown')
 
@@ -4004,13 +3737,36 @@ Top produits:\n"""
         await query.edit_message_text(text)
 
     async def seller_settings(self, query, lang):
-        self.memory_cache[query.from_user.id] = {'editing_settings': True, 'step': 'menu'}
+        """Paramètres vendeur"""
+        user_data = self.get_user(query.from_user.id)
+
+        if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
+            await query.edit_message_text(
+                "❌ Connectez-vous d'abord (email + code)",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
+            )
+            return
+
+        settings_text = f"""⚙️ **PARAMÈTRES VENDEUR**
+
+👤 **Nom actuel :** {user_data['seller_name']}
+📝 **Bio actuelle :** {user_data['seller_bio'][:100]}{'...' if len(user_data['seller_bio']) > 100 else ''}
+
+Choisissez ce que vous voulez modifier :"""
+
         keyboard = [
             [InlineKeyboardButton("✏️ Modifier nom", callback_data='edit_seller_name')],
             [InlineKeyboardButton("📝 Modifier bio", callback_data='edit_seller_bio')],
-            [InlineKeyboardButton("🔙 Retour", callback_data='seller_dashboard')]
+            [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
+            [InlineKeyboardButton("🗑️ Supprimer compte", callback_data='delete_seller')],
+            [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
         ]
-        await query.edit_message_text("Paramètres vendeur:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+        await query.edit_message_text(
+            settings_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown')
 
     async def seller_info(self, query, lang):
         await query.edit_message_text("Conditions & avantages vendeur (à implémenter)")
@@ -4070,12 +3826,12 @@ Top produits:\n"""
             conn = self.get_db_connection()
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT user_id, username, first_name, is_seller, is_partner, partner_code, registration_date
+                SELECT user_id, username, first_name, is_seller, registration_date
                 FROM users ORDER BY registration_date DESC
             ''')
             rows = cursor.fetchall()
             conn.close()
-            csv_lines = ["user_id,username,first_name,is_seller,is_partner,partner_code,registration_date"]
+            csv_lines = ["user_id,username,first_name,is_seller,registration_date"]
             for r in rows:
                 csv_lines.append(','.join([str(x).replace(',', ' ') for x in r]))
             data = '\n'.join(csv_lines)
