@@ -58,6 +58,7 @@ MARKETPLACE_CONFIG = {
 }
 
 # Variables commission
+# (Définies une seule fois pour éviter les doublons)
 PLATFORM_COMMISSION_RATE = 0.05  # 5% pour la plateforme
 PARTNER_COMMISSION_RATE = 0.10   # 10% pour parrainage (si gardé)
 
@@ -129,9 +130,43 @@ class MarketplaceBot:
         self.init_database()
         self.memory_cache = {}
 
+    def get_db_connection(self) -> sqlite3.Connection:
+        """Retourne une connexion SQLite configurée (WAL, FK, timeouts)."""
+        conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
+        try:
+            conn.execute('PRAGMA journal_mode=WAL;')
+            conn.execute('PRAGMA synchronous=NORMAL;')
+            conn.execute('PRAGMA foreign_keys=ON;')
+            conn.execute('PRAGMA busy_timeout=5000;')
+        except Exception as e:
+            logger.warning(f"PRAGMA init error: {e}")
+        return conn
+
+    def escape_markdown(self, text: str) -> str:
+        """Échappe les caractères Markdown v2 pour Telegram."""
+        if text is None:
+            return ''
+        replacements = {
+            '_': r'\_', '*': r'\*', '[': r'\[', ']': r'\]', '(': r'\(', ')': r'\)',
+            '~': r'\~', '`': r'\`', '>': r'\>', '#': r'\#', '+': r'\+', '-': r'\-',
+            '=': r'\=', '|': r'\|', '{': r'\{', '}': r'\}', '.': r'\.', '!': r'\!'
+        }
+        escaped = []
+        for ch in text:
+            escaped.append(replacements.get(ch, ch))
+        return ''.join(escaped)
+
+    def sanitize_filename(self, name: str) -> str:
+        """Nettoie un nom de fichier pour éviter les caractères dangereux."""
+        name = os.path.basename(name or '')
+        allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+        sanitized = ''.join(ch if ch in allowed else '_' for ch in name)
+        # Éviter les noms vides
+        return sanitized or f"file_{int(time.time())}"
+
     def init_database(self):
         """Base de données simplifiée"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
 
         # Table utilisateurs SIMPLIFIÉE
@@ -413,7 +448,7 @@ class MarketplaceBot:
         random_part = secrets.token_hex(4).upper()
 
         # Double vérification d'unicité
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
 
         max_attempts = 100
@@ -443,7 +478,7 @@ class MarketplaceBot:
                  first_name: str,
                  language_code: str = 'fr') -> bool:
         """Ajoute un utilisateur"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
@@ -462,7 +497,7 @@ class MarketplaceBot:
 
     def get_user(self, user_id: int) -> Optional[Dict]:
         """Récupère un utilisateur"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         try:
@@ -490,7 +525,7 @@ class MarketplaceBot:
             # Hash du code (ne jamais stocker en clair)
             code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
 
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_db_connection()
             cursor = conn.cursor()
 
             # Vérifier que l'adresse n'est pas déjà utilisée
@@ -540,32 +575,31 @@ class MarketplaceBot:
             logger.error(f"Erreur création vendeur: {e}")
             return {'success': False, 'error': str(e)}
 
-    def authenticate_seller(self, user_id: int, seed_phrase: str) -> bool:
-        """Authentifie un vendeur avec sa seed phrase"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+    def authenticate_seller(self, user_id: int, _ignored: str) -> bool:
+        """Authentifie un vendeur.
 
+        Note: l'ancien mécanisme par seed phrase n'est plus utilisé.
+        On valide simplement que l'utilisateur a un compte vendeur actif.
+        La récupération sécurisée se fait via email + code.
+        """
         try:
-            cursor.execute(
-                '''
-                SELECT seller_seed_phrase FROM users 
-                WHERE user_id = ? AND is_seller = TRUE
-            ''', (user_id, ))
-
-            result = cursor.fetchone()
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT is_seller FROM users WHERE user_id = ?', (user_id,))
+            row = cursor.fetchone()
             conn.close()
-
-            if result and result[0] == seed_phrase.strip():
-                return True
-            return False
+            return bool(row and row[0])
         except sqlite3.Error as e:
             logger.error(f"Erreur authentification vendeur: {e}")
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
             return False
 
     def get_product_by_id(self, product_id: str) -> Optional[Dict]:
         """Récupère un produit par son ID"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -588,7 +622,7 @@ class MarketplaceBot:
 
     def get_available_referral_codes(self) -> List[str]:
         """Récupère les codes de parrainage disponibles"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
 
         try:
@@ -617,7 +651,7 @@ class MarketplaceBot:
 
     def create_partner_code(self, user_id: int) -> Optional[str]:
         """Crée un code partenaire unique"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
 
         for _ in range(10):
@@ -735,7 +769,7 @@ class MarketplaceBot:
                         total_amount_sol: float) -> Optional[int]:
         """Crée un payout vendeur en attente"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_db_connection()
             cursor = conn.cursor()
 
             cursor.execute('''
@@ -757,7 +791,7 @@ class MarketplaceBot:
     async def auto_create_seller_payout(self, order_id: str) -> bool:
         """Crée automatiquement un payout vendeur après confirmation paiement"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_db_connection()
             cursor = conn.cursor()
 
             # Récupérer infos commande
@@ -856,11 +890,15 @@ Choisissez une option pour commencer :"""
             elif query.data == 'marketplace_stats':
                 await self.marketplace_stats(query, lang)
             elif query.data == 'support_menu':
-                await self.support_menu(query, lang)
+                await self.show_support_menu(query, lang)
             elif query.data == 'back_main':
                 await self.back_to_main(query)
             elif query.data.startswith('lang_'):
                 await self.change_language(query, query.data[5:])
+
+            # Connexion vendeur
+            elif query.data == 'seller_login':
+                await self.seller_login_menu(query, lang)
 
             # Achat
             elif query.data == 'search_product':
@@ -929,15 +967,38 @@ Choisissez une option pour commencer :"""
                 order_id = query.data[14:]
                 await self.check_payment_handler(query, order_id, lang)
 
+            # Téléchargement et bibliothèque
+            elif query.data.startswith('download_product_'):
+                product_id = query.data[17:]
+                await self.download_product(query, context, product_id, lang)
+            elif query.data == 'my_library':
+                await self.show_my_library(query, lang)
+
             # Admin
             elif query.data == 'admin_menu':
                 await self.admin_menu(query)
+            elif query.data == 'admin_commissions':
+                await self.admin_commissions_handler(query)
             elif query.data == 'admin_payouts':
                 await self.admin_payouts_handler(query)
+            elif query.data == 'admin_mark_all_payouts_paid':
+                await self.admin_mark_all_payouts_paid(query)
+            elif query.data == 'admin_export_payouts':
+                await self.admin_export_payouts(query)
             elif query.data == 'admin_users':
                 await self.admin_users_handler(query)
+            elif query.data == 'admin_search_user':
+                await self.admin_search_user(query)
+            elif query.data == 'admin_export_users':
+                await self.admin_export_users(query)
             elif query.data == 'admin_products':
                 await self.admin_products_handler(query)
+            elif query.data == 'admin_search_product':
+                await self.admin_search_product(query)
+            elif query.data == 'admin_suspend_product':
+                await self.admin_suspend_product(query)
+            elif query.data == 'admin_export_products':
+                await self.admin_export_products(query)
             elif query.data == 'admin_marketplace_stats':
                 await self.admin_marketplace_stats(query)
 
@@ -948,6 +1009,20 @@ Choisissez une option pour commencer :"""
                 await self.create_ticket(query, lang)
             elif query.data == 'my_tickets':
                 await self.show_my_tickets(query, lang)
+
+            # Wallet vendeur actions
+            elif query.data == 'payout_history':
+                await self.payout_history(query)
+            elif query.data == 'copy_address':
+                await self.copy_address(query)
+
+            # Autres écrans vendeur
+            elif query.data == 'seller_analytics':
+                await self.seller_analytics(query, lang)
+            elif query.data == 'seller_settings':
+                await self.seller_settings(query, lang)
+            elif query.data == 'seller_info':
+                await self.seller_info(query, lang)
 
             else:
                 await query.edit_message_text(
@@ -1025,7 +1100,7 @@ Saisissez l'ID de la formation que vous souhaitez acheter.
 
     async def browse_categories(self, query, lang):
         """Affiche les catégories disponibles"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
@@ -1096,7 +1171,7 @@ Choisissez votre domaine d'intérêt :"""
             '''
             query_params = (category_name,)
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
 
         # Exécuter la requête appropriée
@@ -1171,7 +1246,7 @@ Soyez le premier à publier dans ce domaine !"""
             return
 
         # Mettre à jour compteur de vues
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
@@ -1225,7 +1300,7 @@ Soyez le premier à publier dans ce domaine !"""
         user_id = query.from_user.id
 
         # Vérifier si déjà acheté
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
@@ -1307,7 +1382,7 @@ Soyez le premier à publier dans ce domaine !"""
         """Vérification paiement + création payout vendeur"""
         await query.edit_message_text("🔍 Vérification en cours...")
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
             cursor.execute('SELECT * FROM orders WHERE order_id = ?', (order_id,))
@@ -1636,19 +1711,22 @@ Choisissez un code pour continuer votre achat :
 
         # Calculer les montants
         product_price_eur = product['price_eur']
-        product_price_usd = product_price_eur * self.get_exchange_rate()
+        # Éviter de bloquer la boucle avec requests
+        rate = await asyncio.to_thread(self.get_exchange_rate)
+        product_price_usd = product_price_eur * rate
 
         platform_commission = product_price_eur * PLATFORM_COMMISSION_RATE
         partner_commission = product_price_eur * PARTNER_COMMISSION_RATE
         seller_revenue = product_price_eur - platform_commission - partner_commission
 
         # Créer paiement NOWPayments
-        payment_data = self.create_payment(product_price_usd, crypto_currency,
-                                           order_id)
+        payment_data = await asyncio.to_thread(
+            self.create_payment, product_price_usd, crypto_currency, order_id
+        )
 
         if payment_data:
             # Sauver en base
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_db_connection()
             cursor = conn.cursor()
             try:
                 cursor.execute(
@@ -1715,10 +1793,10 @@ Choisissez un code pour continuer votre achat :
                 ]]))
 
     async def check_payment_handler(self, query, order_id, lang):
-        """Vérifie le statut du paiement"""
+        """Vérifie le statut du paiement, met à jour les entités et crée un payout vendeur."""
         await query.edit_message_text("🔍 Vérification en cours...")
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
             cursor.execute('SELECT * FROM orders WHERE order_id = ?', (order_id, ))
@@ -1732,14 +1810,15 @@ Choisissez un code pour continuer votre achat :
             await query.edit_message_text("❌ Commande introuvable!")
             return
 
-        payment_id = order[13]  # nowpayments_id
-        payment_status = self.check_payment_status(payment_id)
+        # Index corrects: nowpayments_id = 12, partner_code = 14
+        payment_id = order[12]
+        # Exécuter l'appel bloquant dans un thread pour ne pas bloquer la boucle
+        payment_status = await asyncio.to_thread(self.check_payment_status, payment_id)
 
         if payment_status:
             status = payment_status.get('payment_status', 'waiting')
 
             if status in ['finished', 'confirmed']:
-                # Paiement confirmé
                 try:
                     cursor.execute(
                         '''
@@ -1750,7 +1829,6 @@ Choisissez un code pour continuer votre achat :
                         WHERE order_id = ?
                     ''', (order_id, ))
 
-                    # Mettre à jour stats produit
                     cursor.execute(
                         '''
                         UPDATE products 
@@ -1758,7 +1836,6 @@ Choisissez un code pour continuer votre achat :
                         WHERE product_id = ?
                     ''', (order[3], ))
 
-                    # Mettre à jour stats vendeur
                     cursor.execute(
                         '''
                         UPDATE users 
@@ -1767,44 +1844,44 @@ Choisissez un code pour continuer votre achat :
                         WHERE user_id = ?
                     ''', (order[7], order[4]))
 
-                    # Mettre à jour stats parrain
-                    if order[15]:  # partner_code
+                    partner_code = order[14]
+                    if partner_code:
                         cursor.execute(
                             '''
                             UPDATE users 
                             SET total_commission = total_commission + ?
                             WHERE partner_code = ?
-                        ''', (order[8], order[15]))
+                        ''', (order[8], partner_code))
 
                     conn.commit()
-                    conn.close()
                 except sqlite3.Error as e:
                     logger.error(f"Erreur mise à jour après paiement: {e}")
+                    conn.rollback()
                     conn.close()
                     return
+
+                try:
+                    payout_created = await self.auto_create_seller_payout(order_id)
+                except Exception as e:
+                    logger.error(f"Erreur auto payout: {e}")
+                    payout_created = False
+                finally:
+                    conn.close()
 
                 success_text = f"""🎉 **FÉLICITATIONS !**
 
 ✅ **Paiement confirmé** - Commande : {order_id}
+{"✅ Payout vendeur créé automatiquement" if payout_created else "⚠️ Payout vendeur en attente"}
 
-📚 **ACCÈS IMMÉDIAT À VOTRE FORMATION**
-
-🎁 **Votre achat est maintenant disponible dans votre bibliothèque !**"""
+📚 **ACCÈS IMMÉDIAT À VOTRE FORMATION**"""
 
                 keyboard = [[
                     InlineKeyboardButton(
                         "📥 Télécharger maintenant",
                         callback_data=f'download_product_{order[3]}')
-                ],
-                            [
-                                InlineKeyboardButton(
-                                    "📚 Ma bibliothèque",
-                                    callback_data='my_library')
-                            ],
-                            [
-                                InlineKeyboardButton("🏠 Menu principal",
-                                                     callback_data='back_main')
-                            ]]
+                ], [
+                    InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')
+                ]]
 
                 await query.edit_message_text(
                     success_text,
@@ -1814,20 +1891,14 @@ Choisissez un code pour continuer votre achat :
                 conn.close()
                 await query.edit_message_text(
                     f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min",
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton(
-                            "🔄 Rafraîchir",
-                            callback_data=f'check_payment_{order_id}')
-                    ]]))
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                        "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]]))
         else:
             conn.close()
             await query.edit_message_text(
                 "❌ Erreur de vérification. Réessayez.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(
-                        "🔄 Réessayer",
-                        callback_data=f'check_payment_{order_id}')
-                ]]))
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                    "🔄 Réessayer", callback_data=f'check_payment_{order_id}')]]))
 
     async def sell_menu(self, query, lang):
         """Menu vendeur"""
@@ -1928,7 +1999,7 @@ Saisissez votre phrase de récupération BIP-39 (12 mots) pour accéder à votre
             return
 
         # Récupérer les stats vendeur
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
 
         # Produits actifs
@@ -2036,7 +2107,7 @@ Saisissez le titre de votre formation :
         if not user_data or not user_data['is_seller']:
             return
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
@@ -2128,7 +2199,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         balance = get_solana_balance_display(solana_address)
 
         # Calculer payouts en attente
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
             cursor.execute('''
@@ -2169,7 +2240,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
     async def marketplace_stats(self, query, lang):
         """Statistiques globales de la marketplace"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
 
         # Stats générales
@@ -2279,6 +2350,14 @@ Commencez dès maintenant à monétiser votre expertise !"""
         # === SAISIE CODE PARRAINAGE ===
         elif user_state.get('waiting_for_referral'):
             await self.process_referral_input(update, message_text)
+
+        # === RÉCUPÉRATION PAR EMAIL ===
+        elif user_state.get('waiting_for_recovery_email'):
+            await self.process_recovery_email(update, message_text)
+
+        # === RÉCUPÉRATION CODE ===
+        elif user_state.get('waiting_for_recovery_code'):
+            await self.process_recovery_code(update, message_text)
 
         # === DÉFAUT ===
         else:
@@ -2563,7 +2642,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
             user_state['step'] = 'category'
 
             # Afficher les catégories avec des boutons
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_db_connection()
             cursor = conn.cursor()
             try:
                 cursor.execute('SELECT name, icon FROM categories ORDER BY name')
@@ -2653,7 +2732,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
             return
 
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_db_connection()
             cursor = conn.cursor()
             cursor.execute('UPDATE users SET language_code = ? WHERE user_id = ?', (lang, user_id))
             conn.commit()
@@ -2787,6 +2866,95 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 [InlineKeyboardButton("🔙 Retour", callback_data='account_recovery')]
             ]))
 
+    async def process_recovery_email(self, update: Update, message_text: str):
+        """Traite l'entrée d'email et envoie un code si l'email existe."""
+        user_id = update.effective_user.id
+        email = message_text.strip().lower()
+        if not validate_email(email):
+            await update.message.reply_text("❌ Email invalide. Recommencez.")
+            return
+
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('SELECT user_id FROM users WHERE recovery_email = ?', (email,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                await update.message.reply_text("❌ Email non trouvé.")
+                self.memory_cache.pop(user_id, None)
+                return
+
+            # Générer un nouveau code (stocké en hash)
+            recovery_code = f"{random.randint(100000, 999999)}"
+            code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
+            cursor.execute('UPDATE users SET recovery_code_hash = ? WHERE recovery_email = ?', (code_hash, email))
+            conn.commit()
+            conn.close()
+
+            # Envoyer l'email si SMTP configuré
+            if SMTP_SERVER and SMTP_EMAIL and SMTP_PASSWORD:
+                try:
+                    msg = MIMEMultipart()
+                    msg['From'] = SMTP_EMAIL
+                    msg['To'] = email
+                    msg['Subject'] = "Code de récupération TechBot"
+                    body = f"Votre code de récupération: {recovery_code}"
+                    msg.attach(MIMEText(body, 'plain'))
+
+                    server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+                    server.starttls()
+                    server.login(SMTP_EMAIL, SMTP_PASSWORD)
+                    server.sendmail(SMTP_EMAIL, email, msg.as_string())
+                    server.quit()
+                except Exception as e:
+                    logger.error(f"Erreur envoi email: {e}")
+
+            # Poursuivre le flow: demander le code à l'utilisateur
+            self.memory_cache[user_id] = {'waiting_for_recovery_code': True, 'email': email}
+            await update.message.reply_text(
+                "📧 Code envoyé. Entrez votre code à 6 chiffres:")
+        except sqlite3.Error as e:
+            logger.error(f"Erreur récupération par email: {e}")
+            conn.close()
+            await update.message.reply_text("❌ Erreur interne.")
+
+    async def process_recovery_code(self, update: Update, message_text: str):
+        """Valide le code de récupération et réactive l'accès vendeur."""
+        user_id = update.effective_user.id
+        code = message_text.strip()
+        state = self.memory_cache.get(user_id, {})
+        email = state.get('email')
+        if not email or not code.isdigit() or len(code) != 6:
+            await update.message.reply_text("❌ Code invalide.")
+            return
+
+        code_hash = hashlib.sha256(code.encode()).hexdigest()
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT user_id FROM users WHERE recovery_email = ? AND recovery_code_hash = ?', (email, code_hash))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                await update.message.reply_text("❌ Code incorrect.")
+                return
+
+            # Réactiver vendeur si besoin (ici on s'assure qu'il reste vendeur)
+            cursor.execute('UPDATE users SET is_seller = TRUE WHERE user_id = ?', (row[0],))
+            conn.commit()
+            conn.close()
+
+            self.memory_cache.pop(user_id, None)
+            await update.message.reply_text(
+                "✅ Vérification réussie. Accédez à votre dashboard.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')]])
+            )
+        except Exception as e:
+            logger.error(f"Erreur vérification code: {e}")
+            await update.message.reply_text("❌ Erreur interne.")
+
+
     # ==========================================
     # PANEL ADMIN
     # ==========================================
@@ -2805,7 +2973,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         if query.from_user.id != ADMIN_USER_ID:
             return
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
 
         # Payouts en attente
@@ -2858,7 +3026,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         if query.from_user.id != ADMIN_USER_ID:
             return
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
 
         # Stats utilisateurs
@@ -2918,7 +3086,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         if query.from_user.id != ADMIN_USER_ID:
             return
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
 
         # Stats produits
@@ -3038,7 +3206,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         if query.from_user.id != ADMIN_USER_ID:
             return
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
 
         # Commissions non payées
@@ -3102,7 +3270,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         if query.from_user.id != ADMIN_USER_ID:
             return
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
 
         # Stats générales
@@ -3248,7 +3416,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
             await update.message.reply_text("📤 **Upload en cours...**", parse_mode='Markdown')
 
             # Vérifier que le dossier uploads existe
-            uploads_dir = os.path.join('Bitrefill3', 'uploads')
+            # Centraliser le répertoire d'uploads à la racine du projet
+            uploads_dir = os.path.join('uploads')
             os.makedirs(uploads_dir, exist_ok=True)
 
             # Télécharger le fichier
@@ -3256,7 +3425,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
             # Générer nom de fichier unique
             product_id = self.generate_product_id()
-            filename = f"{product_id}_{document.file_name}"
+            filename = f"{product_id}_{self.sanitize_filename(document.file_name)}"
             filepath = os.path.join(uploads_dir, filename)
 
             # Télécharger avec gestion d'erreur spécifique
@@ -3299,10 +3468,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 # Nettoyer cache
                 del self.memory_cache[user_id]
 
-                # Échapper les caractères spéciaux pour Telegram
-                safe_filename = filename.replace('_', r'\_').replace('*', r'\*').replace('[', r'\[').replace(']', r'\]').replace('(', r'\(').replace(')', r'\)').replace('~', r'\~').replace('`', r'\`').replace('>', r'\>').replace('#', r'\#').replace('+', r'\+').replace('-', r'\-').replace('=', r'\=').replace('|', r'\|').replace('{', r'\{').replace('}', r'\}').replace('.', r'\.').replace('!', r'\!')
-                safe_title = product_data['title'].replace('_', r'\_').replace('*', r'\*').replace('[', r'\[').replace(']', r'\]').replace('(', r'\(').replace(')', r'\)').replace('~', r'\~').replace('`', r'\`').replace('>', r'\>').replace('#', r'\#').replace('+', r'\+').replace('-', r'\-').replace('=', r'\=').replace('|', r'\|').replace('{', r'\{').replace('}', r'\}').replace('.', r'\.').replace('!', r'\!')
-                safe_category = product_data['category'].replace('_', r'\_').replace('*', r'\*').replace('[', r'\[').replace(']', r'\]').replace('(', r'\(').replace(')', r'\)').replace('~', r'\~').replace('`', r'\`').replace('>', r'\>').replace('#', r'\#').replace('+', r'\+').replace('-', r'\-').replace('=', r'\=').replace('|', r'\|').replace('{', r'\{').replace('}', r'\}').replace('.', r'\.').replace('!', r'\!')
+                # Échapper Markdown via utilitaire
+                safe_filename = self.escape_markdown(filename)
+                safe_title = self.escape_markdown(product_data['title'])
+                safe_category = self.escape_markdown(product_data['category'])
 
                 success_text = f"""🎉 **FORMATION CRÉÉE AVEC SUCCÈS \\!**
 
@@ -3369,7 +3538,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
                     logger.error(f"Champ manquant dans product_data: {field}")
                     return False
 
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_db_connection()
             cursor = conn.cursor()
 
             cursor.execute(
@@ -3450,6 +3619,115 @@ R: Utilisez l'email de récupération."""
     async def show_my_tickets(self, query, lang):
         """Affiche les tickets de support de l'utilisateur"""
         await query.edit_message_text("Affiche mes tickets de support (en développement)")
+
+    # ==== Stubs ajoutés pour les routes câblées ====
+    async def download_product(self, query, context, product_id: str, lang: str):
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT main_file_path FROM products WHERE product_id = ?', (product_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                await query.edit_message_text("❌ Fichier introuvable.")
+                return
+            file_path = row[0]
+            conn.close()
+
+            if not os.path.exists(file_path):
+                await query.edit_message_text("❌ Fichier manquant sur le serveur.")
+                return
+
+            # Incrémenter le compteur de téléchargements
+            try:
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('UPDATE orders SET download_count = download_count + 1 WHERE product_id = ? AND buyer_user_id = ?', (product_id, query.from_user.id))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.warning(f"Maj compteur download échouée: {e}")
+
+            await query.message.reply_document(document=open(file_path, 'rb'))
+        except Exception as e:
+            logger.error(f"Erreur download: {e}")
+            await query.edit_message_text("❌ Erreur lors du téléchargement.")
+
+    async def show_my_library(self, query, lang: str):
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT o.product_id, p.title, p.price_eur
+                FROM orders o
+                JOIN products p ON p.product_id = o.product_id
+                WHERE o.buyer_user_id = ? AND o.payment_status = 'completed'
+                ORDER BY o.completed_at DESC
+            ''', (query.from_user.id,))
+            rows = cursor.fetchall()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Erreur bibliothèque: {e}")
+            await query.edit_message_text("❌ Erreur lors de la récupération de votre bibliothèque.")
+            return
+
+        if not rows:
+            await query.edit_message_text("📚 Votre bibliothèque est vide.")
+            return
+
+        text = "📚 Vos achats:\n\n"
+        keyboard = []
+        for product_id, title, price in rows[:10]:
+            text += f"• {title} — {price}€\n"
+            keyboard.append([InlineKeyboardButton("📥 Télécharger", callback_data=f'download_product_{product_id}')])
+
+        keyboard.append([InlineKeyboardButton("🏠 Accueil", callback_data='back_main')])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    async def payout_history(self, query):
+        await query.edit_message_text("Historique des payouts (à implémenter)")
+
+    async def copy_address(self, query):
+        await query.answer("Adresse copiée", show_alert=False)
+
+    async def seller_analytics(self, query, lang):
+        await query.edit_message_text("Analytics vendeur (à implémenter)")
+
+    async def seller_settings(self, query, lang):
+        await query.edit_message_text("Paramètres vendeur (à implémenter)")
+
+    async def seller_info(self, query, lang):
+        await query.edit_message_text("Conditions & avantages vendeur (à implémenter)")
+
+    async def admin_mark_all_payouts_paid(self, query):
+        if query.from_user.id != ADMIN_USER_ID:
+            return
+        await query.edit_message_text("Marquage payouts comme payés (à implémenter)")
+
+    async def admin_export_payouts(self, query):
+        if query.from_user.id != ADMIN_USER_ID:
+            return
+        await query.edit_message_text("Export payouts (à implémenter)")
+
+    async def admin_search_user(self, query):
+        if query.from_user.id != ADMIN_USER_ID:
+            return
+        await query.edit_message_text("Recherche utilisateur (à implémenter)")
+
+    async def admin_export_users(self, query):
+        if query.from_user.id != ADMIN_USER_ID:
+            return
+        await query.edit_message_text("Export utilisateurs (à implémenter)")
+
+    async def admin_search_product(self, query):
+        if query.from_user.id != ADMIN_USER_ID:
+            return
+        await query.edit_message_text("Recherche produit (à implémenter)")
+
+    async def admin_suspend_product(self, query):
+        if query.from_user.id != ADMIN_USER_ID:
+            return
+        await query.edit_message_text("Suspendre produit (à implémenter)")
 
 def main():
     """Fonction principale"""
