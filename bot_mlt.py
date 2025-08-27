@@ -28,6 +28,8 @@ from telegram.error import TelegramError
 from dotenv import load_dotenv
 import re
 import base58 # Import manquant
+from utils import validate_email as util_validate_email, validate_solana_address as util_validate_solana_address, get_solana_balance_display as util_get_solana_balance_display, escape_markdown as md_escape, sanitize_filename as fn_sanitize
+from db import get_db_connection as shared_db_get_connection
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -139,38 +141,9 @@ class MarketplaceBot:
         state['seller_logged_in'] = logged_in
 
     def get_db_connection(self) -> sqlite3.Connection:
-        """Retourne une connexion SQLite configurée (WAL, FK, timeouts)."""
-        conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
-        try:
-            conn.execute('PRAGMA journal_mode=WAL;')
-            conn.execute('PRAGMA synchronous=NORMAL;')
-            conn.execute('PRAGMA foreign_keys=ON;')
-            conn.execute('PRAGMA busy_timeout=5000;')
-        except Exception as e:
-            logger.warning(f"PRAGMA init error: {e}")
-        return conn
+        return shared_db_get_connection(self.db_path)
 
-    def escape_markdown(self, text: str) -> str:
-        """Échappe les caractères Markdown v2 pour Telegram."""
-        if text is None:
-            return ''
-        replacements = {
-            '_': r'\_', '*': r'\*', '[': r'\[', ']': r'\]', '(': r'\(', ')': r'\)',
-            '~': r'\~', '`': r'\`', '>': r'\>', '#': r'\#', '+': r'\+', '-': r'\-',
-            '=': r'\=', '|': r'\|', '{': r'\{', '}': r'\}', '.': r'\.', '!': r'\!'
-        }
-        escaped = []
-        for ch in text:
-            escaped.append(replacements.get(ch, ch))
-        return ''.join(escaped)
-
-    def sanitize_filename(self, name: str) -> str:
-        """Nettoie un nom de fichier pour éviter les caractères dangereux."""
-        name = os.path.basename(name or '')
-        allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
-        sanitized = ''.join(ch if ch in allowed else '_' for ch in name)
-        # Éviter les noms vides
-        return sanitized or f"file_{int(time.time())}"
+    # escape_markdown et sanitize_filename déplacés dans utils
 
     def init_database(self):
         """Base de données simplifiée"""
@@ -2241,7 +2214,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         solana_address = user_data['seller_solana_address']
 
         # Récupérer solde (optionnel)
-        balance = get_solana_balance_display(solana_address)
+        balance = util_get_solana_balance_display(solana_address)
 
         # Calculer payouts en attente
         conn = self.get_db_connection()
@@ -3625,7 +3598,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
             # Générer nom de fichier unique
             product_id = self.generate_product_id()
-            filename = f"{product_id}_{self.sanitize_filename(document.file_name)}"
+            filename = f"{product_id}_{fn_sanitize(document.file_name)}"
             filepath = os.path.join(uploads_dir, filename)
 
             # Télécharger avec gestion d'erreur spécifique
