@@ -118,27 +118,25 @@ class DatabaseManager:
         self.lock = asyncio.Lock()
     
     @contextmanager
-    async def get_connection(self):
+    def get_connection(self):
         """Obtient une connexion du pool"""
         conn = None
         try:
-            async with self.lock:
-                if self.connections:
-                    conn = self.connections.pop()
-                else:
-                    conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
-                    conn.execute('PRAGMA journal_mode=WAL;')
-                    conn.execute('PRAGMA synchronous=NORMAL;')
-                    conn.execute('PRAGMA foreign_keys=ON;')
-                    conn.execute('PRAGMA busy_timeout=5000;')
+            if self.connections:
+                conn = self.connections.pop()
+            else:
+                conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
+                conn.execute('PRAGMA journal_mode=WAL;')
+                conn.execute('PRAGMA synchronous=NORMAL;')
+                conn.execute('PRAGMA foreign_keys=ON;')
+                conn.execute('PRAGMA busy_timeout=5000;')
             yield conn
         finally:
             if conn:
-                async with self.lock:
-                    if len(self.connections) < self.max_connections:
-                        self.connections.append(conn)
-                    else:
-                        conn.close()
+                if len(self.connections) < self.max_connections:
+                    self.connections.append(conn)
+                else:
+                    conn.close()
 
 class SmartCache:
     """Cache intelligent avec TTL et gestion mémoire"""
@@ -385,7 +383,7 @@ class MarketplaceBot:
                 logger.error(f"Erreur nettoyage cache: {e}")
                 await asyncio.sleep(300)  # Réessayer dans 5 minutes en cas d'erreur
 
-    async def get_db_connection(self):
+    def get_db_connection(self):
         """Obtient une connexion de la base de données via le pool"""
         return self.db_manager.get_connection()
 
@@ -407,7 +405,7 @@ class MarketplaceBot:
 
     async def init_database(self):
         """Base de données simplifiée avec optimisations"""
-        async with self.get_db_connection() as conn:
+        with self.get_db_connection() as conn:
             cursor = conn.cursor()
 
             # Table utilisateurs SIMPLIFIÉE
@@ -701,7 +699,7 @@ class MarketplaceBot:
             return ''.join(random.choice(alphabet) for _ in range(length))
 
         # Double vérification d'unicité
-        async with self.get_db_connection() as conn:
+        with self.get_db_connection() as conn:
             cursor = conn.cursor()
 
             max_attempts = 100
@@ -728,7 +726,7 @@ class MarketplaceBot:
                  language_code: str = 'fr') -> bool:
         """Ajoute un utilisateur - Version asynchrone"""
         try:
-            async with self.get_db_connection() as conn:
+            with self.get_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     '''
@@ -745,7 +743,7 @@ class MarketplaceBot:
     async def get_user(self, user_id: int) -> Optional[Dict]:
         """Récupère un utilisateur - Version asynchrone"""
         try:
-            async with self.get_db_connection() as conn:
+            with self.get_db_connection() as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id, ))
@@ -770,51 +768,45 @@ class MarketplaceBot:
             # Hash du code (ne jamais stocker en clair)
             code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
 
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
+            with self.get_db_connection() as conn:
+                cursor = conn.cursor()
 
-            # Vérifier que l'adresse n'est pas déjà utilisée
-            try:
-                cursor.execute(
-                    'SELECT COUNT(*) FROM users WHERE seller_solana_address = ?',
-                    (solana_address,)
-                )
-                if cursor.fetchone()[0] > 0:
-                    conn.close()
-                    return {'success': False, 'error': 'Adresse déjà utilisée'}
-            except sqlite3.Error as e:
-                logger.error(f"Erreur vérification adresse: {e}")
-                conn.close()
-                return {'success': False, 'error': 'Erreur interne'}
+                # Vérifier que l'adresse n'est pas déjà utilisée
+                try:
+                    cursor.execute(
+                        'SELECT COUNT(*) FROM users WHERE seller_solana_address = ?',
+                        (solana_address,)
+                    )
+                    if cursor.fetchone()[0] > 0:
+                        return {'success': False, 'error': 'Adresse déjà utilisée'}
+                except sqlite3.Error as e:
+                    logger.error(f"Erreur vérification adresse: {e}")
+                    return {'success': False, 'error': 'Erreur interne'}
 
-            # Créer le compte vendeur
-            try:
-                cursor.execute('''
-                    UPDATE users 
-                    SET is_seller = TRUE,
-                        seller_name = ?,
-                        seller_bio = ?,
-                        seller_solana_address = ?,
-                        recovery_email = ?,
-                        recovery_code_hash = ?
-                    WHERE user_id = ?
-                ''', (seller_name, seller_bio, solana_address, recovery_email, code_hash, user_id))
+                # Créer le compte vendeur
+                try:
+                    cursor.execute('''
+                        UPDATE users 
+                        SET is_seller = TRUE,
+                            seller_name = ?,
+                            seller_bio = ?,
+                            seller_solana_address = ?,
+                            recovery_email = ?,
+                            recovery_code_hash = ?
+                        WHERE user_id = ?
+                    ''', (seller_name, seller_bio, solana_address, recovery_email, code_hash, user_id))
 
-                if cursor.rowcount > 0:
-                    conn.commit()
-                    conn.close()
-
-                    return {
-                        'success': True,
-                        'recovery_code': recovery_code
-                    }
-                else:
-                    conn.close()
-                    return {'success': False, 'error': 'Échec mise à jour'}
-            except sqlite3.Error as e:
-                logger.error(f"Erreur création vendeur: {e}")
-                conn.close()
-                return {'success': False, 'error': 'Erreur interne'}
+                    if cursor.rowcount > 0:
+                        conn.commit()
+                        return {
+                            'success': True,
+                            'recovery_code': recovery_code
+                        }
+                    else:
+                        return {'success': False, 'error': 'Échec mise à jour'}
+                except sqlite3.Error as e:
+                    logger.error(f"Erreur création vendeur: {e}")
+                    return {'success': False, 'error': 'Erreur interne'}
 
         except Exception as e:
             logger.error(f"Erreur création vendeur: {e}")
@@ -1415,7 +1407,7 @@ Choisissez votre domaine d'intérêt :"""
         limit = 10
         offset = (page - 1) * limit
         
-        async with self.get_db_connection() as conn:
+        with self.get_db_connection() as conn:
             cursor = conn.cursor()
 
             # Exécuter la requête appropriée avec pagination
@@ -2037,7 +2029,7 @@ Choisissez un code pour continuer votre achat :
                 finally:
                     conn.close()
 
-                                success_text = f"""🎉 **FÉLICITATIONS !**
+                success_text = f"""🎉 **FÉLICITATIONS !**
 
 ✅ **Paiement confirmé** - Commande : {order_id}
 {"✅ Paiement vendeur créé automatiquement" if payout_created else "⚠️ Paiement vendeur en attente"}
@@ -2369,7 +2361,7 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
 
         # Calculer payouts en attente
         try:
-            async with self.get_db_connection() as conn:
+            with self.get_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT COALESCE(SUM(total_amount_sol), 0) 
@@ -2408,7 +2400,7 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
     async def marketplace_stats(self, query, lang):
         """Statistiques globales de la marketplace"""
         try:
-            async with self.get_db_connection() as conn:
+            with self.get_db_connection() as conn:
                 cursor = conn.cursor()
 
                 # Stats générales
@@ -2910,7 +2902,7 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
         admin_id = update.effective_user.id
         self.memory_cache.pop(admin_id, None)
         try:
-            async with self.get_db_connection() as conn:
+            with self.get_db_connection() as conn:
                 cursor = conn.cursor()
                 # Essayer par user_id
                 if message_text.isdigit():
@@ -2931,7 +2923,7 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
         admin_id = update.effective_user.id
         self.memory_cache.pop(admin_id, None)
         try:
-            async with self.get_db_connection() as conn:
+            with self.get_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('SELECT product_id, title, price_eur, status FROM products WHERE product_id = ?', (message_text.strip(),))
                 row = cursor.fetchone()
@@ -2947,7 +2939,7 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
         admin_id = update.effective_user.id
         self.memory_cache.pop(admin_id, None)
         try:
-            async with self.get_db_connection() as conn:
+            with self.get_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("UPDATE products SET status='inactive' WHERE product_id = ?", (message_text.strip(),))
                 conn.commit()
@@ -2997,7 +2989,7 @@ Votre adresse Solana sera configurée lors de l'inscription.""",
             return
 
         try:
-            async with self.get_db_connection() as conn:
+            with self.get_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('UPDATE users SET language_code = ? WHERE user_id = ?', (lang, user_id))
                 conn.commit()
@@ -4226,7 +4218,7 @@ Choisissez ce que vous voulez modifier :"""
 
     async def delete_seller_confirm(self, query):
         try:
-            async with self.get_db_connection() as conn:
+            with self.get_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     UPDATE users
