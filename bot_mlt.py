@@ -3069,6 +3069,9 @@ Commencez dès maintenant à monétiser votre expertise !"""
             conn.commit()
             conn.close()
 
+            # Marquer l'utilisateur comme connecté pour éviter toute boucle
+            self.set_seller_logged_in(user_id, True)
+
             self.memory_cache.pop(user_id, None)
             await update.message.reply_text(
                 "✅ Vérification réussie. Accédez à votre dashboard.",
