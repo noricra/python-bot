@@ -2572,6 +2572,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
             del self.memory_cache[user_id]
 
             if result['success']:
+                # Marquer l'utilisateur comme connecté (évite la boucle d'accès)
+                self.set_seller_logged_in(user_id, True)
                 await update.message.reply_text(f"""🎉 **COMPTE VENDEUR CRÉÉ !**
 
     ✅ **Nom :** {user_cache['seller_name']}
