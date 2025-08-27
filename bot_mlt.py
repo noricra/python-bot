@@ -6,6 +6,7 @@ Version 2.0 - Marketplace décentralisée avec wallets
 """
 
 import os
+import sys
 import logging
 import sqlite3
 import requests
@@ -28,6 +29,10 @@ from telegram.error import TelegramError
 from dotenv import load_dotenv
 import re
 import base58 # Import manquant
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if CURRENT_DIR not in sys.path:
+    sys.path.insert(0, CURRENT_DIR)
+
 from utils import validate_email as util_validate_email, validate_solana_address as util_validate_solana_address, get_solana_balance_display as util_get_solana_balance_display, escape_markdown as md_escape, sanitize_filename as fn_sanitize
 from db import get_db_connection as shared_db_get_connection
 
