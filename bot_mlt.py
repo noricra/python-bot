@@ -746,17 +746,30 @@ class MarketplaceBot:
     def get_exchange_rate(self) -> float:
         """Récupère le taux EUR/USD"""
         try:
+            cache = self.memory_cache.setdefault('_fx_cache', {})
+            now = time.time()
+            hit = cache.get('eur_usd')
+            if hit and (now - hit['ts'] < 3600):
+                return hit['value']
             response = requests.get(
                 "https://api.exchangerate-api.com/v4/latest/EUR", timeout=10)
             if response.status_code == 200:
-                return response.json()['rates']['USD']
+                val = response.json()['rates']['USD']
+                cache['eur_usd'] = {'value': val, 'ts': now}
+                return val
             return 1.10
-        except:
-            return 1.10
+        except Exception:
+            return self.memory_cache.get('_fx_cache', {}).get('eur_usd', {}).get('value', 1.10)
 
     def get_available_currencies(self) -> List[str]:
         """Récupère les cryptos disponibles"""
         try:
+            cache = self.memory_cache.setdefault('_currencies_cache', {})
+            now = time.time()
+            hit = cache.get('list')
+            if hit and (now - hit['ts'] < 3600):
+                return hit['value']
+
             if not NOWPAYMENTS_API_KEY:
                 return ['btc', 'eth', 'usdt', 'usdc']
 
@@ -769,10 +782,12 @@ class MarketplaceBot:
                 main_cryptos = [
                     'btc', 'eth', 'usdt', 'usdc', 'bnb', 'sol', 'ltc', 'xrp'
                 ]
-                return [c for c in currencies if c in main_cryptos]
+                val = [c for c in currencies if c in main_cryptos]
+                cache['list'] = {'value': val, 'ts': now}
+                return val
             return ['btc', 'eth', 'usdt', 'usdc']
-        except:
-            return ['btc', 'eth', 'usdt', 'usdc']
+        except Exception:
+            return self.memory_cache.get('_currencies_cache', {}).get('list', {}).get('value', ['btc', 'eth', 'usdt', 'usdc'])
 
     def create_seller_payout(self, seller_user_id: int, order_ids: list, 
                         total_amount_sol: float) -> Optional[int]:
@@ -958,8 +973,7 @@ Choisissez une option pour commencer :"""
                     )
 
             # Récupération compte
-            elif query.data == 'account_recovery':
-                await self.account_recovery_menu(query, lang)
+            # (ancienne entrée de récupération retirée)
             elif query.data == 'recovery_by_email':
                 await self.recovery_by_email_prompt(query, lang)
 
@@ -2936,12 +2950,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
             [InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]
         ]
 
-        # Ajouter bouton récupération si pas vendeur
-        if not is_seller:
-            keyboard.append([
-                InlineKeyboardButton("🔐 Récupérer compte vendeur", callback_data='account_recovery')
-            ])
-        else:
+        # Accès rapide espace vendeur si déjà vendeur
+        if is_seller:
             keyboard.append([
                 InlineKeyboardButton("🏪 Mon espace vendeur", callback_data='seller_dashboard')
             ])
@@ -3847,6 +3857,16 @@ R: Utilisez l'email de récupération."""
         try:
             conn = self.get_db_connection()
             cursor = conn.cursor()
+            # Vérifier que l'utilisateur a acheté ce produit
+            cursor.execute('''
+                SELECT COUNT(*) FROM orders
+                WHERE buyer_user_id = ? AND product_id = ? AND payment_status = 'completed'
+            ''', (query.from_user.id, product_id))
+            ok = cursor.fetchone()[0] > 0
+            if not ok:
+                conn.close()
+                await query.edit_message_text("❌ Accès refusé. Achetez d'abord ce produit.")
+                return
             cursor.execute('SELECT main_file_path FROM products WHERE product_id = ?', (product_id,))
             row = cursor.fetchone()
             if not row:
