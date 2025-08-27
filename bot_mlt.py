@@ -440,12 +440,14 @@ class MarketplaceBot:
 
     def generate_product_id(self) -> str:
         """Génère un ID produit vraiment unique"""
-        import time
         import secrets
 
-        # Timestamp + random sécurisé
-        timestamp = int(time.time())
-        random_part = secrets.token_hex(4).upper()
+        # Format aligné avec la recherche: TBF-YYMM-XXXXXX
+        yymm = datetime.utcnow().strftime('%y%m')
+
+        def random_code(length: int = 6) -> str:
+            alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'  # éviter confusions O/0/I/1
+            return ''.join(random.choice(alphabet) for _ in range(length))
 
         # Double vérification d'unicité
         conn = self.get_db_connection()
@@ -453,7 +455,7 @@ class MarketplaceBot:
 
         max_attempts = 100
         for attempt in range(max_attempts):
-            product_id = f"TBF-{timestamp}-{random_part}"
+            product_id = f"TBF-{yymm}-{random_code()}"
 
             try:
                 cursor.execute('SELECT COUNT(*) FROM products WHERE product_id = ?', (product_id,))
@@ -466,8 +468,7 @@ class MarketplaceBot:
                 raise e
 
             # Si collision, générer nouveau random
-            random_part = secrets.token_hex(4).upper()
-            timestamp += 1
+            yymm = datetime.utcnow().strftime('%y%m')
 
         conn.close()
         raise Exception("Impossible de générer un ID unique après 100 tentatives")
@@ -1021,6 +1022,12 @@ Choisissez une option pour commencer :"""
                 await self.seller_analytics(query, lang)
             elif query.data == 'seller_settings':
                 await self.seller_settings(query, lang)
+            elif query.data == 'edit_seller_name':
+                self.memory_cache[user_id] = {'editing_settings': True, 'step': 'edit_name'}
+                await query.edit_message_text("Entrez le nouveau nom vendeur:")
+            elif query.data == 'edit_seller_bio':
+                self.memory_cache[user_id] = {'editing_settings': True, 'step': 'edit_bio'}
+                await query.edit_message_text("Entrez la nouvelle biographie:")
             elif query.data == 'seller_info':
                 await self.seller_info(query, lang)
 
@@ -1967,25 +1974,18 @@ Saisissez le nom qui apparaîtra sur vos formations :""",
 
     async def seller_login_menu(self, query, lang):
         """Menu de connexion vendeur"""
-        self.memory_cache[query.from_user.id] = {
-            'seller_login': True,
-            'lang': lang
-        }
-
         await query.edit_message_text(
             """🔐 **CONNEXION VENDEUR**
 
-Saisissez votre phrase de récupération BIP-39 (12 mots) pour accéder à votre compte vendeur.
+Aucune action requise: votre identité Telegram est utilisée.
 
-🔑 **Format attendu :** 
-`word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12`
+Si votre compte vendeur est déjà activé, vous accéderez directement à votre dashboard.
 
-⚠️ **Sécurité :** Votre phrase ne sera jamais stockée en clair.
-
-✍️ **Tapez votre phrase de récupération :**""",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🆘 Phrase perdue ?",
-                                     callback_data='seed_recovery'),
+Sinon, créez votre compte vendeur en quelques étapes.""",
+            reply_markup=InlineKeyboardMarkup([[ 
+                InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard'),
+                InlineKeyboardButton("🚀 Créer un compte", callback_data='create_seller')
+            ], [
                 InlineKeyboardButton("🔙 Retour", callback_data='back_main')
             ]]),
             parse_mode='Markdown')
@@ -2351,6 +2351,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
         elif user_state.get('waiting_for_referral'):
             await self.process_referral_input(update, message_text)
 
+        # === CRÉATION TICKET SUPPORT ===
+        elif user_state.get('creating_ticket'):
+            await self.process_support_ticket(update, message_text)
+
         # === RÉCUPÉRATION PAR EMAIL ===
         elif user_state.get('waiting_for_recovery_email'):
             await self.process_recovery_email(update, message_text)
@@ -2358,6 +2362,18 @@ Commencez dès maintenant à monétiser votre expertise !"""
         # === RÉCUPÉRATION CODE ===
         elif user_state.get('waiting_for_recovery_code'):
             await self.process_recovery_code(update, message_text)
+
+        # === PARAMÈTRES VENDEUR ===
+        elif user_state.get('editing_settings'):
+            await self.process_seller_settings(update, message_text)
+
+        # === ADMIN RECHERCHES/SUSPENSIONS ===
+        elif user_state.get('admin_search_user'):
+            await self.process_admin_search_user(update, message_text)
+        elif user_state.get('admin_search_product'):
+            await self.process_admin_search_product(update, message_text)
+        elif user_state.get('admin_suspend_product'):
+            await self.process_admin_suspend_product(update, message_text)
 
         # === DÉFAUT ===
         else:
@@ -2378,7 +2394,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
         # Nettoyer et valider l'ID
         product_id = message_text.strip().upper()
 
-        if not re.match(r'^TBF-\d{4}-[A-Z0-9]{6}$', product_id):
+        # Format attendu: TBF-YYMM-XXXXXX (lettres sans I/O et chiffres sans 0/1)
+        if not re.match(r'^TBF-\d{4}-[A-HJ-NP-Z2-9]{6}$', product_id):
             await update.message.reply_text(
                 f"❌ **Format ID invalide :** `{product_id}`\n\n💡 **Format attendu :** `TBF-2501-ABC123`",
                 reply_markup=InlineKeyboardMarkup([[
@@ -2562,40 +2579,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
     async def process_seller_login(self, update, message_text):
         """Traite la connexion vendeur"""
         user_id = update.effective_user.id
-
-        # Valider format seed phrase
-        seed_words = message_text.strip().split()
-        if len(seed_words) != 12:
-            await update.message.reply_text(
-                "❌ **Format invalide**\n\nLa seed phrase doit contenir exactement 12 mots séparés par des espaces.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔄 Réessayer",
-                                         callback_data='seller_login'),
-                    InlineKeyboardButton("🔙 Retour", callback_data='back_main')
-                ]]))
-            return
-
-        seed_phrase = ' '.join(seed_words).lower()
-
-        # Valider seed phrase BIP-39
-        #if not self.wallet_manager.validate_seed_phrase(seed_phrase):
-        #    await update.message.reply_text(
-        #        "❌ **Seed phrase invalide**\n\nVérifiez l'orthographe des mots.",
-        #        reply_markup=InlineKeyboardMarkup([[
-        #            InlineKeyboardButton("🔄 Réessayer",
-        #                                 callback_data='seller_login'),
-        #            InlineKeyboardButton("🔙 Retour", callback_data='back_main')
-        #        ]]))
-        #    return
-
-        # Authentifier vendeur
-        if self.authenticate_seller(user_id, seed_phrase):
-            # Nettoyer cache
-            del self.memory_cache[user_id]
-
+        # Auth: on vérifie simplement que l'utilisateur est vendeur
+        if self.authenticate_seller(user_id, ""):
             await update.message.reply_text(
                 "✅ **Connexion réussie !**\n\nBienvenue dans votre espace vendeur.",
-                reply_markup=InlineKeyboardMarkup([[
+                reply_markup=InlineKeyboardMarkup([[ 
                     InlineKeyboardButton("🏪 Mon dashboard",
                                          callback_data='seller_dashboard'),
                     InlineKeyboardButton("💰 Mon wallet",
@@ -2603,12 +2591,12 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 ]]))
         else:
             await update.message.reply_text(
-                "❌ **Connexion échouée**\n\nSeed phrase non reconnue ou compte vendeur inexistant.",
-                reply_markup=InlineKeyboardMarkup([[
+                "❌ **Vous n'êtes pas encore vendeur**\n\nCréez votre compte en quelques étapes.",
+                reply_markup=InlineKeyboardMarkup([[ 
                     InlineKeyboardButton("🚀 Créer un compte",
                                          callback_data='create_seller'),
-                    InlineKeyboardButton("🔄 Réessayer",
-                                         callback_data='seller_login')
+                    InlineKeyboardButton("🔙 Retour",
+                                         callback_data='back_main')
                 ]]))
 
     async def process_product_addition(self, update, message_text):
@@ -2690,6 +2678,121 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 await update.message.reply_text(
                     "❌ **Prix invalide**\n\nSaisissez un nombre entre 1 et 5000.\n*Exemples : 29.99 ou 150*",
                     parse_mode='Markdown')
+
+    async def process_support_ticket(self, update: Update, message_text: str):
+        user_id = update.effective_user.id
+        state = self.memory_cache[user_id]
+        step = state.get('step')
+
+        if step == 'subject':
+            state['subject'] = message_text[:100]
+            state['step'] = 'message'
+            await update.message.reply_text("Entrez votre message détaillé:")
+            return
+
+        if step == 'message':
+            subject = state.get('subject', 'Sans sujet')
+            content = message_text[:2000]
+
+            ticket_id = f"TKT-{datetime.utcnow().strftime('%y%m%d')}-{random.randint(1000,9999)}"
+            try:
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO support_tickets (user_id, ticket_id, subject, message)
+                    VALUES (?, ?, ?, ?)
+                ''', (user_id, ticket_id, subject, content))
+                conn.commit()
+                conn.close()
+                self.memory_cache.pop(user_id, None)
+                await update.message.reply_text(
+                    f"🎫 Ticket créé: {ticket_id}\nNotre équipe vous répondra bientôt.")
+            except Exception as e:
+                logger.error(f"Erreur création ticket: {e}")
+                await update.message.reply_text("❌ Erreur lors de la création du ticket.")
+
+    async def process_seller_settings(self, update: Update, message_text: str):
+        user_id = update.effective_user.id
+        state = self.memory_cache.get(user_id, {})
+        step = state.get('step')
+        if step == 'edit_name':
+            new_name = message_text.strip()[:50]
+            try:
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET seller_name = ? WHERE user_id = ?', (new_name, user_id))
+                conn.commit()
+                conn.close()
+                self.memory_cache.pop(user_id, None)
+                await update.message.reply_text("✅ Nom mis à jour.")
+            except Exception as e:
+                logger.error(f"Erreur maj nom vendeur: {e}")
+                await update.message.reply_text("❌ Erreur mise à jour nom.")
+        elif step == 'edit_bio':
+            new_bio = message_text.strip()[:500]
+            try:
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET seller_bio = ? WHERE user_id = ?', (new_bio, user_id))
+                conn.commit()
+                conn.close()
+                self.memory_cache.pop(user_id, None)
+                await update.message.reply_text("✅ Biographie mise à jour.")
+            except Exception as e:
+                logger.error(f"Erreur maj bio vendeur: {e}")
+                await update.message.reply_text("❌ Erreur mise à jour bio.")
+
+    async def process_admin_search_user(self, update: Update, message_text: str):
+        admin_id = update.effective_user.id
+        self.memory_cache.pop(admin_id, None)
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            # Essayer par user_id
+            if message_text.isdigit():
+                cursor.execute('SELECT user_id, username, first_name, is_seller, is_partner, partner_code FROM users WHERE user_id = ?', (int(message_text),))
+            else:
+                cursor.execute('SELECT user_id, username, first_name, is_seller, is_partner, partner_code FROM users WHERE partner_code = ?', (message_text.strip(),))
+            row = cursor.fetchone()
+            conn.close()
+            if not row:
+                await update.message.reply_text("❌ Utilisateur non trouvé.")
+                return
+            await update.message.reply_text(f"ID: {row[0]}\nUser: {row[1]}\nNom: {row[2]}\nVendeur: {bool(row[3])}\nPartenaire: {bool(row[4])}\nCode: {row[5]}")
+        except Exception as e:
+            logger.error(f"Erreur admin search user: {e}")
+            await update.message.reply_text("❌ Erreur recherche utilisateur.")
+
+    async def process_admin_search_product(self, update: Update, message_text: str):
+        admin_id = update.effective_user.id
+        self.memory_cache.pop(admin_id, None)
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT product_id, title, price_eur, status FROM products WHERE product_id = ?', (message_text.strip(),))
+            row = cursor.fetchone()
+            conn.close()
+            if not row:
+                await update.message.reply_text("❌ Produit non trouvé.")
+                return
+            await update.message.reply_text(f"{row[0]} — {row[1]} — {row[2]}€ — {row[3]}")
+        except Exception as e:
+            logger.error(f"Erreur admin search product: {e}")
+            await update.message.reply_text("❌ Erreur recherche produit.")
+
+    async def process_admin_suspend_product(self, update: Update, message_text: str):
+        admin_id = update.effective_user.id
+        self.memory_cache.pop(admin_id, None)
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE products SET status='inactive' WHERE product_id = ?", (message_text.strip(),))
+            conn.commit()
+            conn.close()
+            await update.message.reply_text("✅ Produit suspendu si trouvé.")
+        except Exception as e:
+            logger.error(f"Erreur suspend product: {e}")
+            await update.message.reply_text("❌ Erreur suspension produit.")
 
     async def process_referral_input(self, update, message_text):
         """Traite la saisie du code de parrainage"""
@@ -3614,11 +3717,43 @@ R: Utilisez l'email de récupération."""
 
     async def create_ticket(self, query, lang):
         """Crée un ticket de support"""
-        await query.edit_message_text("Créez un ticket de support (en développement)")
+        self.memory_cache[query.from_user.id] = {
+            'creating_ticket': True,
+            'step': 'subject',
+            'lang': lang
+        }
+        await query.edit_message_text(
+            "🆘 Nouveau ticket\n\nEntrez un sujet pour votre demande:",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='support_menu')]])
+        )
 
     async def show_my_tickets(self, query, lang):
         """Affiche les tickets de support de l'utilisateur"""
-        await query.edit_message_text("Affiche mes tickets de support (en développement)")
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT ticket_id, subject, status, created_at
+                FROM support_tickets
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT 10
+            ''', (query.from_user.id,))
+            rows = cursor.fetchall()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Erreur tickets: {e}")
+            await query.edit_message_text("❌ Erreur récupération tickets.")
+            return
+
+        if not rows:
+            await query.edit_message_text("🎫 Aucun ticket.")
+            return
+
+        text = "🎫 Vos tickets:\n\n"
+        for t in rows:
+            text += f"• {t[0]} — {t[1]} — {t[2]}\n"
+        await query.edit_message_text(text)
 
     # ==== Stubs ajoutés pour les routes câblées ====
     async def download_product(self, query, context, product_id: str, lang: str):
@@ -3685,16 +3820,77 @@ R: Utilisez l'email de récupération."""
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def payout_history(self, query):
-        await query.edit_message_text("Historique des payouts (à implémenter)")
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, total_amount_sol, payout_status, created_at, processed_at
+                FROM seller_payouts
+                WHERE seller_user_id = ?
+                ORDER BY created_at DESC
+                LIMIT 10
+            ''', (query.from_user.id,))
+            rows = cursor.fetchall()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Erreur payouts: {e}")
+            await query.edit_message_text("❌ Erreur récupération payouts.")
+            return
+
+        if not rows:
+            await query.edit_message_text("💸 Aucun payout pour le moment.")
+            return
+
+        text = "💸 Vos payouts:\n\n"
+        for r in rows:
+            text += f"• #{r[0]} — {r[1]:.6f} SOL — {r[2]} — {str(r[3])[:19]}\n"
+        await query.edit_message_text(text)
 
     async def copy_address(self, query):
         await query.answer("Adresse copiée", show_alert=False)
 
     async def seller_analytics(self, query, lang):
-        await query.edit_message_text("Analytics vendeur (à implémenter)")
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT COUNT(*), COALESCE(SUM(seller_revenue), 0)
+                FROM orders
+                WHERE seller_user_id = ? AND payment_status = 'completed'
+            ''', (query.from_user.id,))
+            total = cursor.fetchone()
+            cursor.execute('''
+                SELECT p.title, COALESCE(COUNT(o.id),0) as sales
+                FROM products p
+                LEFT JOIN orders o ON o.product_id = p.product_id AND o.payment_status='completed'
+                WHERE p.seller_user_id = ?
+                GROUP BY p.product_id
+                ORDER BY sales DESC
+                LIMIT 5
+            ''', (query.from_user.id,))
+            top = cursor.fetchall()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Erreur analytics: {e}")
+            await query.edit_message_text("❌ Erreur analytics.")
+            return
+
+        text = f"""📊 Analytics vendeur
+
+Ventes totales: {total[0]}\nRevenus totaux: {total[1]:.2f}€\n
+Top produits:\n"""
+        for t in top:
+            text += f"• {t[0]} — {t[1]} ventes\n"
+        await query.edit_message_text(text)
 
     async def seller_settings(self, query, lang):
-        await query.edit_message_text("Paramètres vendeur (à implémenter)")
+        self.memory_cache[query.from_user.id] = {'editing_settings': True, 'step': 'menu'}
+        keyboard = [
+            [InlineKeyboardButton("✏️ Modifier nom", callback_data='edit_seller_name')],
+            [InlineKeyboardButton("📝 Modifier bio", callback_data='edit_seller_bio')],
+            [InlineKeyboardButton("🔙 Retour", callback_data='seller_dashboard')]
+        ]
+        await query.edit_message_text("Paramètres vendeur:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def seller_info(self, query, lang):
         await query.edit_message_text("Conditions & avantages vendeur (à implémenter)")
@@ -3702,32 +3898,83 @@ R: Utilisez l'email de récupération."""
     async def admin_mark_all_payouts_paid(self, query):
         if query.from_user.id != ADMIN_USER_ID:
             return
-        await query.edit_message_text("Marquage payouts comme payés (à implémenter)")
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE seller_payouts
+                SET payout_status = 'completed', processed_at = CURRENT_TIMESTAMP
+                WHERE payout_status = 'pending'
+            ''')
+            conn.commit()
+            conn.close()
+            await query.edit_message_text("✅ Tous les payouts en attente ont été marqués comme payés.")
+        except Exception as e:
+            logger.error(f"Erreur mark payouts paid: {e}")
+            await query.edit_message_text("❌ Erreur lors du marquage des payouts.")
 
     async def admin_export_payouts(self, query):
         if query.from_user.id != ADMIN_USER_ID:
             return
-        await query.edit_message_text("Export payouts (à implémenter)")
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT p.id, p.seller_user_id, p.total_amount_sol, p.payout_status, p.created_at, p.processed_at,
+                       u.seller_name, u.seller_solana_address
+                FROM seller_payouts p
+                JOIN users u ON u.user_id = p.seller_user_id
+                ORDER BY p.created_at DESC
+            ''')
+            rows = cursor.fetchall()
+            conn.close()
+            csv_lines = ["id,seller_user_id,total_amount_sol,payout_status,created_at,processed_at,seller_name,seller_solana_address"]
+            for r in rows:
+                csv_lines.append(','.join([str(x).replace(',', ' ') for x in r]))
+            data = '\n'.join(csv_lines)
+            await query.message.reply_document(document=bytes(data, 'utf-8'), filename='payouts.csv')
+        except Exception as e:
+            logger.error(f"Erreur export payouts: {e}")
+            await query.edit_message_text("❌ Erreur export payouts.")
 
     async def admin_search_user(self, query):
         if query.from_user.id != ADMIN_USER_ID:
             return
-        await query.edit_message_text("Recherche utilisateur (à implémenter)")
+        self.memory_cache[query.from_user.id] = {'admin_search_user': True}
+        await query.edit_message_text("🔎 Entrez un user_id ou un partner_code à rechercher:")
 
     async def admin_export_users(self, query):
         if query.from_user.id != ADMIN_USER_ID:
             return
-        await query.edit_message_text("Export utilisateurs (à implémenter)")
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT user_id, username, first_name, is_seller, is_partner, partner_code, registration_date
+                FROM users ORDER BY registration_date DESC
+            ''')
+            rows = cursor.fetchall()
+            conn.close()
+            csv_lines = ["user_id,username,first_name,is_seller,is_partner,partner_code,registration_date"]
+            for r in rows:
+                csv_lines.append(','.join([str(x).replace(',', ' ') for x in r]))
+            data = '\n'.join(csv_lines)
+            await query.message.reply_document(document=bytes(data, 'utf-8'), filename='users.csv')
+        except Exception as e:
+            logger.error(f"Erreur export users: {e}")
+            await query.edit_message_text("❌ Erreur export utilisateurs.")
 
     async def admin_search_product(self, query):
         if query.from_user.id != ADMIN_USER_ID:
             return
-        await query.edit_message_text("Recherche produit (à implémenter)")
+        self.memory_cache[query.from_user.id] = {'admin_search_product': True}
+        await query.edit_message_text("🔎 Entrez un product_id exact à rechercher:")
 
     async def admin_suspend_product(self, query):
         if query.from_user.id != ADMIN_USER_ID:
             return
-        await query.edit_message_text("Suspendre produit (à implémenter)")
+        self.memory_cache[query.from_user.id] = {'admin_suspend_product': True}
+        await query.edit_message_text("⛔ Entrez un product_id à suspendre:")
 
 def main():
     """Fonction principale"""
