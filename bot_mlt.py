@@ -3913,9 +3913,12 @@ Top produits:\n"""
         keyboard = [
             [InlineKeyboardButton("✏️ Modifier nom", callback_data='edit_seller_name')],
             [InlineKeyboardButton("📝 Modifier bio", callback_data='edit_seller_bio')],
+            [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
+            [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
             [InlineKeyboardButton("🔙 Retour", callback_data='seller_dashboard')]
         ]
-        await query.edit_message_text("Paramètres vendeur:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text("⚙️ Paramètres du compte vendeur:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def seller_info(self, query, lang):
         await query.edit_message_text("Conditions & avantages vendeur (à implémenter)")
@@ -4009,14 +4012,8 @@ Top produits:\n"""
         is_logged = self.is_seller_logged_in(user_id)
 
         if is_seller and is_logged:
-            keyboard = [
-                [InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')],
-                [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
-                [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
-                [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
-                [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
-            ]
-            await query.edit_message_text("🔑 Compte vendeur", reply_markup=InlineKeyboardMarkup(keyboard))
+            # Rediriger vers Paramètres (UX consolidée)
+            await self.seller_settings(query, lang)
             return
 
         # Non connecté → proposer de se connecter (sans forcer la saisie)
