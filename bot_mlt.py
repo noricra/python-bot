@@ -858,8 +858,10 @@ class MarketplaceBot:
                             context: ContextTypes.DEFAULT_TYPE):
         """Nouveau menu d'accueil marketplace"""
         user = update.effective_user
+        # Préserver l'état de connexion vendeur lors d'un /start
         self.add_user(user.id, user.username, user.first_name,
                       user.language_code or 'fr')
+        # Ne pas nettoyer self.memory_cache ici; éviter déconnexions involontaires
 
         welcome_text = """🏪 **TECHBOT MARKETPLACE**
 *La première marketplace crypto pour formations*
@@ -4035,9 +4037,12 @@ Top produits:\n"""
         keyboard = [
             [InlineKeyboardButton("✏️ Modifier nom", callback_data='edit_seller_name')],
             [InlineKeyboardButton("📝 Modifier bio", callback_data='edit_seller_bio')],
+            [InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')],
+            [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
+            [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
             [InlineKeyboardButton("🔙 Retour", callback_data='seller_dashboard')]
         ]
-        await query.edit_message_text("Paramètres vendeur:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text("Paramètres:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def seller_info(self, query, lang):
         await query.edit_message_text("Conditions & avantages vendeur (à implémenter)")
@@ -4133,12 +4138,10 @@ Top produits:\n"""
         if is_seller and is_logged:
             keyboard = [
                 [InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')],
-                [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
-                [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
-                [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
+                [InlineKeyboardButton("⚙️ Paramètres", callback_data='seller_settings')],
                 [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
             ]
-            await query.edit_message_text("🔑 Compte vendeur", reply_markup=InlineKeyboardMarkup(keyboard))
+            await query.edit_message_text("🔑 Compte vendeur (connecté)", reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
         # Non connecté → proposer de se connecter (sans forcer la saisie)
