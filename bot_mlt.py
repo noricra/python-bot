@@ -861,6 +861,7 @@ class MarketplaceBot:
                             context: ContextTypes.DEFAULT_TYPE):
         """Nouveau menu d'accueil marketplace"""
         user = update.effective_user
+        # Ne pas réinitialiser l'état de connexion à chaque /start
         self.add_user(user.id, user.username, user.first_name,
                       user.language_code or 'fr')
 
@@ -959,6 +960,24 @@ Choisissez une option pour commencer :"""
                 await self.show_my_products(query, lang)
             elif query.data == 'my_wallet':
                 await self.show_wallet(query, lang)
+            elif query.data.startswith('edit_product_'):
+                product_id = query.data[13:]
+                await self.edit_product_menu(query, product_id, lang)
+            elif query.data.startswith('edit_product_field_'):
+                # format: edit_product_field_<product_id>_<field>
+                parts = query.data.split('_')
+                product_id = parts[3]
+                field = parts[4]
+                await self.edit_product_start(query, product_id, field)
+            elif query.data.startswith('toggle_product_status_'):
+                product_id = query.data[23:]
+                await self.toggle_product_status(query, product_id)
+            elif query.data.startswith('delete_product_'):
+                product_id = query.data[15:]
+                await self.delete_product_prompt(query, product_id)
+            elif query.data.startswith('confirm_delete_product_'):
+                product_id = query.data[24:]
+                await self.delete_product_confirm(query, product_id)
             elif query.data == 'seller_logout':
                 await self.seller_logout(query)
             elif query.data == 'delete_seller':
@@ -2112,7 +2131,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
                         callback_data=f'edit_product_{product[0]}')
                 ])
 
-            keyboard.extend([[
+            keyboard.extend([[ 
                 InlineKeyboardButton("➕ Nouveau produit",
                                      callback_data='add_product')
             ],
@@ -2120,6 +2139,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
                                  InlineKeyboardButton(
                                      "🔙 Dashboard",
                                      callback_data='seller_dashboard')
+                             ],
+                             [
+                                 InlineKeyboardButton(
+                                     "🏠 Accueil",
+                                     callback_data='back_main')
                              ]])
 
         await query.edit_message_text(
@@ -2188,7 +2212,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
         keyboard = [
             [InlineKeyboardButton("📊 Historique payouts", callback_data='payout_history')],
             [InlineKeyboardButton("📋 Copier adresse", callback_data='copy_address')],
-            [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')]
+            [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
         ]
 
         await query.edit_message_text(
@@ -2272,6 +2297,101 @@ Commencez dès maintenant à monétiser votre expertise !"""
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown')
 
+    async def edit_product_menu(self, query, product_id: str, lang: str):
+        user = self.get_user(query.from_user.id)
+        if not user or not user['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
+            await query.edit_message_text(
+                "❌ Connectez-vous d'abord (email + code)",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
+            )
+            return
+        keyboard = [
+            [InlineKeyboardButton("✏️ Modifier le titre", callback_data=f'edit_product_field_{product_id}_title')],
+            [InlineKeyboardButton("💰 Modifier le prix", callback_data=f'edit_product_field_{product_id}_price')],
+            [InlineKeyboardButton("⏸️ Activer/Désactiver", callback_data=f'toggle_product_status_{product_id}')],
+            [InlineKeyboardButton("🗑️ Supprimer", callback_data=f'delete_product_{product_id}')],
+            [InlineKeyboardButton("🔙 Retour", callback_data='my_products')]
+        ]
+        await query.edit_message_text(f"⚙️ Gestion du produit `{product_id}`:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    async def edit_product_start(self, query, product_id: str, field: str):
+        user_state = {'editing_product': True, 'product_id': product_id, 'field': field}
+        self.memory_cache[query.from_user.id] = user_state
+        placeholder = "Nouveau titre:" if field == 'title' else "Nouveau prix en € (ex: 49.99):"
+        await query.edit_message_text(placeholder, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler", callback_data=f'edit_product_{product_id}')]]))
+
+    async def process_product_edit(self, update: Update, message_text: str):
+        user_id = update.effective_user.id
+        state = self.memory_cache.get(user_id, {})
+        product_id = state.get('product_id')
+        field = state.get('field')
+        if not product_id or field not in ('title', 'price'):
+            await update.message.reply_text("❌ État d'édition invalide.")
+            return
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            if field == 'title':
+                new_title = message_text.strip()
+                if len(new_title) < 3:
+                    await update.message.reply_text("❌ Titre trop court.")
+                    return
+                cursor.execute('UPDATE products SET title = ? WHERE product_id = ? AND seller_user_id = ?', (new_title, product_id, user_id))
+            else:
+                try:
+                    new_price = float(message_text.replace(',', '.'))
+                except ValueError:
+                    await update.message.reply_text("❌ Prix invalide.")
+                    return
+                cursor.execute('UPDATE products SET price_eur = ? WHERE product_id = ? AND seller_user_id = ?', (new_price, product_id, user_id))
+            conn.commit()
+            conn.close()
+            # Clear editing state but preserve login
+            self.reset_user_state_preserve_login(user_id)
+            await update.message.reply_text("✅ Produit mis à jour.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📦 Mes produits", callback_data='my_products')]]))
+        except Exception as e:
+            logger.error(f"Erreur update produit: {e}")
+            await update.message.reply_text("❌ Erreur mise à jour produit.")
+
+    async def toggle_product_status(self, query, product_id: str):
+        user_id = query.from_user.id
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT status FROM products WHERE product_id = ? AND seller_user_id = ?', (product_id, user_id))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                await query.edit_message_text("❌ Produit introuvable.")
+                return
+            new_status = 'inactive' if row[0] == 'active' else 'active'
+            cursor.execute('UPDATE products SET status = ? WHERE product_id = ? AND seller_user_id = ?', (new_status, product_id, user_id))
+            conn.commit()
+            conn.close()
+            await self.edit_product_menu(query, product_id, 'fr')
+        except Exception as e:
+            logger.error(f"Erreur toggle status: {e}")
+            await query.edit_message_text("❌ Erreur statut produit.")
+
+    async def delete_product_prompt(self, query, product_id: str):
+        keyboard = [
+            [InlineKeyboardButton("✅ Confirmer suppression", callback_data=f'confirm_delete_product_{product_id}')],
+            [InlineKeyboardButton("❌ Annuler", callback_data=f'edit_product_{product_id}')]
+        ]
+        await query.edit_message_text("⚠️ Confirmez la suppression du produit.", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    async def delete_product_confirm(self, query, product_id: str):
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM products WHERE product_id = ? AND seller_user_id = ?', (product_id, query.from_user.id))
+            conn.commit()
+            conn.close()
+            await query.edit_message_text("✅ Produit supprimé.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📦 Mes produits", callback_data='my_products')]]))
+        except Exception as e:
+            logger.error(f"Erreur suppression produit: {e}")
+            await query.edit_message_text("❌ Erreur suppression produit.")
+
     async def handle_text_message(self, update: Update,
                                   context: ContextTypes.DEFAULT_TYPE):
         """Gestionnaire principal des messages texte"""
@@ -2304,6 +2424,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
         # === AJOUT PRODUIT ===
         elif user_state.get('adding_product'):
             await self.process_product_addition(update, message_text)
+
+        # === ÉDITION PRODUIT ===
+        elif user_state.get('editing_product'):
+            await self.process_product_edit(update, message_text)
 
         # === SAISIE CODE PARRAINAGE ===
         elif user_state.get('waiting_for_referral'):
