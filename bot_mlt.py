@@ -952,6 +952,15 @@ Choisissez une option pour commencer :"""
                 await self.add_product_prompt(query, lang)
             elif query.data == 'my_products':
                 await self.show_my_products(query, lang)
+            elif query.data.startswith('edit_product_'):
+                product_id = query.data[len('edit_product_'):]
+                await self.edit_product_menu(query, product_id, lang)
+            elif query.data.startswith('delete_product_confirm_'):
+                product_id = query.data[len('delete_product_confirm_'):]
+                await self.delete_product_confirm(query, product_id)
+            elif query.data.startswith('delete_product_'):
+                product_id = query.data[len('delete_product_'):]
+                await self.delete_product_prompt(query, product_id)
             elif query.data == 'my_wallet':
                 await self.show_wallet(query, lang)
             elif query.data == 'seller_logout':
@@ -1047,6 +1056,18 @@ Choisissez une option pour commencer :"""
                 await self.seller_analytics(query, lang)
             elif query.data == 'seller_settings':
                 await self.seller_settings(query, lang)
+            elif query.data.startswith('edit_product_title_'):
+                pid = query.data[len('edit_product_title_'):]
+                self.memory_cache[user_id] = {'editing_product': {'product_id': pid, 'step': 'edit_title'}}
+                await query.edit_message_text("Entrez le nouveau titre (5-100 caractères):")
+            elif query.data.startswith('edit_product_desc_'):
+                pid = query.data[len('edit_product_desc_'):]
+                self.memory_cache[user_id] = {'editing_product': {'product_id': pid, 'step': 'edit_description'}}
+                await query.edit_message_text("Entrez la nouvelle description:")
+            elif query.data.startswith('edit_product_price_'):
+                pid = query.data[len('edit_product_price_'):]
+                self.memory_cache[user_id] = {'editing_product': {'product_id': pid, 'step': 'edit_price'}}
+                await query.edit_message_text("Entrez le nouveau prix en euros (ex: 49.99):")
             elif query.data == 'edit_seller_name':
                 self.memory_cache[user_id] = {'editing_settings': True, 'step': 'edit_name'}
                 await query.edit_message_text("Entrez le nouveau nom vendeur:")
@@ -1957,6 +1978,9 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
                                              callback_data='seller_settings')
                     ],
                     [
+                        InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')
+                    ],
+                    [
                         InlineKeyboardButton("🏠 Accueil",
                                              callback_data='back_main')
                     ]]
@@ -2058,9 +2082,12 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 products_text += f"💰 {product[2]}€ • 🛒 {product[3]} ventes\n\n"
 
                 keyboard.append([
-                    InlineKeyboardButton(
-                        f"✏️ {product[1][:30]}...",
-                        callback_data=f'edit_product_{product[0]}')
+                    InlineKeyboardButton(f"✏️ Titre", callback_data=f'edit_product_{product[0]}'),
+                    InlineKeyboardButton(f"💬 Description", callback_data=f'edit_product_{product[0]}_desc'),
+                    InlineKeyboardButton(f"💰 Prix", callback_data=f'edit_product_{product[0]}_price')
+                ])
+                keyboard.append([
+                    InlineKeyboardButton("🗑️ Supprimer", callback_data=f'delete_product_{product[0]}')
                 ])
 
             keyboard.extend([[ 
@@ -2075,6 +2102,55 @@ Commencez dès maintenant à monétiser votre expertise !"""
                              [
                                  InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
                              ]])
+
+        await query.edit_message_text(
+            products_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown')
+
+    async def edit_product_menu(self, query, product_id, lang):
+        """Menu d'édition d'un produit (titre/description/prix)."""
+        user_id = query.from_user.id
+        # Vérifier que le produit appartient au vendeur connecté
+        product = self.get_product_by_id(product_id)
+        if not product or product['seller_user_id'] != user_id:
+            await query.edit_message_text("❌ Produit introuvable ou non autorisé.")
+            return
+
+        keyboard = [
+            [InlineKeyboardButton("✏️ Modifier le titre", callback_data=f'edit_product_title_{product_id}')],
+            [InlineKeyboardButton("📝 Modifier la description", callback_data=f'edit_product_desc_{product_id}')],
+            [InlineKeyboardButton("💰 Modifier le prix", callback_data=f'edit_product_price_{product_id}')],
+            [InlineKeyboardButton("🗑️ Supprimer le produit", callback_data=f'delete_product_{product_id}')],
+            [InlineKeyboardButton("🔙 Retour", callback_data='my_products')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+        ]
+        await query.edit_message_text(
+            f"🛠️ Éditer le produit `{product_id}`",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+
+    async def delete_product_prompt(self, query, product_id):
+        keyboard = [
+            [InlineKeyboardButton("✅ Confirmer", callback_data=f'delete_product_confirm_{product_id}')],
+            [InlineKeyboardButton("❌ Annuler", callback_data='my_products')]
+        ]
+        await query.edit_message_text("⚠️ Confirmer la suppression du produit ?", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    async def delete_product_confirm(self, query, product_id):
+        user_id = query.from_user.id
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('DELETE FROM products WHERE product_id = ? AND seller_user_id = ?', (product_id, user_id))
+            conn.commit()
+            conn.close()
+            await query.edit_message_text("🗑️ Produit supprimé.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📦 Mes produits", callback_data='my_products')],[InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]]))
+        except sqlite3.Error as e:
+            logger.error(f"Erreur suppression produit: {e}")
+            conn.close()
+            await query.edit_message_text("❌ Erreur lors de la suppression du produit.")
 
         await query.edit_message_text(
             products_text,
@@ -2260,6 +2336,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
         elif user_state.get('adding_product'):
             await self.process_product_addition(update, message_text)
 
+        # === ÉDITION PRODUIT ===
+        elif user_state.get('editing_product'):
+            await self.process_product_editing(update, message_text)
+
         # === SAISIE CODE PARRAINAGE ===
         elif user_state.get('waiting_for_referral'):
             await self.process_referral_input(update, message_text)
@@ -2304,6 +2384,63 @@ Commencez dès maintenant à monétiser votre expertise !"""
                     InlineKeyboardButton("🏠 Menu principal",
                                          callback_data='back_main')
                 ]]))
+
+    async def process_product_editing(self, update, message_text):
+        """Traite la modification d'un produit (titre, description, prix)."""
+        user_id = update.effective_user.id
+        state = self.memory_cache.get(user_id, {})
+        editing = state.get('editing_product') or {}
+        if not editing:
+            await update.message.reply_text("❌ Aucune édition en cours.")
+            return
+
+        product_id = editing.get('product_id')
+        step = editing.get('step')
+
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        try:
+            if step == 'edit_title':
+                new_title = message_text.strip()[:100]
+                if len(new_title) < 5:
+                    await update.message.reply_text("❌ Le titre doit faire au moins 5 caractères.")
+                    return
+                cursor.execute('UPDATE products SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND seller_user_id = ?', (new_title, product_id, user_id))
+                conn.commit()
+                await update.message.reply_text("✅ Titre mis à jour.")
+            elif step == 'edit_description':
+                new_desc = message_text.strip()[:2000]
+                cursor.execute('UPDATE products SET description = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND seller_user_id = ?', (new_desc, product_id, user_id))
+                conn.commit()
+                await update.message.reply_text("✅ Description mise à jour.")
+            elif step == 'edit_price':
+                try:
+                    price = float(message_text.replace(',', '.'))
+                    if price < 1 or price > 5000:
+                        raise ValueError()
+                except Exception:
+                    await update.message.reply_text("❌ Prix invalide. Entrez un nombre entre 1 et 5000 (ex: 49.99)")
+                    return
+                cursor.execute('UPDATE products SET price_eur = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND seller_user_id = ?', (price, product_id, user_id))
+                conn.commit()
+                await update.message.reply_text("✅ Prix mis à jour.")
+            else:
+                await update.message.reply_text("❌ Étape inconnue.")
+                return
+        except sqlite3.Error as e:
+            logger.error(f"Erreur édition produit: {e}")
+            await update.message.reply_text("❌ Erreur lors de la mise à jour du produit.")
+            return
+        finally:
+            conn.close()
+
+        # Fin d'édition → nettoyer l'état
+        state.pop('editing_product', None)
+        self.memory_cache[user_id] = state
+        await update.message.reply_text(
+            "🔙 Retour au dashboard.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏪 Dashboard", callback_data='seller_dashboard')],[InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]])
+        )
 
     async def process_product_search(self, update, message_text):
         """Traite la recherche de produit par ID"""
