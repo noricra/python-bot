@@ -700,10 +700,15 @@ class MarketplaceBot:
                 "Content-Type": "application/json"
             }
 
+            # Normaliser USDC pour spécifier ERC20 par défaut
+            normalized_currency = currency.lower()
+            if normalized_currency == 'usdc':
+                normalized_currency = 'usdc'  # ERC20 par défaut coté NOWPayments
+
             payload = {
                 "price_amount": float(amount_usd),
                 "price_currency": "usd",
-                "pay_currency": currency.lower(),
+                "pay_currency": normalized_currency,
                 "order_id": order_id,
                 "order_description": "Formation TechBot Marketplace"
             }
@@ -856,6 +861,7 @@ class MarketplaceBot:
                             context: ContextTypes.DEFAULT_TYPE):
         """Nouveau menu d'accueil marketplace"""
         user = update.effective_user
+        # Ne pas réinitialiser l'état de connexion à chaque /start
         self.add_user(user.id, user.username, user.first_name,
                       user.language_code or 'fr')
 
@@ -954,6 +960,24 @@ Choisissez une option pour commencer :"""
                 await self.show_my_products(query, lang)
             elif query.data == 'my_wallet':
                 await self.show_wallet(query, lang)
+            elif query.data.startswith('edit_product_'):
+                product_id = query.data[13:]
+                await self.edit_product_menu(query, product_id, lang)
+            elif query.data.startswith('edit_product_field_'):
+                # format: edit_product_field_<product_id>_<field>
+                parts = query.data.split('_')
+                product_id = parts[3]
+                field = parts[4]
+                await self.edit_product_start(query, product_id, field)
+            elif query.data.startswith('toggle_product_status_'):
+                product_id = query.data[23:]
+                await self.toggle_product_status(query, product_id)
+            elif query.data.startswith('delete_product_'):
+                product_id = query.data[15:]
+                await self.delete_product_prompt(query, product_id)
+            elif query.data.startswith('confirm_delete_product_'):
+                product_id = query.data[24:]
+                await self.delete_product_confirm(query, product_id)
             elif query.data == 'seller_logout':
                 await self.seller_logout(query)
             elif query.data == 'delete_seller':
@@ -1337,7 +1361,7 @@ Soyez le premier à publier dans ce domaine !"""
             parse_mode='Markdown')
 
     async def buy_product_prompt(self, query, product_id, lang):
-        """Demande code de parrainage pour un produit"""
+        """Initier l'achat d'un produit (sans parrainage)"""
         user_id = query.from_user.id
 
         # Vérifier si déjà acheté
@@ -1370,54 +1394,21 @@ Soyez le premier à publier dans ce domaine !"""
             'lang': lang
         }
 
-        keyboard = [
-            [
-                InlineKeyboardButton("✍️ Saisir mon code",
-                                     callback_data='enter_referral_manual')
-            ],
-            [
-                InlineKeyboardButton("🎲 Choisir un code aléatoire",
-                                     callback_data='choose_random_referral')
-            ],
-            [
-                InlineKeyboardButton("🚀 Devenir partenaire (10% commission!)",
-                                     callback_data='become_partner')
-            ],
-            [
-                InlineKeyboardButton("🔙 Retour",
-                                     callback_data=f'product_{product_id}')
-            ]
-        ]
-
-        referral_text = """🎯 **CODE DE PARRAINAGE OBLIGATOIRE**
-
-⚠️ **IMPORTANT :** Un code de parrainage est requis pour acheter.
-
-💡 **3 OPTIONS DISPONIBLES :**
-
-1️⃣ **Vous avez un code ?** Saisissez-le !
-
-2️⃣ **Pas de code ?** Choisissez-en un gratuitement !
-
-3️⃣ **MEILLEURE OPTION :** Devenez partenaire !
-   • ✅ Gagnez 10% sur chaque vente
-   • ✅ Votre propre code de parrainage
-   • ✅ Dashboard vendeur complet"""
+        keyboard = [[
+            InlineKeyboardButton("💳 Continuer vers le paiement",
+                                 callback_data='proceed_to_payment'),
+            InlineKeyboardButton("🔙 Retour",
+                                 callback_data=f'product_{product_id}')
+        ]]
 
         await query.edit_message_text(
-            referral_text,
+            "💳 **PRÊT POUR LE PAIEMENT**\n\nValidez pour choisir votre crypto.",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown')
 
     async def enter_referral_manual(self, query, lang):
-        """Demander la saisie manuelle du code"""
-        self.memory_cache[query.from_user.id]['waiting_for_referral'] = True
-
-        await query.edit_message_text(
-            "✍️ **Veuillez saisir votre code de parrainage :**\n\nTapez le code exactement comme vous l'avez reçu.",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Retour",
-                                       callback_data='buy_menu')]]))
+        # Fonction retirée (parrainage supprimé)
+        await self.show_crypto_options(query, lang)
 
     async def check_payment_handler(self, query, order_id, lang):
         """Vérification paiement + création payout vendeur"""
@@ -1514,73 +1505,16 @@ Soyez le premier à publier dans ce domaine !"""
             await query.edit_message_text("❌ Erreur de vérification. Réessayez.")
 
     async def choose_random_referral(self, query, lang):
-        """Choisir un code de parrainage aléatoire"""
-        available_codes = self.get_available_referral_codes()
-
-        if not available_codes:
-            await query.edit_message_text(
-                "❌ Aucun code disponible actuellement.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
-                ]]))
-            return
-
-        # Prendre 3 codes aléatoires
-        random_codes = random.sample(available_codes,
-                                     min(3, len(available_codes)))
-
-        keyboard = []
-        for code in random_codes:
-            keyboard.append([
-                InlineKeyboardButton(f"🎯 Utiliser {code}",
-                                     callback_data=f'use_referral_{code}')
-            ])
-
-        keyboard.extend([[
-            InlineKeyboardButton("🔄 Autres codes",
-                                 callback_data='choose_random_referral')
-        ], [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')]])
-
-        codes_text = """🎲 **CODES DE PARRAINAGE DISPONIBLES**
-
-Choisissez un code pour continuer votre achat :
-
-💡 **Tous les codes sont équivalents**
-🎁 **Votre parrain recevra sa commission**"""
-
-        await query.edit_message_text(
-            codes_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
+        # Fonction retirée (parrainage supprimé)
+        await self.show_crypto_options(query, lang)
 
     async def validate_and_proceed(self, query, referral_code, lang):
-        """Valider le code et procéder à l'achat"""
-        if not self.validate_referral_code(referral_code):
-            await query.edit_message_text(
-                f"❌ **Code invalide :** `{referral_code}`\n\nVeuillez réessayer avec un code valide.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
-                ]]),
-                parse_mode='Markdown')
-            return
-
-        # Stocker le code validé
-        user_cache = self.memory_cache.get(query.from_user.id, {})
-        user_cache['validated_referral'] = referral_code
-        user_cache['lang'] = lang
-        self.memory_cache[query.from_user.id] = user_cache
-
-        await query.edit_message_text(
-            f"✅ **Code validé :** `{referral_code}`\n\nProcédons au paiement !",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("💳 Continuer vers le paiement",
-                                     callback_data='proceed_to_payment'),
-                InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
-            ]]),
-            parse_mode='Markdown')
+        # Fonction retirée (parrainage supprimé)
+        await self.show_crypto_options(query, lang)
 
     async def become_partner(self, query, lang):
-        """Inscription partenaire"""
+        # Fonction retirée (programme partenaire supprimé)
+        await self.show_crypto_options(query, lang)
         user_id = query.from_user.id
         user_data = self.get_user(user_id)
 
@@ -1641,15 +1575,7 @@ Choisissez un code pour continuer votre achat :
         user_id = query.from_user.id
         user_cache = self.memory_cache.get(user_id, {})
 
-        # Vérifier le code de parrainage validé
-        if 'validated_referral' not in user_cache:
-            await query.edit_message_text("❌ Code de parrainage requis !",
-                                          reply_markup=InlineKeyboardMarkup([[
-                                              InlineKeyboardButton(
-                                                  "🎯 Entrer un code",
-                                                  callback_data='buy_menu')
-                                          ]]))
-            return
+        # Le code de parrainage n'est plus requis
 
         # Récupérer le produit
         product_id = user_cache.get('buying_product_id')
@@ -1679,7 +1605,7 @@ Choisissez un code pour continuer votre achat :
             'btc': ('₿ Bitcoin', '⚡ 10-30 min'),
             'eth': ('⟠ Ethereum', '⚡ 5-15 min'),
             'usdt': ('₮ Tether USDT', '⚡ 5-10 min'),
-            'usdc': ('🟢 USD Coin', '⚡ 5-10 min'),
+            'usdc': ('🟢 USDC (ERC20)', '⚡ 5-10 min'),
             'bnb': ('🟡 BNB', '⚡ 2-5 min'),
             'sol': ('◎ Solana', '⚡ 1-2 min'),
             'ltc': ('Ł Litecoin', '⚡ 10-20 min'),
@@ -1706,8 +1632,6 @@ Choisissez un code pour continuer votre achat :
 
 📦 **Produit :** {product['title']}
 💰 **Prix :** {product['price_eur']}€
-🎯 **Code parrainage :** `{user_cache['validated_referral']}`
-
 🔐 **Sélectionnez votre crypto préférée :**
 
 ✅ **Avantages :**
@@ -1722,12 +1646,12 @@ Choisissez un code pour continuer votre achat :
             parse_mode='Markdown')
 
     async def process_payment(self, query, crypto_currency, lang):
-        """Traite le paiement avec code de parrainage"""
+        """Traite le paiement"""
         user_id = query.from_user.id
         user_cache = self.memory_cache.get(user_id, {})
 
         # Vérifier les données nécessaires
-        if 'validated_referral' not in user_cache or 'buying_product_id' not in user_cache:
+        if 'buying_product_id' not in user_cache:
             await query.edit_message_text("❌ Données de commande manquantes !",
                                           reply_markup=InlineKeyboardMarkup([[
                                               InlineKeyboardButton(
@@ -1737,7 +1661,7 @@ Choisissez un code pour continuer votre achat :
             return
 
         product_id = user_cache['buying_product_id']
-        referral_code = user_cache['validated_referral']
+        referral_code = None
 
         product = self.get_product_by_id(product_id)
         if not product:
@@ -1756,8 +1680,8 @@ Choisissez un code pour continuer votre achat :
         product_price_usd = product_price_eur * rate
 
         platform_commission = product_price_eur * PLATFORM_COMMISSION_RATE
-        partner_commission = product_price_eur * PARTNER_COMMISSION_RATE
-        seller_revenue = product_price_eur - platform_commission - partner_commission
+        partner_commission = 0.0
+        seller_revenue = product_price_eur - platform_commission
 
         # Créer paiement NOWPayments
         payment_data = await asyncio.to_thread(
@@ -2207,7 +2131,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
                         callback_data=f'edit_product_{product[0]}')
                 ])
 
-            keyboard.extend([[
+            keyboard.extend([[ 
                 InlineKeyboardButton("➕ Nouveau produit",
                                      callback_data='add_product')
             ],
@@ -2215,6 +2139,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
                                  InlineKeyboardButton(
                                      "🔙 Dashboard",
                                      callback_data='seller_dashboard')
+                             ],
+                             [
+                                 InlineKeyboardButton(
+                                     "🏠 Accueil",
+                                     callback_data='back_main')
                              ]])
 
         await query.edit_message_text(
@@ -2250,7 +2179,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         solana_address = user_data['seller_solana_address']
 
         # Récupérer solde (optionnel)
-        balance = util_get_solana_balance_display(solana_address)
+        balance = get_solana_balance_display(solana_address)
 
         # Calculer payouts en attente
         conn = self.get_db_connection()
@@ -2283,7 +2212,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
         keyboard = [
             [InlineKeyboardButton("📊 Historique payouts", callback_data='payout_history')],
             [InlineKeyboardButton("📋 Copier adresse", callback_data='copy_address')],
-            [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')]
+            [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
         ]
 
         await query.edit_message_text(
@@ -2367,6 +2297,101 @@ Commencez dès maintenant à monétiser votre expertise !"""
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown')
 
+    async def edit_product_menu(self, query, product_id: str, lang: str):
+        user = self.get_user(query.from_user.id)
+        if not user or not user['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
+            await query.edit_message_text(
+                "❌ Connectez-vous d'abord (email + code)",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
+            )
+            return
+        keyboard = [
+            [InlineKeyboardButton("✏️ Modifier le titre", callback_data=f'edit_product_field_{product_id}_title')],
+            [InlineKeyboardButton("💰 Modifier le prix", callback_data=f'edit_product_field_{product_id}_price')],
+            [InlineKeyboardButton("⏸️ Activer/Désactiver", callback_data=f'toggle_product_status_{product_id}')],
+            [InlineKeyboardButton("🗑️ Supprimer", callback_data=f'delete_product_{product_id}')],
+            [InlineKeyboardButton("🔙 Retour", callback_data='my_products')]
+        ]
+        await query.edit_message_text(f"⚙️ Gestion du produit `{product_id}`:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    async def edit_product_start(self, query, product_id: str, field: str):
+        user_state = {'editing_product': True, 'product_id': product_id, 'field': field}
+        self.memory_cache[query.from_user.id] = user_state
+        placeholder = "Nouveau titre:" if field == 'title' else "Nouveau prix en € (ex: 49.99):"
+        await query.edit_message_text(placeholder, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler", callback_data=f'edit_product_{product_id}')]]))
+
+    async def process_product_edit(self, update: Update, message_text: str):
+        user_id = update.effective_user.id
+        state = self.memory_cache.get(user_id, {})
+        product_id = state.get('product_id')
+        field = state.get('field')
+        if not product_id or field not in ('title', 'price'):
+            await update.message.reply_text("❌ État d'édition invalide.")
+            return
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            if field == 'title':
+                new_title = message_text.strip()
+                if len(new_title) < 3:
+                    await update.message.reply_text("❌ Titre trop court.")
+                    return
+                cursor.execute('UPDATE products SET title = ? WHERE product_id = ? AND seller_user_id = ?', (new_title, product_id, user_id))
+            else:
+                try:
+                    new_price = float(message_text.replace(',', '.'))
+                except ValueError:
+                    await update.message.reply_text("❌ Prix invalide.")
+                    return
+                cursor.execute('UPDATE products SET price_eur = ? WHERE product_id = ? AND seller_user_id = ?', (new_price, product_id, user_id))
+            conn.commit()
+            conn.close()
+            # Clear editing state but preserve login
+            self.reset_user_state_preserve_login(user_id)
+            await update.message.reply_text("✅ Produit mis à jour.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📦 Mes produits", callback_data='my_products')]]))
+        except Exception as e:
+            logger.error(f"Erreur update produit: {e}")
+            await update.message.reply_text("❌ Erreur mise à jour produit.")
+
+    async def toggle_product_status(self, query, product_id: str):
+        user_id = query.from_user.id
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT status FROM products WHERE product_id = ? AND seller_user_id = ?', (product_id, user_id))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                await query.edit_message_text("❌ Produit introuvable.")
+                return
+            new_status = 'inactive' if row[0] == 'active' else 'active'
+            cursor.execute('UPDATE products SET status = ? WHERE product_id = ? AND seller_user_id = ?', (new_status, product_id, user_id))
+            conn.commit()
+            conn.close()
+            await self.edit_product_menu(query, product_id, 'fr')
+        except Exception as e:
+            logger.error(f"Erreur toggle status: {e}")
+            await query.edit_message_text("❌ Erreur statut produit.")
+
+    async def delete_product_prompt(self, query, product_id: str):
+        keyboard = [
+            [InlineKeyboardButton("✅ Confirmer suppression", callback_data=f'confirm_delete_product_{product_id}')],
+            [InlineKeyboardButton("❌ Annuler", callback_data=f'edit_product_{product_id}')]
+        ]
+        await query.edit_message_text("⚠️ Confirmez la suppression du produit.", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    async def delete_product_confirm(self, query, product_id: str):
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM products WHERE product_id = ? AND seller_user_id = ?', (product_id, query.from_user.id))
+            conn.commit()
+            conn.close()
+            await query.edit_message_text("✅ Produit supprimé.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📦 Mes produits", callback_data='my_products')]]))
+        except Exception as e:
+            logger.error(f"Erreur suppression produit: {e}")
+            await query.edit_message_text("❌ Erreur suppression produit.")
+
     async def handle_text_message(self, update: Update,
                                   context: ContextTypes.DEFAULT_TYPE):
         """Gestionnaire principal des messages texte"""
@@ -2399,6 +2424,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
         # === AJOUT PRODUIT ===
         elif user_state.get('adding_product'):
             await self.process_product_addition(update, message_text)
+
+        # === ÉDITION PRODUIT ===
+        elif user_state.get('editing_product'):
+            await self.process_product_edit(update, message_text)
 
         # === SAISIE CODE PARRAINAGE ===
         elif user_state.get('waiting_for_referral'):
@@ -4008,9 +4037,12 @@ Top produits:\n"""
         keyboard = [
             [InlineKeyboardButton("✏️ Modifier nom", callback_data='edit_seller_name')],
             [InlineKeyboardButton("📝 Modifier bio", callback_data='edit_seller_bio')],
+            [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
+            [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
             [InlineKeyboardButton("🔙 Retour", callback_data='seller_dashboard')]
         ]
-        await query.edit_message_text("Paramètres vendeur:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text("⚙️ Paramètres du compte vendeur:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def seller_info(self, query, lang):
         await query.edit_message_text("Conditions & avantages vendeur (à implémenter)")
@@ -4104,14 +4136,8 @@ Top produits:\n"""
         is_logged = self.is_seller_logged_in(user_id)
 
         if is_seller and is_logged:
-            keyboard = [
-                [InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')],
-                [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
-                [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
-                [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
-                [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
-            ]
-            await query.edit_message_text("🔑 Compte vendeur", reply_markup=InlineKeyboardMarkup(keyboard))
+            # Rediriger vers Paramètres (UX consolidée)
+            await self.seller_settings(query, lang)
             return
 
         # Non connecté → proposer de se connecter (sans forcer la saisie)
