@@ -752,7 +752,8 @@ class MarketplaceBot:
 
 Choisissez une option pour commencer :"""
 
-        keyboard = main_menu_keyboard()
+        u = self.get_user(user.id)
+        keyboard = main_menu_keyboard(bool(u and u.get('is_seller')))
 
         await update.message.reply_text(
             welcome_text,
@@ -2893,18 +2894,17 @@ Commencez dès maintenant à monétiser votre expertise !"""
         user_id = query.from_user.id
         user_data = self.get_user(user_id)
         lang = user_data['language_code'] if user_data else 'fr'
-        is_seller = user_data and user_data['is_seller']
+        is_seller = bool(user_data and user_data['is_seller'])
 
         keyboard = [
-            [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
-            [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')]
+            [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')]
         ]
 
-        # Accès rapide espace vendeur si déjà vendeur
+        # Si vendeur, proposer directement l'espace vendeur (éviter doublon)
         if is_seller:
-            keyboard.append([
-                InlineKeyboardButton("🏪 Mon espace vendeur", callback_data='seller_dashboard')
-            ])
+            keyboard.append([InlineKeyboardButton("🏪 Mon espace vendeur", callback_data='seller_dashboard')])
+        else:
+            keyboard.append([InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')])
 
         keyboard.extend([
             [InlineKeyboardButton("📊 Stats marketplace", callback_data='marketplace_stats')],

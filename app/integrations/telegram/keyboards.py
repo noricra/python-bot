@@ -1,13 +1,15 @@
 from telegram import InlineKeyboardButton
 
 
-def main_menu_keyboard():
-    return [
-        [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
-        [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')],
-        [InlineKeyboardButton("📊 Stats marketplace", callback_data='marketplace_stats')],
-        [InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')],
-    ]
+def main_menu_keyboard(is_seller: bool = False):
+    rows = [[InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')]]
+    if is_seller:
+        rows.append([InlineKeyboardButton("🏪 Mon espace vendeur", callback_data='seller_dashboard')])
+    else:
+        rows.append([InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')])
+    rows.append([InlineKeyboardButton("📊 Stats marketplace", callback_data='marketplace_stats')])
+    rows.append([InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')])
+    return rows
 
 
 def buy_menu_keyboard():
