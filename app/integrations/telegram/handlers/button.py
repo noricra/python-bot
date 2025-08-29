@@ -1,6 +1,7 @@
 import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.integrations.telegram.flows import support as support_flows
+from app.integrations.telegram.flows import purchase as purchase_flows
 from telegram.ext import ContextTypes
 
 
@@ -18,7 +19,7 @@ async def button_handler(bot_controller, update, context: ContextTypes.DEFAULT_T
     try:
         # Navigation principale
         if query.data == 'buy_menu':
-            await bot_controller.buy_menu(query, lang)
+            await purchase_flows.buy_menu(bot_controller, query, lang)
         elif query.data == 'sell_menu':
             await bot_controller.sell_menu(query, lang)
         elif query.data == 'seller_dashboard':
@@ -39,18 +40,18 @@ async def button_handler(bot_controller, update, context: ContextTypes.DEFAULT_T
 
         # Achat
         elif query.data == 'search_product':
-            await bot_controller.search_product_prompt(query, lang)
+            await purchase_flows.search_product_prompt(bot_controller, query, lang)
         elif query.data == 'browse_categories':
-            await bot_controller.browse_categories(query, lang)
+            await purchase_flows.browse_categories(bot_controller, query, lang)
         elif query.data.startswith('category_'):
             category_key = query.data[9:]
-            await bot_controller.show_category_products(query, category_key, lang)
+            await purchase_flows.show_category_products(bot_controller, query, category_key, lang)
         elif query.data.startswith('product_'):
             product_id = query.data[8:]
-            await bot_controller.show_product_details(query, product_id, lang)
+            await purchase_flows.show_product_details(bot_controller, query, product_id, lang)
         elif query.data.startswith('buy_product_'):
             product_id = query.data[12:]
-            await bot_controller.buy_product_prompt(query, product_id, lang)
+            await purchase_flows.buy_product_prompt(bot_controller, query, product_id, lang)
 
         # Vente
         elif query.data == 'create_seller':
@@ -89,24 +90,24 @@ async def button_handler(bot_controller, update, context: ContextTypes.DEFAULT_T
 
         # Parrainage
         elif query.data == 'enter_referral_manual':
-            await bot_controller.enter_referral_manual(query, lang)
+            await purchase_flows.enter_referral_manual(bot_controller, query, lang)
         elif query.data == 'choose_random_referral':
-            await bot_controller.choose_random_referral(query, lang)
+            await purchase_flows.choose_random_referral(bot_controller, query, lang)
         elif query.data.startswith('use_referral_'):
             code = query.data[13:]
-            await bot_controller.validate_and_proceed(query, code, lang)
+            await purchase_flows.validate_and_proceed(bot_controller, query, code, lang)
         elif query.data == 'become_partner':
             await bot_controller.become_partner(query, lang)
 
         # Paiement
         elif query.data == 'proceed_to_payment':
-            await bot_controller.show_crypto_options(query, lang)
+            await purchase_flows.show_crypto_options(bot_controller, query, lang)
         elif query.data.startswith('pay_'):
             crypto = query.data[4:]
-            await bot_controller.process_payment(query, crypto, lang)
+            await purchase_flows.process_payment(bot_controller, query, crypto, lang)
         elif query.data.startswith('check_payment_'):
             order_id = query.data[14:]
-            await bot_controller.check_payment_handler(query, order_id, lang)
+            await purchase_flows.check_payment_handler(bot_controller, query, order_id, lang)
 
         # Téléchargement et bibliothèque
         elif query.data.startswith('download_product_'):

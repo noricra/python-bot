@@ -1,6 +1,7 @@
 import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from app.integrations.telegram.flows import purchase as purchase_flows
 
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ async def text_message_handler(bot_controller, update, context: ContextTypes.DEF
 
     # === RECHERCHE PRODUIT ===
     if user_state.get('waiting_for_product_id'):
-        await bot_controller.process_product_search(update, message_text)
+        await purchase_flows.process_product_search(bot_controller, update, message_text)
 
     # === CRÉATION VENDEUR ===
     elif user_state.get('creating_seller'):
@@ -39,7 +40,7 @@ async def text_message_handler(bot_controller, update, context: ContextTypes.DEF
 
     # === SAISIE CODE PARRAINAGE ===
     elif user_state.get('waiting_for_referral'):
-        await bot_controller.process_referral_input(update, message_text)
+        await purchase_flows.process_referral_input(bot_controller, update, message_text)
 
     # === CRÉATION TICKET SUPPORT ===
     elif user_state.get('creating_ticket'):

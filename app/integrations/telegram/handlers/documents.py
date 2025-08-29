@@ -4,6 +4,7 @@ from io import BytesIO
 from typing import Dict
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from app.core import settings as core_settings
 from telegram.ext import ContextTypes
 
 
@@ -43,9 +44,9 @@ async def document_upload_handler(bot_controller, update, context: ContextTypes.
     # Vérifier taille
     try:
         file_size_mb = document.file_size / (1024 * 1024)
-        if document.file_size > bot_controller.MAX_FILE_SIZE_MB * 1024 * 1024:  # type: ignore[attr-defined]
+        if document.file_size > core_settings.MAX_FILE_SIZE_MB * 1024 * 1024:
             await update.message.reply_text(
-                f"❌ **Fichier trop volumineux**\n\nTaille max : {bot_controller.MAX_FILE_SIZE_MB}MB\nVotre fichier : {file_size_mb:.1f}MB",
+                f"❌ **Fichier trop volumineux**\n\nTaille max : {core_settings.MAX_FILE_SIZE_MB}MB\nVotre fichier : {file_size_mb:.1f}MB",
                 parse_mode='Markdown'
             )
             return
@@ -61,9 +62,9 @@ async def document_upload_handler(bot_controller, update, context: ContextTypes.
             return
 
         file_ext = os.path.splitext(document.file_name)[1].lower()
-        if file_ext not in bot_controller.SUPPORTED_FILE_TYPES:  # type: ignore[attr-defined]
+        if file_ext not in core_settings.SUPPORTED_FILE_TYPES:
             await update.message.reply_text(
-                f"❌ **Format non supporté :** {file_ext}\n\n✅ **Formats acceptés :** {', '.join(bot_controller.SUPPORTED_FILE_TYPES)}",
+                f"❌ **Format non supporté :** {file_ext}\n\n✅ **Formats acceptés :** {', '.join(core_settings.SUPPORTED_FILE_TYPES)}",
                 parse_mode='Markdown'
             )
             return
@@ -168,7 +169,7 @@ async def document_upload_handler(bot_controller, update, context: ContextTypes.
     except Exception as e:
         logger.error(f"Erreur upload fichier (général): {e}")
         await update.message.reply_text(
-            f"❌ **Erreur lors de l'upload**\n\nDétail: {str(e)[:100]}...\n\nVérifiez:\n• Format de fichier supporté\n• Taille < {bot_controller.MAX_FILE_SIZE_MB}MB\n• Connexion stable",
+            f"❌ **Erreur lors de l'upload**\n\nDétail: {str(e)[:100]}...\n\nVérifiez:\n• Format de fichier supporté\n• Taille < {core_settings.MAX_FILE_SIZE_MB}MB\n• Connexion stable",
             reply_markup=InlineKeyboardMarkup([[ 
                 InlineKeyboardButton("🔄 Réessayer",
                                      callback_data='add_product')
