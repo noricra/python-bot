@@ -49,15 +49,14 @@ async def create_seller_prompt(bot, query, lang):
         'lang': lang
     }
     await query.edit_message_text(
-        """➕ **AJOUTER UN NOUVEAU PRODUIT**
+        """🚀 **CRÉATION COMPTE VENDEUR**
 
-📝 **Étape 1/5 : Titre**
+Pour créer votre compte vendeur sécurisé, nous avons besoin de quelques informations.
 
-Saisissez le titre de votre formation :
+👤 **Étape 1/2 : Nom public**
 
-💡 **Conseil :** Soyez précis et accrocheur
-*Exemple : "Guide Complet Trading Crypto 2025"*""",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler", callback_data='seller_dashboard')]]),
+Saisissez le nom qui apparaîtra sur vos formations :""",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler", callback_data='sell_menu')]]),
         parse_mode='Markdown')
 
 

@@ -4,6 +4,7 @@ from app.integrations.telegram.flows import support as support_flows
 from app.integrations.telegram.flows import purchase as purchase_flows
 from app.integrations.telegram.flows import seller as seller_flows
 from app.integrations.telegram.flows import admin as admin_flows
+from app.integrations.telegram.flows import library as library_flows
 from telegram.ext import ContextTypes
 
 
@@ -114,9 +115,9 @@ async def button_handler(bot_controller, update, context: ContextTypes.DEFAULT_T
         # Téléchargement et bibliothèque
         elif query.data.startswith('download_product_'):
             product_id = query.data[17:]
-            await bot_controller.download_product(query, context, product_id, lang)
+            await library_flows.download_product(bot_controller, query, context, product_id, lang)
         elif query.data == 'my_library':
-            await bot_controller.show_my_library(query, lang)
+            await library_flows.show_my_library(bot_controller, query, lang)
 
         # Admin
         elif query.data == 'admin_menu':
