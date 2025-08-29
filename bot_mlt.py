@@ -1946,8 +1946,13 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
             )
             return
         if not self.is_seller_logged_in(query.from_user.id):
-            # Ne plus forcer la saisie: proposer le menu d'accès compte
-            await self.access_account_prompt(query, lang)
+            # Proposer directement la connexion simple (email + code)
+            keyboard = [
+                [InlineKeyboardButton("🔐 Se connecter", callback_data='seller_login')],
+                [InlineKeyboardButton("🚀 Créer un compte vendeur", callback_data='create_seller')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]
+            await query.edit_message_text("🔑 Connexion vendeur\n\nConnectez-vous avec votre email et votre code de récupération.", reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
         # Récupérer les stats vendeur
@@ -4020,31 +4025,7 @@ Top produits:\n"""
         self.memory_cache[query.from_user.id] = {'admin_suspend_product': True}
         await query.edit_message_text("⛔ Entrez un product_id à suspendre:")
 
-    async def access_account_prompt(self, query, lang):
-        """Menu d'accès au compte (connexion via email + code, dashboard si connecté)."""
-        user_id = query.from_user.id
-        user_data = self.get_user(user_id)
-        is_seller = bool(user_data and user_data.get('is_seller'))
-        is_logged = self.is_seller_logged_in(user_id)
-
-        if is_seller and is_logged:
-            keyboard = [
-                [InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')],
-                [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
-                [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
-                [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
-                [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
-            ]
-            await query.edit_message_text("🔑 Compte vendeur", reply_markup=InlineKeyboardMarkup(keyboard))
-            return
-
-        # Non connecté → proposer de se connecter (sans forcer la saisie)
-        keyboard = [
-            [InlineKeyboardButton("🔐 Se connecter", callback_data='seller_login')],
-            [InlineKeyboardButton("🚀 Créer un compte vendeur", callback_data='create_seller')],
-            [InlineKeyboardButton("🔙 Retour", callback_data='back_main')]
-        ]
-        await query.edit_message_text("🔑 Connexion vendeur\n\nConnectez-vous avec votre email et votre code de récupération.", reply_markup=InlineKeyboardMarkup(keyboard))
+    # access_account_prompt supprimé pour simplifier l'UX (remplacé par seller_dashboard/seller_login)
 
     async def seller_logout(self, query):
         """Déconnexion: on nettoie l'état mémoire d'authentification côté bot."""
