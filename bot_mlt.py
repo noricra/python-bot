@@ -513,6 +513,8 @@ class MarketplaceBot:
                                       solana_address: str) -> dict:
         """Crée un compte vendeur avec email + code de récupération"""
         try:
+            # Normaliser l'email
+            recovery_email = (recovery_email or '').strip().lower()
             # Valider adresse Solana
             if not validate_solana_address(solana_address):
                 return {'success': False, 'error': 'Adresse Solana invalide'}
@@ -2851,7 +2853,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute('SELECT user_id FROM users WHERE recovery_email = ?', (email,))
+            cursor.execute('SELECT user_id FROM users WHERE LOWER(recovery_email) = LOWER(?)', (email,))
             row = cursor.fetchone()
             if not row:
                 conn.close()
@@ -2862,7 +2864,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
             # Générer un nouveau code (stocké en hash)
             recovery_code = f"{random.randint(100000, 999999)}"
             code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
-            cursor.execute('UPDATE users SET recovery_code_hash = ? WHERE recovery_email = ?', (code_hash, email))
+            cursor.execute('UPDATE users SET recovery_code_hash = ? WHERE LOWER(recovery_email) = LOWER(?)', (code_hash, email))
             conn.commit()
             conn.close()
 
@@ -2909,7 +2911,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         try:
             conn = self.get_db_connection()
             cursor = conn.cursor()
-            cursor.execute('SELECT user_id FROM users WHERE recovery_email = ? AND recovery_code_hash = ?', (email, code_hash))
+            cursor.execute('SELECT user_id FROM users WHERE LOWER(recovery_email) = LOWER(?) AND recovery_code_hash = ?', (email, code_hash))
             row = cursor.fetchone()
             if not row:
                 conn.close()
@@ -2944,7 +2946,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         try:
             conn = self.get_db_connection()
             cursor = conn.cursor()
-            cursor.execute('SELECT user_id FROM users WHERE user_id = ? AND recovery_email = ?', (user_id, email))
+            cursor.execute('SELECT user_id FROM users WHERE user_id = ? AND LOWER(recovery_email) = LOWER(?)', (user_id, email))
             row = cursor.fetchone()
             conn.close()
             if not row:
@@ -2972,7 +2974,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
             code_hash = hashlib.sha256(code.encode()).hexdigest()
             conn = self.get_db_connection()
             cursor = conn.cursor()
-            cursor.execute('SELECT user_id FROM users WHERE user_id = ? AND recovery_email = ? AND recovery_code_hash = ?', (user_id, email, code_hash))
+            cursor.execute('SELECT user_id FROM users WHERE user_id = ? AND LOWER(recovery_email) = LOWER(?) AND recovery_code_hash = ?', (user_id, email, code_hash))
             row = cursor.fetchone()
             conn.close()
             if not row:
