@@ -922,13 +922,40 @@ Choisissez une option pour commencer :"""
                 product_id = query.data.split('edit_product_')[-1]
                 self.memory_cache[user_id] = {'editing_product': True, 'product_id': product_id, 'step': 'choose_field'}
                 keyboard = [
-                    [InlineKeyboardButton("✏️ Modifier titre", callback_data='edit_field_title')],
-                    [InlineKeyboardButton("💰 Modifier prix", callback_data='edit_field_price')],
-                    [InlineKeyboardButton("⏸️ Activer/Désactiver", callback_data='edit_field_toggle')],
+                    [InlineKeyboardButton("✏️ Modifier titre", callback_data=f'edit_field_title_{product_id}')],
+                    [InlineKeyboardButton("💰 Modifier prix", callback_data=f'edit_field_price_{product_id}')],
+                    [InlineKeyboardButton("⏸️ Activer/Désactiver", callback_data=f'edit_field_toggle_{product_id}')],
                     [InlineKeyboardButton("🔙 Retour", callback_data='my_products')],
                     [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
                 ]
                 await query.edit_message_text(f"Édition produit `{product_id}`:", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+            elif query.data.startswith('edit_field_title_'):
+                product_id = query.data.split('edit_field_title_')[-1]
+                self.memory_cache[user_id] = {'editing_product': True, 'product_id': product_id, 'step': 'edit_title_input'}
+                await query.edit_message_text("Entrez le nouveau titre:")
+            elif query.data.startswith('edit_field_price_'):
+                product_id = query.data.split('edit_field_price_')[-1]
+                self.memory_cache[user_id] = {'editing_product': True, 'product_id': product_id, 'step': 'edit_price_input'}
+                await query.edit_message_text("Entrez le nouveau prix (EUR):")
+            elif query.data.startswith('edit_field_toggle_'):
+                product_id = query.data.split('edit_field_toggle_')[-1]
+                try:
+                    conn = self.get_db_connection()
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT status FROM products WHERE product_id = ? AND seller_user_id = ?', (product_id, user_id))
+                    row = cursor.fetchone()
+                    if not row:
+                        conn.close()
+                        await query.edit_message_text("❌ Produit introuvable.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='my_products')]]))
+                    else:
+                        new_status = 'inactive' if row[0] == 'active' else 'active'
+                        cursor.execute('UPDATE products SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND seller_user_id = ?', (new_status, product_id, user_id))
+                        conn.commit()
+                        conn.close()
+                        await self.show_my_products(query, 'fr')
+                except Exception as e:
+                    logger.error(f"Erreur toggle statut produit: {e}")
+                    await query.edit_message_text("❌ Erreur mise à jour statut.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='my_products')]]))
             elif query.data.startswith('delete_product_'):
                 product_id = query.data.split('delete_product_')[-1]
                 self.memory_cache[user_id] = {'confirm_delete_product': product_id}
@@ -2302,7 +2329,40 @@ Commencez dès maintenant à monétiser votre expertise !"""
         # === PARAMÈTRES VENDEUR ===
         elif user_state.get('editing_settings'):
             await self.process_seller_settings(update, message_text)
-
+        # === ÉDITION PRODUIT ===
+        elif user_state.get('editing_product'):
+            step = user_state.get('step')
+            product_id = user_state.get('product_id')
+            if step == 'edit_title_input':
+                new_title = message_text.strip()[:100]
+                try:
+                    conn = self.get_db_connection()
+                    cursor = conn.cursor()
+                    cursor.execute('UPDATE products SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND seller_user_id = ?', (new_title, product_id, user_id))
+                    conn.commit()
+                    conn.close()
+                    self.memory_cache.pop(user_id, None)
+                    await update.message.reply_text("✅ Titre mis à jour.")
+                except Exception as e:
+                    logger.error(f"Erreur maj titre produit: {e}")
+                    await update.message.reply_text("❌ Erreur mise à jour titre.")
+            elif step == 'edit_price_input':
+                try:
+                    price = float(message_text.replace(',', '.'))
+                    if price < 1 or price > 5000:
+                        raise ValueError("Prix hors limites")
+                    conn = self.get_db_connection()
+                    cursor = conn.cursor()
+                    cursor.execute('UPDATE products SET price_eur = ?, price_usd = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND seller_user_id = ?', (price, price * self.get_exchange_rate(), product_id, user_id))
+                    conn.commit()
+                    conn.close()
+                    self.memory_cache.pop(user_id, None)
+                    await update.message.reply_text("✅ Prix mis à jour.")
+                except Exception as e:
+                    logger.error(f"Erreur maj prix produit: {e}")
+                    await update.message.reply_text("❌ Prix invalide ou erreur mise à jour.")
+            else:
+                await update.message.reply_text("💬 Choisissez l'action d'édition depuis le menu.")
         # === ADMIN RECHERCHES/SUSPENSIONS ===
         elif user_state.get('admin_search_user'):
             await self.process_admin_search_user(update, message_text)
