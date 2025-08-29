@@ -1,18 +1,26 @@
+from functools import partial
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 from app.core import settings as core_settings
+from app.integrations.telegram.handlers import (
+    start_command_handler,
+    admin_command_handler,
+    callback_query_handler,
+    text_message_handler,
+    document_upload_handler,
+)
 
 
 def build_application(bot_instance) -> Application:
     application = Application.builder().token(core_settings.TELEGRAM_TOKEN).build()
 
-    application.add_handler(CommandHandler("start", bot_instance.start_command))
-    application.add_handler(CommandHandler("admin", bot_instance.admin_command))
-    application.add_handler(CallbackQueryHandler(bot_instance.button_handler))
+    application.add_handler(CommandHandler("start", partial(start_command_handler, bot_instance)))
+    application.add_handler(CommandHandler("admin", partial(admin_command_handler, bot_instance)))
+    application.add_handler(CallbackQueryHandler(partial(callback_query_handler, bot_instance)))
     application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, bot_instance.handle_text_message)
+        MessageHandler(filters.TEXT & ~filters.COMMAND, partial(text_message_handler, bot_instance))
     )
-    application.add_handler(MessageHandler(filters.Document.ALL, bot_instance.handle_document_upload))
+    application.add_handler(MessageHandler(filters.Document.ALL, partial(document_upload_handler, bot_instance)))
 
     # Set bot commands for quick access
     try:

@@ -736,28 +736,7 @@ class MarketplaceBot:
             logger.error(f"Erreur auto payout: {e}")
             return False
 
-    async def start_command(self, update: Update,
-                            context: ContextTypes.DEFAULT_TYPE):
-        """Nouveau menu d'accueil marketplace"""
-        user = update.effective_user
-        # Conserver l'état (ne pas déconnecter). Simplement assurer l'inscription DB.
-        self.add_user(user.id, user.username, user.first_name, user.language_code or 'fr')
-
-        welcome_text = """🏪 **TECHBOT MARKETPLACE**
-*La première marketplace crypto pour formations*
-
-🎯 **Découvrez des formations premium**
-📚 **Vendez vos connaissances**  
-💰 **Wallet crypto intégré**
-
-Choisissez une option pour commencer :"""
-
-        keyboard = main_menu_keyboard()
-
-        await update.message.reply_text(
-            welcome_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
+    # start_command déplacé dans app.integrations.telegram.handlers.start
 
     async def button_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Gestionnaire principal des boutons - COMPLET"""
