@@ -3944,21 +3944,10 @@ def main():
         logger.error("❌ TELEGRAM_TOKEN manquant dans .env")
         return
 
-    # Créer l'application
+    # Créer l'application via app builder
+    from app.integrations.telegram.app_builder import build_application
     bot = MarketplaceBot()
-    application = Application.builder().token(TOKEN).build()
-
-    # Handlers principaux
-    application.add_handler(CommandHandler("start", bot.start_command))
-    application.add_handler(CommandHandler("admin", bot.admin_command))
-    application.add_handler(CallbackQueryHandler(bot.button_handler))
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND,
-                       bot.handle_text_message))
-
-    # Handler pour fichiers
-    application.add_handler(
-        MessageHandler(filters.Document.ALL, bot.handle_document_upload))
+    application = build_application(bot)
 
     logger.info("🚀 Démarrage du TechBot Marketplace COMPLET...")
     logger.info(f"📱 Bot: @{TOKEN.split(':')[0] if TOKEN else 'TOKEN_MISSING'}")
