@@ -918,6 +918,38 @@ Choisissez une option pour commencer :"""
             elif query.data == 'edit_seller_bio':
                 self.memory_cache[user_id] = {'editing_settings': True, 'step': 'edit_bio'}
                 await query.edit_message_text("Entrez la nouvelle biographie:")
+            elif query.data.startswith('edit_product_'):
+                product_id = query.data.split('edit_product_')[-1]
+                self.memory_cache[user_id] = {'editing_product': True, 'product_id': product_id, 'step': 'choose_field'}
+                keyboard = [
+                    [InlineKeyboardButton("✏️ Modifier titre", callback_data='edit_field_title')],
+                    [InlineKeyboardButton("💰 Modifier prix", callback_data='edit_field_price')],
+                    [InlineKeyboardButton("⏸️ Activer/Désactiver", callback_data='edit_field_toggle')],
+                    [InlineKeyboardButton("🔙 Retour", callback_data='my_products')],
+                    [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
+                ]
+                await query.edit_message_text(f"Édition produit `{product_id}`:", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+            elif query.data.startswith('delete_product_'):
+                product_id = query.data.split('delete_product_')[-1]
+                self.memory_cache[user_id] = {'confirm_delete_product': product_id}
+                keyboard = [
+                    [InlineKeyboardButton("✅ Confirmer suppression", callback_data=f'confirm_delete_{product_id}')],
+                    [InlineKeyboardButton("❌ Annuler", callback_data='my_products')],
+                    [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
+                ]
+                await query.edit_message_text(f"Confirmer la suppression du produit `{product_id}` ?", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+            elif query.data.startswith('confirm_delete_'):
+                product_id = query.data.split('confirm_delete_')[-1]
+                try:
+                    conn = self.get_db_connection()
+                    cursor = conn.cursor()
+                    cursor.execute('DELETE FROM products WHERE product_id = ? AND seller_user_id = ?', (product_id, user_id))
+                    conn.commit()
+                    conn.close()
+                    await self.show_my_products(query, lang)
+                except Exception as e:
+                    logger.error(f"Erreur suppression produit: {e}")
+                    await query.edit_message_text("❌ Erreur lors de la suppression.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='my_products')]]))
             elif query.data == 'seller_info':
                 await self.seller_info(query, lang)
 
@@ -2048,19 +2080,16 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
                 keyboard.append([
                     InlineKeyboardButton(
-                        f"✏️ {product[1][:30]}...",
-                        callback_data=f'edit_product_{product[0]}')
+                        f"✏️ Modifier",
+                        callback_data=f'edit_product_{product[0]}'),
+                    InlineKeyboardButton(
+                        "🗑️ Supprimer",
+                        callback_data=f'delete_product_{product[0]}')
                 ])
 
-            keyboard.extend([[
-                InlineKeyboardButton("➕ Nouveau produit",
-                                     callback_data='add_product')
-            ],
-                             [
-                                 InlineKeyboardButton(
-                                     "🔙 Dashboard",
-                                     callback_data='seller_dashboard')
-                             ]])
+            keyboard.extend([[InlineKeyboardButton("➕ Nouveau produit", callback_data='add_product')],
+                             [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')],
+                             [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]])
 
         await query.edit_message_text(
             products_text,
@@ -3843,7 +3872,10 @@ Top produits:\n"""
         keyboard = [
             [InlineKeyboardButton("✏️ Modifier nom", callback_data='edit_seller_name')],
             [InlineKeyboardButton("📝 Modifier bio", callback_data='edit_seller_bio')],
-            [InlineKeyboardButton("🔙 Retour", callback_data='seller_dashboard')]
+            [InlineKeyboardButton("💸 Payouts / Adresse", callback_data='my_wallet')],
+            [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
+            [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
         ]
         await query.edit_message_text("Paramètres vendeur:", reply_markup=InlineKeyboardMarkup(keyboard))
 
