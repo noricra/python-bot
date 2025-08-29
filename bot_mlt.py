@@ -29,52 +29,38 @@ from telegram.error import TelegramError
 from dotenv import load_dotenv
 import re
 import base58 # Import manquant
+from app.core import settings as core_settings, configure_logging, get_sqlite_connection
 
 # Charger les variables d'environnement
 load_dotenv()
+configure_logging(core_settings)
 
 # Configuration
-TOKEN = os.getenv('TELEGRAM_TOKEN')
-NOWPAYMENTS_API_KEY = os.getenv('NOWPAYMENTS_API_KEY')
-NOWPAYMENTS_IPN_SECRET = os.getenv('NOWPAYMENTS_IPN_SECRET')
-ADMIN_USER_ID = int(
-    os.getenv('ADMIN_USER_ID')) if os.getenv('ADMIN_USER_ID') else None
-ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'admin@votre-domaine.com')
-SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-SMTP_EMAIL = os.getenv('SMTP_EMAIL')
-SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
+TOKEN = core_settings.TELEGRAM_TOKEN
+NOWPAYMENTS_API_KEY = core_settings.NOWPAYMENTS_API_KEY
+NOWPAYMENTS_IPN_SECRET = core_settings.NOWPAYMENTS_IPN_SECRET
+ADMIN_USER_ID = core_settings.ADMIN_USER_ID
+ADMIN_EMAIL = core_settings.ADMIN_EMAIL
+SMTP_SERVER = core_settings.SMTP_SERVER
+SMTP_PORT = core_settings.SMTP_PORT
+SMTP_EMAIL = core_settings.SMTP_EMAIL
+SMTP_PASSWORD = core_settings.SMTP_PASSWORD
 
 # Configuration marketplace
-PLATFORM_COMMISSION_RATE = 0.05  # 5%
-PARTNER_COMMISSION_RATE = 0.10  # 10%
-MAX_FILE_SIZE_MB = 100
-SUPPORTED_FILE_TYPES = ['.pdf', '.zip', '.rar', '.mp4', '.txt', '.docx']
+PLATFORM_COMMISSION_RATE = core_settings.PLATFORM_COMMISSION_RATE  # 5%
+PARTNER_COMMISSION_RATE = core_settings.PARTNER_COMMISSION_RATE  # 10%
+MAX_FILE_SIZE_MB = core_settings.MAX_FILE_SIZE_MB
+SUPPORTED_FILE_TYPES = core_settings.SUPPORTED_FILE_TYPES
 
 # Configuration crypto
-MARKETPLACE_CONFIG = {
-    'supported_payment_cryptos': ['btc', 'eth', 'usdt', 'usdc', 'bnb', 'sol', 'ltc', 'xrp'],
-    'platform_commission_rate': 0.05,  # 5%
-    'min_payout_amount': 0.1,  # SOL minimum pour payout
-}
+MARKETPLACE_CONFIG = core_settings.MARKETPLACE_CONFIG
 
 # Variables commission
 # (Définies une seule fois pour éviter les doublons)
-PLATFORM_COMMISSION_RATE = 0.05  # 5% pour la plateforme
-PARTNER_COMMISSION_RATE = 0.10   # 10% pour parrainage (si gardé)
+PLATFORM_COMMISSION_RATE = core_settings.PLATFORM_COMMISSION_RATE  # 5% pour la plateforme
+PARTNER_COMMISSION_RATE = core_settings.PARTNER_COMMISSION_RATE   # 10% pour parrainage (si gardé)
 
 # Configuration logging
-os.makedirs('logs', exist_ok=True)
-os.makedirs('uploads', exist_ok=True)
-os.makedirs('wallets', exist_ok=True)
-
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    handlers=[
-        logging.FileHandler('logs/marketplace.log'),
-        logging.StreamHandler()
-    ])
 logger = logging.getLogger(__name__)
 
 
@@ -127,7 +113,7 @@ def validate_email(email: str) -> bool:
 class MarketplaceBot:
 
     def __init__(self):
-        self.db_path = "marketplace_database.db"
+        self.db_path = core_settings.DATABASE_PATH
         self.init_database()
         self.memory_cache = {}
 
@@ -146,15 +132,7 @@ class MarketplaceBot:
         self.memory_cache[user_id] = {'seller_logged_in': logged}
 
     def get_db_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
-        try:
-            conn.execute('PRAGMA journal_mode=WAL;')
-            conn.execute('PRAGMA synchronous=NORMAL;')
-            conn.execute('PRAGMA foreign_keys=ON;')
-            conn.execute('PRAGMA busy_timeout=5000;')
-        except Exception as e:
-            logger.warning(f"PRAGMA init error: {e}")
-        return conn
+        return get_sqlite_connection(self.db_path)
 
     def escape_markdown(self, text: str) -> str:
         if text is None:
@@ -486,38 +464,14 @@ class MarketplaceBot:
                  username: str,
                  first_name: str,
                  language_code: str = 'fr') -> bool:
-        """Ajoute un utilisateur"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                '''
-                INSERT OR IGNORE INTO users 
-                (user_id, username, first_name, language_code)
-                VALUES (?, ?, ?, ?)
-            ''', (user_id, username, first_name, language_code))
-            conn.commit()
-            return True
-        except sqlite3.Error as e:
-            logger.error(f"Erreur ajout utilisateur: {e}")
-            return False
-        finally:
-            conn.close()
+        """Ajoute un utilisateur (via UserRepository)"""
+        from app.domain.repositories import UserRepository
+        return UserRepository(self.db_path).add_user(user_id, username, first_name, language_code)
 
     def get_user(self, user_id: int) -> Optional[Dict]:
-        """Récupère un utilisateur"""
-        conn = self.get_db_connection()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        try:
-            cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id, ))
-            row = cursor.fetchone()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur récupération utilisateur: {e}")
-            return None
-        finally:
-            conn.close()
-        return dict(row) if row else None
+        """Récupère un utilisateur (via UserRepository)"""
+        from app.domain.repositories import UserRepository
+        return UserRepository(self.db_path).get_user(user_id)
 
     def create_seller_account_with_recovery(self, user_id: int, seller_name: str, 
                                       seller_bio: str, recovery_email: str, 
@@ -689,105 +643,38 @@ class MarketplaceBot:
 
     def create_payment(self, amount_usd: float, currency: str,
                        order_id: str) -> Optional[Dict]:
-        """Crée un paiement NOWPayments"""
+        """Crée un paiement NOWPayments (via PaymentService)"""
         try:
-            if not NOWPAYMENTS_API_KEY:
-                logger.error("NOWPAYMENTS_API_KEY manquant!")
-                return None
-
-            headers = {
-                "x-api-key": NOWPAYMENTS_API_KEY,
-                "Content-Type": "application/json"
-            }
-
-            payload = {
-                "price_amount": float(amount_usd),
-                "price_currency": "usd",
-                "pay_currency": currency.lower(),
-                "order_id": order_id,
-                "order_description": "Formation TechBot Marketplace"
-            }
-
-            response = requests.post("https://api.nowpayments.io/v1/payment",
-                                     headers=headers,
-                                     json=payload,
-                                     timeout=30)
-
-            if response.status_code == 201:
-                return response.json()
-            else:
-                logger.error(
-                    f"Erreur paiement: {response.status_code} - {response.text}"
-                )
-                return None
+            from app.services.payment_service import PaymentService
+            return PaymentService().create_payment(amount_usd, currency, order_id)
         except Exception as e:
-            logger.error(f"Erreur PaymentManager: {e}")
+            logger.error(f"Erreur PaymentService.create_payment: {e}")
             return None
 
     def check_payment_status(self, payment_id: str) -> Optional[Dict]:
-        """Vérifie le statut d'un paiement"""
+        """Vérifie le statut d'un paiement (via PaymentService)"""
         try:
-            if not NOWPAYMENTS_API_KEY:
-                return None
-
-            headers = {"x-api-key": NOWPAYMENTS_API_KEY}
-            response = requests.get(
-                f"https://api.nowpayments.io/v1/payment/{payment_id}",
-                headers=headers,
-                timeout=10)
-
-            if response.status_code == 200:
-                return response.json()
-            return None
+            from app.services.payment_service import PaymentService
+            return PaymentService().check_payment_status(payment_id)
         except Exception as e:
-            logger.error(f"Erreur vérification: {e}")
+            logger.error(f"Erreur PaymentService.check_payment_status: {e}")
             return None
 
     def get_exchange_rate(self) -> float:
-        """Récupère le taux EUR/USD"""
+        """Récupère le taux EUR/USD (via PaymentService)"""
         try:
-            cache = self.memory_cache.setdefault('_fx_cache', {})
-            now = time.time()
-            hit = cache.get('eur_usd')
-            if hit and (now - hit['ts'] < 3600):
-                return hit['value']
-            response = requests.get(
-                "https://api.exchangerate-api.com/v4/latest/EUR", timeout=10)
-            if response.status_code == 200:
-                val = response.json()['rates']['USD']
-                cache['eur_usd'] = {'value': val, 'ts': now}
-                return val
-            return 1.10
+            from app.services.payment_service import PaymentService
+            return PaymentService().get_exchange_rate()
         except Exception:
-            return self.memory_cache.get('_fx_cache', {}).get('eur_usd', {}).get('value', 1.10)
+            return 1.10
 
     def get_available_currencies(self) -> List[str]:
-        """Récupère les cryptos disponibles"""
+        """Récupère les cryptos disponibles (via PaymentService)"""
         try:
-            cache = self.memory_cache.setdefault('_currencies_cache', {})
-            now = time.time()
-            hit = cache.get('list')
-            if hit and (now - hit['ts'] < 3600):
-                return hit['value']
-
-            if not NOWPAYMENTS_API_KEY:
-                return ['btc', 'eth', 'usdt', 'usdc']
-
-            headers = {"x-api-key": NOWPAYMENTS_API_KEY}
-            response = requests.get("https://api.nowpayments.io/v1/currencies",
-                                    headers=headers,
-                                    timeout=10)
-            if response.status_code == 200:
-                currencies = response.json()['currencies']
-                main_cryptos = [
-                    'btc', 'eth', 'usdt', 'usdc', 'bnb', 'sol', 'ltc', 'xrp'
-                ]
-                val = [c for c in currencies if c in main_cryptos]
-                cache['list'] = {'value': val, 'ts': now}
-                return val
-            return ['btc', 'eth', 'usdt', 'usdc']
+            from app.services.payment_service import PaymentService
+            return PaymentService().get_available_currencies()
         except Exception:
-            return self.memory_cache.get('_currencies_cache', {}).get('list', {}).get('value', ['btc', 'eth', 'usdt', 'usdc'])
+            return ['btc', 'eth', 'usdt', 'usdc']
 
     def create_seller_payout(self, seller_user_id: int, order_ids: list, 
                         total_amount_sol: float) -> Optional[int]:
