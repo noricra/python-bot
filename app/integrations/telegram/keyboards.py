@@ -5,7 +5,6 @@ def main_menu_keyboard():
     return [
         [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
         [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')],
-        [InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')],
         [InlineKeyboardButton("📊 Stats marketplace", callback_data='marketplace_stats')],
         [InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')],
     ]

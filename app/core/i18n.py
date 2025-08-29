@@ -8,7 +8,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'choose_option': "Choisissez une option pour commencer :",
         'cta_buy': "🛒 Acheter une formation",
         'cta_sell': "📚 Vendre vos formations",
-        'cta_account': "🔑 Accéder à mon compte",
+        # 'cta_account': removed to simplify UX
         'cta_stats': "📊 Stats marketplace",
         'cta_support': "🆘 Support & aide",
         'cta_home': "🏠 Accueil",
@@ -20,7 +20,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'choose_option': "Choose an option to get started:",
         'cta_buy': "🛒 Buy a course",
         'cta_sell': "📚 Sell your courses",
-        'cta_account': "🔑 Access my account",
+        # 'cta_account': removed to simplify UX
         'cta_stats': "📊 Marketplace stats",
         'cta_support': "🆘 Support & help",
         'cta_home': "🏠 Home",
