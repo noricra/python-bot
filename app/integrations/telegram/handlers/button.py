@@ -3,6 +3,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.integrations.telegram.flows import support as support_flows
 from app.integrations.telegram.flows import purchase as purchase_flows
 from app.integrations.telegram.flows import seller as seller_flows
+from app.integrations.telegram.flows import admin as admin_flows
 from telegram.ext import ContextTypes
 
 
@@ -119,31 +120,31 @@ async def button_handler(bot_controller, update, context: ContextTypes.DEFAULT_T
 
         # Admin
         elif query.data == 'admin_menu':
-            await bot_controller.admin_menu(query)
+            await admin_flows.admin_menu(bot_controller, query)
         elif query.data == 'admin_commissions':
-            await bot_controller.admin_commissions_handler(query)
+            await admin_flows.admin_commissions_handler(bot_controller, query)
         elif query.data == 'admin_payouts':
-            await bot_controller.admin_payouts_handler(query)
+            await admin_flows.admin_payouts_handler(bot_controller, query)
         elif query.data == 'admin_mark_all_payouts_paid':
-            await bot_controller.admin_mark_all_payouts_paid(query)
+            await admin_flows.admin_mark_all_payouts_paid(bot_controller, query)
         elif query.data == 'admin_export_payouts':
-            await bot_controller.admin_export_payouts(query)
+            await admin_flows.admin_export_payouts(bot_controller, query)
         elif query.data == 'admin_users':
-            await bot_controller.admin_users_handler(query)
+            await admin_flows.admin_users_handler(bot_controller, query)
         elif query.data == 'admin_search_user':
-            await bot_controller.admin_search_user(query)
+            await admin_flows.admin_search_user(bot_controller, query)
         elif query.data == 'admin_export_users':
-            await bot_controller.admin_export_users(query)
+            await admin_flows.admin_export_users(bot_controller, query)
         elif query.data == 'admin_products':
-            await bot_controller.admin_products_handler(query)
+            await admin_flows.admin_products_handler(bot_controller, query)
         elif query.data == 'admin_search_product':
-            await bot_controller.admin_search_product(query)
+            await admin_flows.admin_search_product(bot_controller, query)
         elif query.data == 'admin_suspend_product':
-            await bot_controller.admin_suspend_product(query)
+            await admin_flows.admin_suspend_product(bot_controller, query)
         elif query.data == 'admin_export_products':
-            await bot_controller.admin_export_products(query)
+            await admin_flows.admin_export_products(bot_controller, query)
         elif query.data == 'admin_marketplace_stats':
-            await bot_controller.admin_marketplace_stats(query)
+            await admin_flows.admin_marketplace_stats(bot_controller, query)
 
         # Support
         elif query.data == 'faq':
