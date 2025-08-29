@@ -3177,74 +3177,13 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 conn.close()
             return False
 
-    async def show_support_menu(self, query, lang):
-        """Affiche le menu support"""
-        keyboard = [
-            [InlineKeyboardButton("FAQ", callback_data='faq')],
-            [InlineKeyboardButton("Créer un ticket", callback_data='create_ticket')],
-            [InlineKeyboardButton("Mes tickets", callback_data='my_tickets')],
-            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
-        ]
+    # show_support_menu déplacé dans app.integrations.telegram.flows.support
 
-        support_text = """Assistance et support
+    # show_faq déplacé dans app.integrations.telegram.flows.support
 
-Comment pouvons-nous vous aider ?"""
+    # create_ticket déplacé dans app.integrations.telegram.flows.support
 
-        await query.edit_message_text(
-            support_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
-
-    async def show_faq(self, query, lang):
-        """Affiche la FAQ"""
-        faq_text = """**FAQ**
-
-Q: Comment acheter une formation ?
-R: Parcourez les catégories ou recherchez par ID.
-
-Q: Comment vendre une formation ?
-R: Devenez vendeur et ajoutez vos produits.
-
-Q: Comment récupérer mon compte ?
-R: Utilisez l'email de récupération."""
-
-        keyboard = [[InlineKeyboardButton("Retour", callback_data='support_menu')]]
-
-        await query.edit_message_text(
-            faq_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
-
-    async def create_ticket(self, query, lang):
-        """Crée un ticket de support"""
-        self.memory_cache[query.from_user.id] = {
-            'creating_ticket': True,
-            'step': 'subject',
-            'lang': lang
-        }
-        await query.edit_message_text(
-            "🆘 Nouveau ticket\n\nEntrez un sujet pour votre demande:",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='support_menu')]])
-        )
-
-    async def show_my_tickets(self, query, lang):
-        """Affiche les tickets de support de l'utilisateur"""
-        try:
-            from app.services.support_service import SupportService
-            rows = SupportService(self.db_path).list_user_tickets(query.from_user.id, 10)
-        except Exception as e:
-            logger.error(f"Erreur tickets: {e}")
-            await query.edit_message_text("❌ Erreur récupération tickets.")
-            return
-
-        if not rows:
-            await query.edit_message_text("🎫 Aucun ticket.")
-            return
-
-        text = "🎫 Vos tickets:\n\n"
-        for t in rows:
-            text += f"• {t['ticket_id']} — {t['subject']} — {t['status']}\n"
-        await query.edit_message_text(text)
+    # show_my_tickets déplacé dans app.integrations.telegram.flows.support
 
     # ==== Stubs ajoutés pour les routes câblées ====
     async def download_product(self, query, context, product_id: str, lang: str):
