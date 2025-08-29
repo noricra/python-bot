@@ -2,6 +2,7 @@ import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.integrations.telegram.flows import support as support_flows
 from app.integrations.telegram.flows import purchase as purchase_flows
+from app.integrations.telegram.flows import seller as seller_flows
 from telegram.ext import ContextTypes
 
 
@@ -21,7 +22,7 @@ async def button_handler(bot_controller, update, context: ContextTypes.DEFAULT_T
         if query.data == 'buy_menu':
             await purchase_flows.buy_menu(bot_controller, query, lang)
         elif query.data == 'sell_menu':
-            await bot_controller.sell_menu(query, lang)
+            await seller_flows.sell_menu(bot_controller, query, lang)
         elif query.data == 'seller_dashboard':
             await bot_controller.seller_dashboard(query, lang)
         elif query.data == 'marketplace_stats':
@@ -55,13 +56,13 @@ async def button_handler(bot_controller, update, context: ContextTypes.DEFAULT_T
 
         # Vente
         elif query.data == 'create_seller':
-            await bot_controller.create_seller_prompt(query, lang)
+            await seller_flows.create_seller_prompt(bot_controller, query, lang)
         elif query.data == 'add_product':
-            await bot_controller.add_product_prompt(query, lang)
+            await seller_flows.add_product_prompt(bot_controller, query, lang)
         elif query.data == 'my_products':
-            await bot_controller.show_my_products(query, lang)
+            await seller_flows.show_my_products(bot_controller, query, lang)
         elif query.data == 'my_wallet':
-            await bot_controller.show_wallet(query, lang)
+            await seller_flows.show_wallet(bot_controller, query, lang)
         elif query.data == 'seller_logout':
             await bot_controller.seller_logout(query)
         elif query.data == 'delete_seller':
