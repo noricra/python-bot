@@ -30,6 +30,7 @@ from dotenv import load_dotenv
 import re
 import base58 # Import manquant
 from app.core import settings as core_settings, configure_logging, get_sqlite_connection
+from app.integrations.telegram.keyboards import main_menu_keyboard, buy_menu_keyboard, sell_menu_keyboard
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -755,27 +756,7 @@ class MarketplaceBot:
 
 Choisissez une option pour commencer :"""
 
-        keyboard = [[
-            InlineKeyboardButton("🛒 Acheter une formation",
-                                 callback_data='buy_menu')
-        ],
-                    [
-                        InlineKeyboardButton("📚 Vendre vos formations",
-                                             callback_data='sell_menu')
-                    ],
-                    [
-                        InlineKeyboardButton("🔑 Accéder à mon compte",
-                                             callback_data='access_account')
-                    ],
-
-                    [
-                        InlineKeyboardButton("📊 Stats marketplace",
-                                             callback_data='marketplace_stats')
-                    ],
-                    [
-                        InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'),
-                        InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')
-                    ]]
+        keyboard = main_menu_keyboard()
 
         await update.message.reply_text(
             welcome_text,
@@ -969,26 +950,7 @@ Choisissez une option pour commencer :"""
 
     async def buy_menu(self, query, lang):
         """Menu d'achat"""
-        keyboard = [
-            [
-                InlineKeyboardButton("🔍 Rechercher par ID produit",
-                                     callback_data='search_product')
-            ],
-            [
-                InlineKeyboardButton("📂 Parcourir catégories",
-                                     callback_data='browse_categories')
-            ],
-            [
-                InlineKeyboardButton("🔥 Meilleures ventes",
-                                     callback_data='category_bestsellers')
-            ],
-            [
-                InlineKeyboardButton("🆕 Nouveautés",
-                                     callback_data='category_new')
-            ],
-            [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
-            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
-        ]
+        keyboard = buy_menu_keyboard()
 
         buy_text = """🛒 **ACHETER UNE FORMATION**
 
@@ -1835,18 +1797,7 @@ Choisissez un code pour continuer votre achat :
             await self.seller_dashboard(query, lang)
             return
 
-        keyboard = [[
-            InlineKeyboardButton("🚀 Devenir vendeur",
-                                 callback_data='create_seller')
-        ],
-                    [
-                        InlineKeyboardButton("📋 Conditions & avantages",
-                                             callback_data='seller_info')
-                    ],
-                    [
-                        InlineKeyboardButton("🏠 Accueil",
-                                             callback_data='back_main')
-                    ]]
+        keyboard = sell_menu_keyboard()
 
         sell_text = """📚 **VENDRE VOS FORMATIONS**
 
