@@ -14,5 +14,17 @@ def build_application(bot_instance) -> Application:
     )
     application.add_handler(MessageHandler(filters.Document.ALL, bot_instance.handle_document_upload))
 
+    # Set bot commands for quick access
+    try:
+        commands = [
+            ("start", "Ouvrir le menu principal"),
+            ("buy", "Acheter une formation"),
+            ("sell", "Espace vendeur"),
+            ("support", "Support & aide"),
+        ]
+        application.bot.set_my_commands([bot_instance.BotCommand(name, desc) if hasattr(bot_instance, 'BotCommand') else __import__('telegram').BotCommand(name, desc) for name, desc in commands])
+    except Exception:
+        pass
+
     return application
 
