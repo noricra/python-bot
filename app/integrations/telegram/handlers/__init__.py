@@ -1,7 +1,10 @@
 from .start import start_command_handler
 from .admin import admin_command_handler
 from .callbacks import callback_query_handler
-from .messages import text_message_handler, document_upload_handler
+from .messages import text_message_handler as text_message_handler_old, document_upload_handler as document_upload_handler_old
+from .button import button_handler as button_handler_wrapper
+from .text import text_message_handler
+from .documents import document_upload_handler
 
 __all__ = [
     "start_command_handler",
@@ -9,5 +12,6 @@ __all__ = [
     "callback_query_handler",
     "text_message_handler",
     "document_upload_handler",
+    "button_handler_wrapper",
 ]
 
