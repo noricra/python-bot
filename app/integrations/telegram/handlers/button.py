@@ -5,6 +5,7 @@ from app.integrations.telegram.flows import purchase as purchase_flows
 from app.integrations.telegram.flows import seller as seller_flows
 from app.integrations.telegram.flows import admin as admin_flows
 from app.integrations.telegram.flows import library as library_flows
+from app.integrations.telegram.flows import marketplace as marketplace_flows
 from telegram.ext import ContextTypes
 
 
@@ -28,7 +29,7 @@ async def button_handler(bot_controller, update, context: ContextTypes.DEFAULT_T
         elif query.data == 'seller_dashboard':
             await bot_controller.seller_dashboard(query, lang)
         elif query.data == 'marketplace_stats':
-            await bot_controller.marketplace_stats(query, lang)
+            await marketplace_flows.marketplace_stats(bot_controller, query, lang)
         elif query.data == 'support_menu':
             await support_flows.show_support_menu(bot_controller, query, lang)
         elif query.data == 'back_main':
@@ -157,15 +158,15 @@ async def button_handler(bot_controller, update, context: ContextTypes.DEFAULT_T
 
         # Wallet vendeur actions
         elif query.data == 'payout_history':
-            await bot_controller.payout_history(query)
+            await seller_flows.payout_history(bot_controller, query)
         elif query.data == 'copy_address':
-            await bot_controller.copy_address(query)
+            await seller_flows.copy_address(bot_controller, query)
 
         # Autres écrans vendeur
         elif query.data == 'seller_analytics':
-            await bot_controller.seller_analytics(query, lang)
+            await seller_flows.seller_analytics(bot_controller, query, lang)
         elif query.data == 'seller_settings':
-            await bot_controller.seller_settings(query, lang)
+            await seller_flows.seller_settings(bot_controller, query, lang)
         elif query.data == 'edit_seller_name':
             bot_controller.update_user_state(user_id, editing_settings=True, step='edit_name')
             await query.edit_message_text("Entrez le nouveau nom vendeur:")

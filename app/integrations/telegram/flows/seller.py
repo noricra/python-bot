@@ -267,3 +267,83 @@ async def show_wallet(bot, query, lang):
 
     await query.edit_message_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
+
+async def payout_history(bot, query):
+    try:
+        conn = bot.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, total_amount_sol, payout_status, created_at, processed_at
+            FROM seller_payouts
+            WHERE seller_user_id = ?
+            ORDER BY created_at DESC
+            LIMIT 10
+        ''', (query.from_user.id,))
+        rows = cursor.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Erreur payouts: {e}")
+        await query.edit_message_text("❌ Erreur récupération payouts.")
+        return
+
+    if not rows:
+        await query.edit_message_text("💸 Aucun payout pour le moment.")
+        return
+
+    text = "💸 Vos payouts:\n\n"
+    for r in rows:
+        text += f"• #{r[0]} — {r[1]:.6f} SOL — {r[2]} — {str(r[3])[:19]}\n"
+    await query.edit_message_text(text)
+
+
+async def seller_analytics(bot, query, lang):
+    try:
+        conn = bot.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*), COALESCE(SUM(seller_revenue), 0)
+            FROM orders
+            WHERE seller_user_id = ? AND payment_status = 'completed'
+        ''', (query.from_user.id,))
+        total = cursor.fetchone()
+        cursor.execute('''
+            SELECT p.title, COALESCE(COUNT(o.id),0) as sales
+            FROM products p
+            LEFT JOIN orders o ON o.product_id = p.product_id AND o.payment_status='completed'
+            WHERE p.seller_user_id = ?
+            GROUP BY p.product_id
+            ORDER BY sales DESC
+            LIMIT 5
+        ''', (query.from_user.id,))
+        top = cursor.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Erreur analytics: {e}")
+        await query.edit_message_text("❌ Erreur analytics.")
+        return
+
+    text = f"""📊 Analytics vendeur
+
+Ventes totales: {total[0]}\nRevenus totaux: {total[1]:.2f}€\n
+Top produits:\n"""
+    for t in top:
+        text += f"• {t[0]} — {t[1]} ventes\n"
+    await query.edit_message_text(text)
+
+
+async def seller_settings(bot, query, lang):
+    bot.update_user_state(query.from_user.id, editing_settings=True, step='menu')
+    keyboard = [
+        [InlineKeyboardButton("✏️ Modifier nom", callback_data='edit_seller_name')],
+        [InlineKeyboardButton("📝 Modifier bio", callback_data='edit_seller_bio')],
+        [InlineKeyboardButton("💸 Payouts / Adresse", callback_data='my_wallet')],
+        [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
+        [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
+        [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
+    ]
+    await query.edit_message_text("Paramètres vendeur:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def copy_address(bot, query):
+    await query.answer("Adresse copiée", show_alert=False)
+
