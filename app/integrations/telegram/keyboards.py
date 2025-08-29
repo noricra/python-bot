@@ -17,7 +17,7 @@ def buy_menu_keyboard():
         [InlineKeyboardButton("📂 Parcourir catégories", callback_data='browse_categories')],
         [InlineKeyboardButton("🔥 Meilleures ventes", callback_data='category_bestsellers')],
         [InlineKeyboardButton("🆕 Nouveautés", callback_data='category_new')],
-        [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
+        [InlineKeyboardButton("💸 Payouts / Adresse de retrait", callback_data='my_wallet')],
         [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
     ]
 
