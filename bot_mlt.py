@@ -156,6 +156,14 @@ class MarketplaceBot:
         logged = bool(current.get('seller_logged_in'))
         self.memory_cache[user_id] = {'seller_logged_in': logged}
 
+    def get_user_state(self, user_id: int) -> dict:
+        return self.memory_cache.setdefault(user_id, {})
+
+    def update_user_state(self, user_id: int, **kwargs) -> None:
+        state = self.memory_cache.setdefault(user_id, {})
+        state.update(kwargs)
+        self.memory_cache[user_id] = state
+
     def get_db_connection(self) -> sqlite3.Connection:
         return get_sqlite_connection(self.db_path)
 
@@ -732,8 +740,8 @@ class MarketplaceBot:
                             context: ContextTypes.DEFAULT_TYPE):
         """Nouveau menu d'accueil marketplace"""
         user = update.effective_user
-        self.add_user(user.id, user.username, user.first_name,
-                      user.language_code or 'fr')
+        # Conserver l'état (ne pas déconnecter). Simplement assurer l'inscription DB.
+        self.add_user(user.id, user.username, user.first_name, user.language_code or 'fr')
 
         welcome_text = """🏪 **TECHBOT MARKETPLACE**
 *La première marketplace crypto pour formations*
@@ -782,7 +790,7 @@ Choisissez une option pour commencer :"""
                 await self.access_account_prompt(query, lang)
             elif query.data == 'seller_login':
                 # Démarrer explicitement le flux de connexion (email puis code)
-                self.memory_cache[user_id] = {'login_wait_email': True}
+                self.update_user_state(user_id, login_wait_email=True)
                 await query.edit_message_text("🔑 Entrez votre email de récupération :")
             # Plus de saisie de code seul: on impose email + code
 
@@ -913,14 +921,14 @@ Choisissez une option pour commencer :"""
             elif query.data == 'seller_settings':
                 await self.seller_settings(query, lang)
             elif query.data == 'edit_seller_name':
-                self.memory_cache[user_id] = {'editing_settings': True, 'step': 'edit_name'}
+                self.update_user_state(user_id, editing_settings=True, step='edit_name')
                 await query.edit_message_text("Entrez le nouveau nom vendeur:")
             elif query.data == 'edit_seller_bio':
-                self.memory_cache[user_id] = {'editing_settings': True, 'step': 'edit_bio'}
+                self.update_user_state(user_id, editing_settings=True, step='edit_bio')
                 await query.edit_message_text("Entrez la nouvelle biographie:")
             elif query.data.startswith('edit_product_'):
                 product_id = query.data.split('edit_product_')[-1]
-                self.memory_cache[user_id] = {'editing_product': True, 'product_id': product_id, 'step': 'choose_field'}
+                self.update_user_state(user_id, editing_product=True, product_id=product_id, step='choose_field')
                 keyboard = [
                     [InlineKeyboardButton("✏️ Modifier titre", callback_data=f'edit_field_title_{product_id}')],
                     [InlineKeyboardButton("💰 Modifier prix", callback_data=f'edit_field_price_{product_id}')],
@@ -931,11 +939,11 @@ Choisissez une option pour commencer :"""
                 await query.edit_message_text(f"Édition produit `{product_id}`:", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
             elif query.data.startswith('edit_field_title_'):
                 product_id = query.data.split('edit_field_title_')[-1]
-                self.memory_cache[user_id] = {'editing_product': True, 'product_id': product_id, 'step': 'edit_title_input'}
+                self.update_user_state(user_id, editing_product=True, product_id=product_id, step='edit_title_input')
                 await query.edit_message_text("Entrez le nouveau titre:")
             elif query.data.startswith('edit_field_price_'):
                 product_id = query.data.split('edit_field_price_')[-1]
-                self.memory_cache[user_id] = {'editing_product': True, 'product_id': product_id, 'step': 'edit_price_input'}
+                self.update_user_state(user_id, editing_product=True, product_id=product_id, step='edit_price_input')
                 await query.edit_message_text("Entrez le nouveau prix (EUR):")
             elif query.data.startswith('edit_field_toggle_'):
                 product_id = query.data.split('edit_field_toggle_')[-1]
@@ -958,7 +966,7 @@ Choisissez une option pour commencer :"""
                     await query.edit_message_text("❌ Erreur mise à jour statut.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='my_products')]]))
             elif query.data.startswith('delete_product_'):
                 product_id = query.data.split('delete_product_')[-1]
-                self.memory_cache[user_id] = {'confirm_delete_product': product_id}
+                self.update_user_state(user_id, confirm_delete_product=product_id)
                 keyboard = [
                     [InlineKeyboardButton("✅ Confirmer suppression", callback_data=f'confirm_delete_{product_id}')],
                     [InlineKeyboardButton("❌ Annuler", callback_data='my_products')],
@@ -2025,12 +2033,7 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
             )
             return
 
-        self.memory_cache[query.from_user.id] = {
-            'adding_product': True,
-            'step': 'title',
-            'product_data': {},
-            'lang': lang
-        }
+        self.update_user_state(query.from_user.id, adding_product=True, step='title', product_data={}, lang=lang)
 
         await query.edit_message_text("""➕ **AJOUTER UN NOUVEAU PRODUIT**
 
@@ -3928,7 +3931,7 @@ Top produits:\n"""
         await query.edit_message_text(text)
 
     async def seller_settings(self, query, lang):
-        self.memory_cache[query.from_user.id] = {'editing_settings': True, 'step': 'menu'}
+        self.update_user_state(query.from_user.id, editing_settings=True, step='menu')
         keyboard = [
             [InlineKeyboardButton("✏️ Modifier nom", callback_data='edit_seller_name')],
             [InlineKeyboardButton("📝 Modifier bio", callback_data='edit_seller_bio')],
