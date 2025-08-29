@@ -585,28 +585,9 @@ class MarketplaceBot:
             return None
 
     def get_available_referral_codes(self) -> List[str]:
-        """Récupère les codes de parrainage disponibles"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-
-        try:
-            # Codes par défaut
-            cursor.execute(
-                'SELECT code FROM default_referral_codes WHERE is_active = TRUE')
-            default_codes = [row[0] for row in cursor.fetchall()]
-
-            # Codes de partenaires actifs
-            cursor.execute(
-                'SELECT partner_code FROM users WHERE is_partner = TRUE AND partner_code IS NOT NULL'
-            )
-            partner_codes = [row[0] for row in cursor.fetchall()]
-
-            conn.close()
-            return default_codes + partner_codes
-        except sqlite3.Error as e:
-            logger.error(f"Erreur récupération codes parrainage: {e}")
-            conn.close()
-            return []
+        """Récupère les codes de parrainage disponibles (via ReferralService)"""
+        from app.services.referral_service import ReferralService
+        return ReferralService(self.db_path).list_all_codes()
 
     def validate_referral_code(self, code: str) -> bool:
         """Valide un code de parrainage"""
@@ -614,30 +595,13 @@ class MarketplaceBot:
         return code in available_codes
 
     def create_partner_code(self, user_id: int) -> Optional[str]:
-        """Crée un code partenaire unique"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-
+        """Crée un code partenaire unique (via ReferralService)"""
+        from app.services.referral_service import ReferralService
         for _ in range(10):
             partner_code = f"REF{user_id % 1000}{random.randint(100, 999)}"
-            try:
-                cursor.execute(
-                    '''
-                    UPDATE users 
-                    SET is_partner = TRUE, partner_code = ?
-                    WHERE user_id = ?
-                ''', (partner_code, user_id))
-
-                if cursor.rowcount > 0:
-                    conn.commit()
-                    conn.close()
-                    return partner_code
-            except sqlite3.IntegrityError:
-                continue
-            except sqlite3.Error as e:
-                logger.error(f"Erreur création code partenaire: {e}")
-                conn.close()
-                return None
+            if ReferralService(self.db_path).set_partner_code_for_user(user_id, partner_code):
+                return partner_code
+        return None
 
         conn.close()
         return None
@@ -1364,7 +1328,8 @@ Soyez le premier à publier dans ce domaine !"""
 
     async def choose_random_referral(self, query, lang):
         """Choisir un code de parrainage aléatoire"""
-        available_codes = self.get_available_referral_codes()
+        from app.services.referral_service import ReferralService
+        available_codes = ReferralService(self.db_path).list_all_codes()
 
         if not available_codes:
             await query.edit_message_text(
@@ -2592,21 +2557,13 @@ Commencez dès maintenant à monétiser votre expertise !"""
             subject = state.get('subject', 'Sans sujet')
             content = message_text[:2000]
 
-            ticket_id = f"TKT-{datetime.utcnow().strftime('%y%m%d')}-{random.randint(1000,9999)}"
-            try:
-                conn = self.get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO support_tickets (user_id, ticket_id, subject, message)
-                    VALUES (?, ?, ?, ?)
-                ''', (user_id, ticket_id, subject, content))
-                conn.commit()
-                conn.close()
+            from app.services.support_service import SupportService
+            ticket_id = SupportService(self.db_path).create_ticket(user_id, subject, content)
+            if ticket_id:
                 self.memory_cache.pop(user_id, None)
                 await update.message.reply_text(
                     f"🎫 Ticket créé: {ticket_id}\nNotre équipe vous répondra bientôt.")
-            except Exception as e:
-                logger.error(f"Erreur création ticket: {e}")
+            else:
                 await update.message.reply_text("❌ Erreur lors de la création du ticket.")
 
     async def process_seller_settings(self, update: Update, message_text: str):
@@ -3678,17 +3635,8 @@ R: Utilisez l'email de récupération."""
     async def show_my_tickets(self, query, lang):
         """Affiche les tickets de support de l'utilisateur"""
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT ticket_id, subject, status, created_at
-                FROM support_tickets
-                WHERE user_id = ?
-                ORDER BY created_at DESC
-                LIMIT 10
-            ''', (query.from_user.id,))
-            rows = cursor.fetchall()
-            conn.close()
+            from app.services.support_service import SupportService
+            rows = SupportService(self.db_path).list_user_tickets(query.from_user.id, 10)
         except Exception as e:
             logger.error(f"Erreur tickets: {e}")
             await query.edit_message_text("❌ Erreur récupération tickets.")
@@ -3700,7 +3648,7 @@ R: Utilisez l'email de récupération."""
 
         text = "🎫 Vos tickets:\n\n"
         for t in rows:
-            text += f"• {t[0]} — {t[1]} — {t[2]}\n"
+            text += f"• {t['ticket_id']} — {t['subject']} — {t['status']}\n"
         await query.edit_message_text(text)
 
     # ==== Stubs ajoutés pour les routes câblées ====
@@ -3857,16 +3805,12 @@ Top produits:\n"""
         if query.from_user.id != ADMIN_USER_ID:
             return
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE seller_payouts
-                SET payout_status = 'completed', processed_at = CURRENT_TIMESTAMP
-                WHERE payout_status = 'pending'
-            ''')
-            conn.commit()
-            conn.close()
-            await query.edit_message_text("✅ Tous les payouts en attente ont été marqués comme payés.")
+            from app.services.payout_service import PayoutService
+            ok = PayoutService(self.db_path).mark_all_pending_as_completed()
+            if ok:
+                await query.edit_message_text("✅ Tous les payouts en attente ont été marqués comme payés.")
+            else:
+                await query.edit_message_text("❌ Erreur lors du marquage des payouts.")
         except Exception as e:
             logger.error(f"Erreur mark payouts paid: {e}")
             await query.edit_message_text("❌ Erreur lors du marquage des payouts.")
