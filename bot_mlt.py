@@ -786,8 +786,7 @@ Choisissez une option pour commencer :"""
                 await self.change_language(query, query.data[5:])
 
             # Accès compte (unifié)
-            elif query.data == 'access_account':
-                await self.access_account_prompt(query, lang)
+            # 'Accéder à mon compte' retiré pour simplifier l'UX (doublon du dashboard)
             elif query.data == 'seller_login':
                 # Démarrer explicitement le flux de connexion (email puis code)
                 self.update_user_state(user_id, login_wait_email=True)
@@ -1943,7 +1942,7 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
         if not user_data or not user_data['is_seller']:
             await query.edit_message_text(
                 "❌ Accès non autorisé.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]])
             )
             return
         if not self.is_seller_logged_in(query.from_user.id):
@@ -2029,7 +2028,7 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
             await query.edit_message_text(
                 "❌ Connectez-vous d'abord (email + code)",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]])
             )
             return
 
@@ -2057,7 +2056,7 @@ Saisissez le titre de votre formation :
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
             await query.edit_message_text(
                 "❌ Connectez-vous d'abord (email + code)",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]])
             )
             return
 
@@ -2133,7 +2132,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
             await query.edit_message_text(
                 "❌ Connectez-vous d'abord (email + code)",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]])
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]])
             )
             return
 
@@ -2893,8 +2892,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
         keyboard = [
             [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
-            [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')],
-            [InlineKeyboardButton("🔑 Accéder à mon compte", callback_data='access_account')]
+            [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')]
         ]
 
         # Accès rapide espace vendeur si déjà vendeur
