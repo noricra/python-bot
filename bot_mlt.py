@@ -31,6 +31,8 @@ import re
 import base58 # Import manquant
 from app.core import settings as core_settings, configure_logging, get_sqlite_connection
 from app.integrations.telegram.keyboards import main_menu_keyboard, buy_menu_keyboard, sell_menu_keyboard
+import qrcode
+from io import BytesIO
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -1660,12 +1662,24 @@ Choisissez un code pour continuer votre achat :
                                      callback_data=f'check_payment_{order_id}')
             ], [
                 InlineKeyboardButton("💬 Support", callback_data='support_menu')
+            ], [
+                InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
             ]]
 
-            await query.edit_message_text(
-                payment_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown')
+            # Générer et envoyer un QR code pour l'adresse de paiement
+            try:
+                qr_img = qrcode.make(payment_address)
+                bio = BytesIO()
+                qr_img.save(bio, format='PNG')
+                bio.seek(0)
+                caption = payment_text
+                await query.message.reply_photo(photo=bio, caption=caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception as e:
+                logger.warning(f"QR code generation failed: {e}")
+                await query.edit_message_text(
+                    payment_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown')
         else:
             await query.edit_message_text(
                 "❌ Erreur lors de la création du paiement. Vérifiez la configuration NOWPayments.",
