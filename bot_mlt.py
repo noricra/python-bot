@@ -51,7 +51,8 @@ SMTP_PASSWORD = core_settings.SMTP_PASSWORD
 
 # Configuration marketplace
 PLATFORM_COMMISSION_RATE = core_settings.PLATFORM_COMMISSION_RATE  # 5%
-PARTNER_COMMISSION_RATE = core_settings.PARTNER_COMMISSION_RATE  # 10%
+# Partenariat désactivé
+PARTNER_COMMISSION_RATE = 0.0
 MAX_FILE_SIZE_MB = core_settings.MAX_FILE_SIZE_MB
 SUPPORTED_FILE_TYPES = core_settings.SUPPORTED_FILE_TYPES
 
@@ -61,7 +62,8 @@ MARKETPLACE_CONFIG = core_settings.MARKETPLACE_CONFIG
 # Variables commission
 # (Définies une seule fois pour éviter les doublons)
 PLATFORM_COMMISSION_RATE = core_settings.PLATFORM_COMMISSION_RATE  # 5% pour la plateforme
-PARTNER_COMMISSION_RATE = core_settings.PARTNER_COMMISSION_RATE   # 10% pour parrainage (si gardé)
+# Partenariat désactivé
+PARTNER_COMMISSION_RATE = 0.0
 
 # Configuration logging
 logger = logging.getLogger(__name__)
@@ -617,22 +619,15 @@ class MarketplaceBot:
             return None
 
     def get_available_referral_codes(self) -> List[str]:
-        """Récupère les codes de parrainage disponibles (via ReferralService)"""
-        from app.services.referral_service import ReferralService
-        return ReferralService(self.db_path).list_all_codes()
+        """Parrainage désactivé: retourne liste vide."""
+        return []
 
     def validate_referral_code(self, code: str) -> bool:
-        """Valide un code de parrainage"""
-        available_codes = self.get_available_referral_codes()
-        return code in available_codes
+        """Parrainage désactivé"""
+        return False
 
     def create_partner_code(self, user_id: int) -> Optional[str]:
-        """Crée un code partenaire unique (via ReferralService)"""
-        from app.services.referral_service import ReferralService
-        for _ in range(10):
-            partner_code = f"REF{user_id % 1000}{random.randint(100, 999)}"
-            if ReferralService(self.db_path).set_partner_code_for_user(user_id, partner_code):
-                return partner_code
+        """Parrainage désactivé"""
         return None
 
         conn.close()
@@ -845,15 +840,7 @@ Choisissez une option pour commencer :"""
                 await self.recovery_by_email_prompt(query, lang)
 
             # Parrainage (si gardé)
-            elif query.data == 'enter_referral_manual':
-                await self.enter_referral_manual(query, lang)
-            elif query.data == 'choose_random_referral':
-                await self.choose_random_referral(query, lang)
-            elif query.data.startswith('use_referral_'):
-                code = query.data[13:]
-                await self.validate_and_proceed(query, code, lang)
-            elif query.data == 'become_partner':
-                await self.become_partner(query, lang)
+            # Parrainage supprimé
 
             # Paiement
             elif query.data == 'proceed_to_payment':
@@ -1024,10 +1011,10 @@ Plusieurs façons de découvrir nos formations :
 
     async def search_product_prompt(self, query, lang):
         """Demande de saisir un ID produit"""
-        self.memory_cache[query.from_user.id] = {
-            'waiting_for_product_id': True,
-            'lang': lang
-        }
+        state = self.memory_cache.get(query.from_user.id, {})
+        state['waiting_for_product_id'] = True
+        state['lang'] = lang
+        self.memory_cache[query.from_user.id] = state
 
         await query.edit_message_text(
             """🔍 **RECHERCHE PAR ID PRODUIT**
@@ -1268,47 +1255,18 @@ Soyez le premier à publier dans ce domaine !"""
             return
 
         # Stocker le produit à acheter
-        self.memory_cache[user_id] = {
-            'buying_product_id': product_id,
-            'lang': lang
-        }
+        user_cache = self.memory_cache.get(user_id, {})
+        user_cache['buying_product_id'] = product_id
+        user_cache['lang'] = lang
+        self.memory_cache[user_id] = user_cache
 
         keyboard = [
-            [
-                InlineKeyboardButton("✍️ Saisir mon code",
-                                     callback_data='enter_referral_manual')
-            ],
-            [
-                InlineKeyboardButton("🎲 Choisir un code aléatoire",
-                                     callback_data='choose_random_referral')
-            ],
-            [
-                InlineKeyboardButton("🚀 Devenir partenaire (10% commission!)",
-                                     callback_data='become_partner')
-            ],
-            [
-                InlineKeyboardButton("🔙 Retour",
-                                     callback_data=f'product_{product_id}')
-            ]
+            [InlineKeyboardButton("💳 Continuer vers le paiement", callback_data='proceed_to_payment')],
+            [InlineKeyboardButton("🔙 Retour", callback_data=f'product_{product_id}')]
         ]
 
-        referral_text = """🎯 **CODE DE PARRAINAGE OBLIGATOIRE**
-
-⚠️ **IMPORTANT :** Un code de parrainage est requis pour acheter.
-
-💡 **3 OPTIONS DISPONIBLES :**
-
-1️⃣ **Vous avez un code ?** Saisissez-le !
-
-2️⃣ **Pas de code ?** Choisissez-en un gratuitement !
-
-3️⃣ **MEILLEURE OPTION :** Devenez partenaire !
-   • ✅ Gagnez 10% sur chaque vente
-   • ✅ Votre propre code de parrainage
-   • ✅ Dashboard vendeur complet"""
-
         await query.edit_message_text(
-            referral_text,
+            "✅ Prêt pour le paiement.",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown')
 
@@ -1317,10 +1275,10 @@ Soyez le premier à publier dans ce domaine !"""
         self.memory_cache[query.from_user.id]['waiting_for_referral'] = True
 
         await query.edit_message_text(
-            "✍️ **Veuillez saisir votre code de parrainage :**\n\nTapez le code exactement comme vous l'avez reçu.",
+            "Parrainage désactivé.",
             reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Retour",
-                                       callback_data='buy_menu')]]))
+                [[InlineKeyboardButton("💳 Continuer vers le paiement",
+                                       callback_data='proceed_to_payment')]]))
 
     async def check_payment_handler(self, query, order_id, lang):
         """Vérification paiement + création payout vendeur"""
@@ -1458,102 +1416,19 @@ Choisissez un code pour continuer votre achat :
             parse_mode='Markdown')
 
     async def validate_and_proceed(self, query, referral_code, lang):
-        """Valider le code et procéder à l'achat"""
-        if not self.validate_referral_code(referral_code):
-            await query.edit_message_text(
-                f"❌ **Code invalide :** `{referral_code}`\n\nVeuillez réessayer avec un code valide.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
-                ]]),
-                parse_mode='Markdown')
-            return
-
-        # Stocker le code validé
-        user_cache = self.memory_cache.get(query.from_user.id, {})
-        user_cache['validated_referral'] = referral_code
-        user_cache['lang'] = lang
-        self.memory_cache[query.from_user.id] = user_cache
-
-        await query.edit_message_text(
-            f"✅ **Code validé :** `{referral_code}`\n\nProcédons au paiement !",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("💳 Continuer vers le paiement",
-                                     callback_data='proceed_to_payment'),
-                InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
-            ]]),
-            parse_mode='Markdown')
+        """Parrainage désactivé"""
+        await self.show_crypto_options(query, lang)
 
     async def become_partner(self, query, lang):
-        """Inscription partenaire"""
-        user_id = query.from_user.id
-        user_data = self.get_user(user_id)
-
-        if user_data and user_data['is_partner']:
-            await query.edit_message_text(
-                "✅ Vous êtes déjà partenaire !",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("📊 Mon dashboard",
-                                         callback_data='seller_dashboard')
-                ]]))
-            return
-
-        partner_code = self.create_partner_code(user_id)
-
-        if partner_code:
-            # Valider automatiquement son propre code
-            user_cache = self.memory_cache.get(user_id, {})
-            user_cache['validated_referral'] = partner_code
-            user_cache['lang'] = lang
-            user_cache['self_referral'] = True
-            self.memory_cache[user_id] = user_cache
-
-            welcome_text = f"""🎊 **BIENVENUE DANS L'ÉQUIPE !**
-
-✅ Votre compte partenaire est activé !
-
-🎯 **VOTRE CODE UNIQUE :** `{partner_code}`
-
-💰 **Avantages partenaire :**
-• Gagnez 10% sur chaque vente
-• Utilisez VOTRE code pour vos achats
-• Dashboard vendeur complet
-• Support prioritaire"""
-
-            keyboard = [[
-                InlineKeyboardButton("💳 Continuer l'achat",
-                                     callback_data='proceed_to_payment')
-            ],
-                        [
-                            InlineKeyboardButton(
-                                "📊 Mon dashboard",
-                                callback_data='seller_dashboard')
-                        ]]
-
-            await query.edit_message_text(
-                welcome_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown')
-        else:
-            await query.edit_message_text(
-                "❌ Erreur lors de la création du compte partenaire.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
-                ]]))
+        """Parrainage désactivé"""
+        await self.show_crypto_options(query, lang)
 
     async def show_crypto_options(self, query, lang):
         """Affiche les options de crypto pour le paiement"""
         user_id = query.from_user.id
         user_cache = self.memory_cache.get(user_id, {})
 
-        # Vérifier le code de parrainage validé
-        if 'validated_referral' not in user_cache:
-            await query.edit_message_text("❌ Code de parrainage requis !",
-                                          reply_markup=InlineKeyboardMarkup([[
-                                              InlineKeyboardButton(
-                                                  "🎯 Entrer un code",
-                                                  callback_data='buy_menu')
-                                          ]]))
-            return
+        # Parrainage désactivé: ne pas bloquer
 
         # Récupérer le produit
         product_id = user_cache.get('buying_product_id')
@@ -1610,7 +1485,6 @@ Choisissez un code pour continuer votre achat :
 
 📦 **Produit :** {product['title']}
 💰 **Prix :** {product['price_eur']}€
-🎯 **Code parrainage :** `{user_cache['validated_referral']}`
 
 🔐 **Sélectionnez votre crypto préférée :**
 
@@ -1618,7 +1492,9 @@ Choisissez un code pour continuer votre achat :
 • Paiement 100% sécurisé et anonyme
 • Confirmation automatique
 • Livraison instantanée après paiement
-• Support prioritaire 24/7"""
+• Support prioritaire 24/7
+
+ℹ️ Pour USDC, assurez-vous d'envoyer via le réseau correct affiché avec l'adresse (EVM, TRON ou Solana)."""
 
         await query.edit_message_text(
             crypto_text,
@@ -1682,10 +1558,10 @@ Choisissez un code pour continuer votre achat :
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (order_id, user_id, product_id, product['seller_user_id'],
                       product_price_eur, platform_commission, seller_revenue,
-                      partner_commission, crypto_currency,
+                      0.0, crypto_currency,
                       payment_data.get('pay_amount',
                                        0), payment_data.get('payment_id'),
-                      payment_data.get('pay_address', ''), referral_code))
+                      payment_data.get('pay_address', ''), None))
                 conn.commit()
                 conn.close()
             except sqlite3.Error as e:
@@ -1721,7 +1597,8 @@ Choisissez un code pour continuer votre achat :
 ⚠️ **IMPORTANT :**
 • Envoyez **exactement** le montant indiqué
 • Utilisez uniquement du {crypto_currency.upper()}
-• La détection est automatique"""
+• Pour USDC, vérifiez que le réseau correspond: EVM (ERC20), TRC20 (TRON) ou Solana (SPL) selon l'adresse.
+"""
 
             keyboard = [[
                 InlineKeyboardButton("🔄 Vérifier paiement",
@@ -1897,11 +1774,9 @@ Prêt à commencer ?"""
 
     async def create_seller_prompt(self, query, lang):
         """Demande les informations pour créer un compte vendeur"""
-        self.memory_cache[query.from_user.id] = {
-            'creating_seller': True,
-            'step': 'name',
-            'lang': lang
-        }
+        state = self.memory_cache.get(query.from_user.id, {})
+        state.update({'creating_seller': True, 'step': 'name', 'lang': lang})
+        self.memory_cache[query.from_user.id] = state
 
         await query.edit_message_text("""🚀 **CRÉATION COMPTE VENDEUR**
 
@@ -2194,7 +2069,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
         keyboard = [
             [InlineKeyboardButton("📊 Historique payouts", callback_data='payout_history')],
             [InlineKeyboardButton("📋 Copier adresse", callback_data='copy_address')],
-            [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')]
+            [InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')],
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
         ]
 
         await query.edit_message_text(
@@ -2950,10 +2826,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
     async def recovery_by_email_prompt(self, query, lang):
         """Demande l'email pour récupération"""
-        self.memory_cache[query.from_user.id] = {
-            'waiting_for_recovery_email': True,
-            'lang': lang
-        }
+        state = self.memory_cache.get(query.from_user.id, {})
+        state['waiting_for_recovery_email'] = True
+        state['lang'] = lang
+        self.memory_cache[query.from_user.id] = state
 
         await query.edit_message_text("""📧 **RÉCUPÉRATION PAR EMAIL**
 
@@ -3009,7 +2885,9 @@ Commencez dès maintenant à monétiser votre expertise !"""
                     logger.error(f"Erreur envoi email: {e}")
 
             # Poursuivre le flow: demander le code à l'utilisateur
-            self.memory_cache[user_id] = {'waiting_for_recovery_code': True, 'email': email}
+            state = self.memory_cache.get(user_id, {})
+            state.update({'waiting_for_recovery_code': True, 'email': email})
+            self.memory_cache[user_id] = state
             await update.message.reply_text(
                 "📧 Code envoyé. Entrez votre code à 6 chiffres:")
         except sqlite3.Error as e:
@@ -3073,7 +2951,9 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 await update.message.reply_text("❌ Email non associé à votre compte Telegram.")
                 return
             # Passer à l'étape code
-            self.memory_cache[user_id] = {'login_wait_code': True, 'login_email': email}
+            state = self.memory_cache.get(user_id, {})
+            state.update({'login_wait_code': True, 'login_email': email})
+            self.memory_cache[user_id] = state
             await update.message.reply_text("✉️ Email validé. Entrez votre code de récupération (6 chiffres):")
         except Exception as e:
             logger.error(f"Erreur login email: {e}")
@@ -3766,11 +3646,9 @@ R: Utilisez l'email de récupération."""
 
     async def create_ticket(self, query, lang):
         """Crée un ticket de support"""
-        self.memory_cache[query.from_user.id] = {
-            'creating_ticket': True,
-            'step': 'subject',
-            'lang': lang
-        }
+        state = self.memory_cache.get(query.from_user.id, {})
+        state.update({'creating_ticket': True, 'step': 'subject', 'lang': lang})
+        self.memory_cache[query.from_user.id] = state
         await query.edit_message_text(
             "🆘 Nouveau ticket\n\nEntrez un sujet pour votre demande:",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='support_menu')]])
