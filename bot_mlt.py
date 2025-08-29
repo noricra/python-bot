@@ -111,6 +111,28 @@ def validate_email(email: str) -> bool:
     return re.match(pattern, email or '') is not None
 
 
+def infer_network_from_address(address: str) -> str:
+    """Infère le réseau à partir du format d'adresse (approximation).
+    - 0x... -> Réseau EVM (ERC20/BEP20/etc.)
+    - T... (34 chars) -> TRC20 (TRON)
+    - Adresse base58 valide 32-44 -> Solana (SPL)
+    - Sinon -> Inconnu
+    """
+    try:
+        if not address:
+            return "inconnu"
+        addr = address.strip()
+        if addr.startswith('0x') and len(addr) == 42:
+            return "EVM (ex: ERC20)"
+        if addr.startswith('T') and len(addr) in (34, 35):
+            return "TRC20 (TRON)"
+        if validate_solana_address(addr):
+            return "Solana (SPL)"
+    except Exception:
+        pass
+    return "inconnu"
+
+
 class MarketplaceBot:
 
     def __init__(self):
@@ -978,7 +1000,7 @@ Saisissez l'ID de la formation que vous souhaitez acheter.
             ])
 
         keyboard.append(
-            [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')])
+            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')])
 
         categories_text = """📂 **CATÉGORIES DE FORMATIONS**
 
@@ -1603,12 +1625,17 @@ Choisissez un code pour continuer votre achat :
                 conn.close()
                 return
 
-            # Nettoyer le cache
+            # Nettoyer le cache de l'achat uniquement (conserver l'état global/login)
             if user_id in self.memory_cache:
-                del self.memory_cache[user_id]
+                user_cache = self.memory_cache.get(user_id, {})
+                for k in ['buying_product_id', 'validated_referral', 'self_referral']:
+                    if k in user_cache:
+                        user_cache.pop(k, None)
+                self.memory_cache[user_id] = user_cache
 
             crypto_amount = payment_data.get('pay_amount', 0)
             payment_address = payment_data.get('pay_address', '')
+            network_hint = infer_network_from_address(payment_address)
 
             payment_text = f"""💳 **PAIEMENT EN COURS**
 
@@ -1618,6 +1645,7 @@ Choisissez un code pour continuer votre achat :
 
 📍 **Adresse de paiement :**
 `{payment_address}`
+🧭 **Réseau détecté :** {network_hint}
 
 ⏰ **Validité :** 30 minutes
 🔄 **Confirmations :** 1-3 selon réseau
@@ -1887,14 +1915,14 @@ Sinon, créez votre compte vendeur en quelques étapes.""",
 • 💰 Revenus ce mois : {month_revenue:.2f}€
 • ⭐ Note moyenne : {user_data['seller_rating']:.1f}/5
 
-💳 **Wallet :** {'✅ Configuré' if user_data['seller_solana_address'] else '❌ À configurer'}"""
+💸 **Payouts / Adresse :** {'✅ Configurée' if user_data['seller_solana_address'] else '❌ À configurer'}"""
 
         keyboard = [[
             InlineKeyboardButton("➕ Ajouter un produit",
                                  callback_data='add_product')
         ], [
             InlineKeyboardButton("📦 Mes produits", callback_data='my_products')
-        ], [InlineKeyboardButton("💰 Mon wallet", callback_data='my_wallet')],
+        ], [InlineKeyboardButton("💸 Payouts / Adresse", callback_data='my_wallet')],
                     [
                         InlineKeyboardButton("📊 Analytics détaillées",
                                              callback_data='seller_analytics')
@@ -2026,7 +2054,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
             parse_mode='Markdown')
 
     async def show_wallet(self, query, lang):
-        """Affiche l'adresse Solana du vendeur"""
+        """Affiche les payouts et l'adresse de retrait (Solana)."""
         user_data = self.get_user(query.from_user.id)
 
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
@@ -2053,7 +2081,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
         solana_address = user_data['seller_solana_address']
 
         # Récupérer solde (optionnel)
-        balance = util_get_solana_balance_display(solana_address)
+        try:
+            balance = get_solana_balance_display(solana_address)
+        except Exception:
+            balance = 0.0
 
         # Calculer payouts en attente
         conn = self.get_db_connection()
@@ -2071,14 +2102,14 @@ Commencez dès maintenant à monétiser votre expertise !"""
             conn.close()
             pending_amount = 0
 
-        wallet_text = f"""💰 **MON WALLET SOLANA**
+        wallet_text = f"""💸 **PAYOUTS / ADRESSE DE RETRAIT**
 
     📍 **Adresse :** `{solana_address}`
 
     💎 **Solde actuel :** {balance:.6f} SOL
     ⏳ **Payout en attente :** {pending_amount:.6f} SOL
 
-    💸 **Payouts :**
+    💡 **Infos payouts :**
     - Traités quotidiennement
     - 95% de vos ventes
     - Commission plateforme : 5%"""
@@ -2269,8 +2300,12 @@ Commencez dès maintenant à monétiser votre expertise !"""
         # Chercher le produit
         product = self.get_product_by_id(product_id)
 
-        # Nettoyer cache
-        del self.memory_cache[user_id]
+        # Nettoyer uniquement l'état de recherche
+        if user_id in self.memory_cache:
+            state = self.memory_cache.get(user_id, {})
+            for k in ['waiting_for_product_id']:
+                state.pop(k, None)
+            self.memory_cache[user_id] = state
 
         if product:
             await self.show_product_details_from_search(update, product)
