@@ -1175,11 +1175,18 @@ Soyez le premier à publier dans ce domaine !"""
             products_text = f"📂 **{category_name.upper()}** ({len(products)} formations)\n\n"
 
             keyboard = []
+            # Calculer le taux pour affichage USD si besoin
+            usd_rate = await asyncio.to_thread(self.get_exchange_rate)
             for product in products:
                 product_id, title, price, sales, rating, seller = product
                 stars = "⭐" * int(rating) if rating > 0 else "⭐⭐⭐⭐⭐"
-                products_text += f"📦 **{title}**\n"
-                products_text += f"💰 {price}€ • 👤 {seller} • {stars} • 🛒 {sales} ventes\n\n"
+                if lang == 'en':
+                    usd_price = price * usd_rate
+                    products_text += f"📦 **{title}**\n"
+                    products_text += f"💰 {usd_price:.2f}$ • 👤 {seller} • {stars} • 🛒 {sales} sales\n\n"
+                else:
+                    products_text += f"📦 **{title}**\n"
+                    products_text += f"💰 {price}€ • 👤 {seller} • {stars} • 🛒 {sales} ventes\n\n"
 
                 keyboard.append([
                     InlineKeyboardButton(f"📖 {title[:40]}...",
@@ -1224,44 +1231,40 @@ Soyez le premier à publier dans ce domaine !"""
             conn.commit()
             conn.close()
         except sqlite3.Error as e:
-            logger.error(f"Erreur mise à jour vues produit: {e}")
+            logger.error(f"Erreur récupération produits catégorie: {e}")
             conn.close()
+            return
 
-        stars = "⭐" * int(
-            product['rating']) if product['rating'] > 0 else "⭐⭐⭐⭐⭐"
+        # Détails produit multilingue avec USD si EN
+        if lang == 'en':
+            usd_rate = await asyncio.to_thread(self.get_exchange_rate)
+            usd_price = product['price_eur'] * usd_rate
+            details_text = f"""📦 **{product['title']}**
 
-        product_text = f"""📦 **{product['title']}**
+👤 **Seller:** {product['seller_name']} ({product['seller_rating']:.1f}/5)
+📂 **Category:** {product['category']}
+💰 **Price:** {usd_price:.2f}$
+
+📖 **Description:**
+{product['description'] or 'No description available'}"""
+        else:
+            details_text = f"""📦 **{product['title']}**
 
 👤 **Vendeur :** {product['seller_name']} ({product['seller_rating']:.1f}/5)
 📂 **Catégorie :** {product['category']}
 💰 **Prix :** {product['price_eur']}€
 
 📖 **Description :**
-{product['description'] or 'Aucune description disponible'}
+{product['description'] or 'Aucune description disponible'}"""
 
-📊 **Statistiques :**
-• {stars} ({product['reviews_count']} avis)
-• 👁️ {product['views_count']} vues
-• 🛒 {product['sales_count']} ventes
-
-📁 **Fichier :** {product['file_size_mb']:.1f} MB"""
-
-        keyboard = [[
-            InlineKeyboardButton("🛒 Acheter maintenant",
-                                 callback_data=f'buy_product_{product_id}')
-        ],
-                    [
-                        InlineKeyboardButton("📂 Autres produits",
-                                             callback_data='browse_categories')
-                    ],
-                    [
-                        InlineKeyboardButton("🔙 Retour",
-                                             callback_data='buy_menu')
-                    ]]
-
+        # Afficher avec actions
+        actions_kb = [
+            [InlineKeyboardButton("🛒 Acheter" if lang == 'en' else "🛒 Acheter", callback_data=f'buy_product_{product_id}')],
+            [InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour", callback_data='browse_categories')]
+        ]
         await query.edit_message_text(
-            product_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            details_text,
+            reply_markup=InlineKeyboardMarkup(actions_kb),
             parse_mode='Markdown')
 
     async def buy_product_prompt(self, query, product_id, lang):
