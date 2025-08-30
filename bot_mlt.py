@@ -1461,9 +1461,9 @@ Choisissez un code pour continuer votre achat :
         """Valider le code et procéder à l'achat"""
         if not self.validate_referral_code(referral_code):
             await query.edit_message_text(
-                f"❌ **Code invalide :** `{referral_code}`\n\nVeuillez réessayer avec un code valide.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
+                (f"❌ **Invalid code:** `{referral_code}`\n\nPlease try again with a valid code." if lang == 'en' else f"❌ **Code invalide :** `{referral_code}`\n\nVeuillez réessayer avec un code valide."),
+                reply_markup=InlineKeyboardMarkup([[ 
+                    InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour", callback_data='buy_menu')
                 ]]),
                 parse_mode='Markdown')
             return
@@ -1475,11 +1475,11 @@ Choisissez un code pour continuer votre achat :
         self.memory_cache[query.from_user.id] = user_cache
 
         await query.edit_message_text(
-            f"✅ **Code validé :** `{referral_code}`\n\nProcédons au paiement !",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("💳 Continuer vers le paiement",
+            (f"✅ **Code validated:** `{referral_code}`\n\nLet's proceed to payment!" if lang == 'en' else f"✅ **Code validé :** `{referral_code}`\n\nProcédons au paiement !"),
+            reply_markup=InlineKeyboardMarkup([[ 
+                InlineKeyboardButton("💳 Continue to payment" if lang == 'en' else "💳 Continuer vers le paiement",
                                      callback_data='proceed_to_payment'),
-                InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
+                InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour", callback_data='buy_menu')
             ]]),
             parse_mode='Markdown')
 
@@ -3730,14 +3730,14 @@ Commencez dès maintenant à monétiser votre expertise !"""
         """Affiche le menu support"""
         keyboard = [
             [InlineKeyboardButton("FAQ", callback_data='faq')],
-            [InlineKeyboardButton("Créer un ticket", callback_data='create_ticket')],
-            [InlineKeyboardButton("Mes tickets", callback_data='my_tickets')],
-            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            [InlineKeyboardButton("Create a ticket" if lang == 'en' else "Créer un ticket", callback_data='create_ticket')],
+            [InlineKeyboardButton("My tickets" if lang == 'en' else "Mes tickets", callback_data='my_tickets')],
+            [InlineKeyboardButton("🏠 Home" if lang == 'en' else "🏠 Accueil", callback_data='back_main')]
         ]
 
-        support_text = """Assistance et support
+        support_text = ("Support & assistance\n\nHow can we help you?" if lang == 'en' else """Assistance et support
 
-Comment pouvons-nous vous aider ?"""
+Comment pouvons-nous vous aider ?""")
 
         await query.edit_message_text(
             support_text,
@@ -3746,7 +3746,16 @@ Comment pouvons-nous vous aider ?"""
 
     async def show_faq(self, query, lang):
         """Affiche la FAQ"""
-        faq_text = """**FAQ**
+        faq_text = ("""**FAQ**
+
+Q: How to buy a course?
+A: Browse categories or search by ID.
+
+Q: How to sell a course?
+A: Become a seller and add your products.
+
+Q: How to recover my account?
+A: Use the recovery email.""" if lang == 'en' else """**FAQ**
 
 Q: Comment acheter une formation ?
 R: Parcourez les catégories ou recherchez par ID.
@@ -3755,9 +3764,9 @@ Q: Comment vendre une formation ?
 R: Devenez vendeur et ajoutez vos produits.
 
 Q: Comment récupérer mon compte ?
-R: Utilisez l'email de récupération."""
+R: Utilisez l'email de récupération.""")
 
-        keyboard = [[InlineKeyboardButton("Retour", callback_data='support_menu')]]
+        keyboard = [[InlineKeyboardButton("Back" if lang == 'en' else "Retour", callback_data='support_menu')]]
 
         await query.edit_message_text(
             faq_text,
@@ -3772,8 +3781,8 @@ R: Utilisez l'email de récupération."""
             'lang': lang
         }
         await query.edit_message_text(
-            "🆘 Nouveau ticket\n\nEntrez un sujet pour votre demande:",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='support_menu')]])
+            ("🆘 New ticket\n\nEnter a subject for your request:" if lang == 'en' else "🆘 Nouveau ticket\n\nEntrez un sujet pour votre demande:"),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour", callback_data='support_menu')]])
         )
 
     async def show_my_tickets(self, query, lang):
@@ -3787,10 +3796,10 @@ R: Utilisez l'email de récupération."""
             return
 
         if not rows:
-            await query.edit_message_text("🎫 Aucun ticket.")
+            await query.edit_message_text("🎫 No tickets." if lang == 'en' else "🎫 Aucun ticket.")
             return
 
-        text = "🎫 Vos tickets:\n\n"
+        text = ("🎫 Your tickets:\n\n" if lang == 'en' else "🎫 Vos tickets:\n\n")
         for t in rows:
             text += f"• {t['ticket_id']} — {t['subject']} — {t['status']}\n"
         await query.edit_message_text(text)
@@ -3808,19 +3817,19 @@ R: Utilisez l'email de récupération."""
             ok = cursor.fetchone()[0] > 0
             if not ok:
                 conn.close()
-                await query.edit_message_text("❌ Accès refusé. Achetez d'abord ce produit.")
+                await query.edit_message_text("❌ Access denied. Please buy this product first." if lang == 'en' else "❌ Accès refusé. Achetez d'abord ce produit.")
                 return
             cursor.execute('SELECT main_file_path FROM products WHERE product_id = ?', (product_id,))
             row = cursor.fetchone()
             if not row:
                 conn.close()
-                await query.edit_message_text("❌ Fichier introuvable.")
+                await query.edit_message_text("❌ File not found." if lang == 'en' else "❌ Fichier introuvable.")
                 return
             file_path = row[0]
             conn.close()
 
             if not os.path.exists(file_path):
-                await query.edit_message_text("❌ Fichier manquant sur le serveur.")
+                await query.edit_message_text("❌ Missing file on server." if lang == 'en' else "❌ Fichier manquant sur le serveur.")
                 return
 
             # Incrémenter le compteur de téléchargements
@@ -3836,7 +3845,7 @@ R: Utilisez l'email de récupération."""
             await query.message.reply_document(document=open(file_path, 'rb'))
         except Exception as e:
             logger.error(f"Erreur download: {e}")
-            await query.edit_message_text("❌ Erreur lors du téléchargement.")
+            await query.edit_message_text("❌ Download error." if lang == 'en' else "❌ Erreur lors du téléchargement.")
 
     async def show_my_library(self, query, lang: str):
         try:
@@ -3853,20 +3862,27 @@ R: Utilisez l'email de récupération."""
             conn.close()
         except Exception as e:
             logger.error(f"Erreur bibliothèque: {e}")
-            await query.edit_message_text("❌ Erreur lors de la récupération de votre bibliothèque.")
+            await query.edit_message_text("❌ Error fetching your library." if lang == 'en' else "❌ Erreur lors de la récupération de votre bibliothèque.")
             return
 
         if not rows:
-            await query.edit_message_text("📚 Votre bibliothèque est vide.")
+            await query.edit_message_text("📚 Your library is empty." if lang == 'en' else "📚 Votre bibliothèque est vide.")
             return
 
-        text = "📚 Vos achats:\n\n"
+        text = ("📚 Your purchases:\n\n" if lang == 'en' else "📚 Vos achats:\n\n")
         keyboard = []
+        # Optional: display USD if lang == 'en'
+        usd_rate = None
+        if lang == 'en':
+            usd_rate = await asyncio.to_thread(self.get_exchange_rate)
         for product_id, title, price in rows[:10]:
-            text += f"• {title} — {price}€\n"
-            keyboard.append([InlineKeyboardButton("📥 Télécharger", callback_data=f'download_product_{product_id}')])
+            if lang == 'en' and usd_rate:
+                text += f"• {title} — {price * usd_rate:.2f}$\n"
+            else:
+                text += f"• {title} — {price}€\n"
+            keyboard.append([InlineKeyboardButton("📥 Download" if lang == 'en' else "📥 Télécharger", callback_data=f'download_product_{product_id}')])
 
-        keyboard.append([InlineKeyboardButton("🏠 Accueil", callback_data='back_main')])
+        keyboard.append([InlineKeyboardButton("🏠 Home" if lang == 'en' else "🏠 Accueil", callback_data='back_main')])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def payout_history(self, query):
