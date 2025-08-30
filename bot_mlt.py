@@ -2795,6 +2795,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 'sell_menu': '📚 Vendre vos formations',
                 'seller_login': '🔐 Espace vendeur',
                 'marketplace_stats': '📊 Stats marketplace',
+                'support': '🆘 Support & aide',
+                'seller_dashboard': '🏪 Mon espace vendeur',
                 'back': '🔙 Retour',
                 'error_occurred': '❌ Une erreur est survenue. Réessayez plus tard.',
             },
@@ -2811,6 +2813,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 'sell_menu': '📚 Sell your courses',
                 'seller_login': '🔐 Seller space',
                 'marketplace_stats': '📊 Marketplace stats',
+                'support': '🆘 Support & help',
+                'seller_dashboard': '🏪 Seller dashboard',
                 'back': '🔙 Back',
                 'error_occurred': '❌ An error occurred. Please try again later.',
             }
@@ -2825,36 +2829,36 @@ Commencez dès maintenant à monétiser votre expertise !"""
         is_seller = user_data and user_data['is_seller']
 
         keyboard = [
-            [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
-            [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')]
+            [InlineKeyboardButton(self.get_text('buy_menu', lang), callback_data='buy_menu')],
+            [InlineKeyboardButton(self.get_text('sell_menu', lang), callback_data='sell_menu')]
         ]
 
         # Accès rapide espace vendeur si déjà vendeur
         if is_seller:
             keyboard.append([
-                InlineKeyboardButton("🏪 Mon espace vendeur", callback_data='seller_dashboard')
+                InlineKeyboardButton(self.get_text('seller_dashboard', lang), callback_data='seller_dashboard')
             ])
 
         keyboard.extend([
-            [InlineKeyboardButton("📊 Stats marketplace", callback_data='marketplace_stats')],
-            [InlineKeyboardButton("🆘 Support & aide", callback_data='support_menu')],
+            [InlineKeyboardButton(self.get_text('marketplace_stats', lang), callback_data='marketplace_stats')],
+            [InlineKeyboardButton(self.get_text('support', lang), callback_data='support_menu')],
             [
                 InlineKeyboardButton("🇫🇷 Français", callback_data='lang_fr'),
                 InlineKeyboardButton("🇺🇸 English", callback_data='lang_en')
             ]
         ])
 
-        await query.edit_message_text(
-            """🏪 **TECHBOT MARKETPLACE**
-    *La première marketplace crypto pour formations*
-
-    🎯 **Découvrez des formations premium**
-    📚 **Vendez vos connaissances**  
-    💰 **Paiements Solana ultra-rapides**
-
-    Choisissez une option pour commencer :""",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
+        welcome_text = self.get_text('welcome', lang)
+        try:
+            await query.edit_message_text(
+                welcome_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown')
+        except Exception:
+            await query.message.reply_text(
+                welcome_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown')
 
     async def account_recovery_menu(self, query, lang):
         """Menu de récupération de compte"""
