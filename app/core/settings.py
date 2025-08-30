@@ -29,6 +29,14 @@ class Settings:
         # Payments / NOWPayments
         self.NOWPAYMENTS_API_KEY: Optional[str] = os.getenv("NOWPAYMENTS_API_KEY")
         self.NOWPAYMENTS_IPN_SECRET: Optional[str] = os.getenv("NOWPAYMENTS_IPN_SECRET")
+        # Public IPN callback URL (used when creating payments)
+        self.IPN_CALLBACK_URL: Optional[str] = os.getenv(
+            "IPN_CALLBACK_URL", "http://localhost:8000/ipn/nowpayments"
+        )
+
+        # IPN server settings
+        self.IPN_HOST: str = os.getenv("IPN_HOST", "0.0.0.0")
+        self.IPN_PORT: int = int(os.getenv("IPN_PORT", "8000"))
 
         # Storage and paths
         self.LOG_DIR: str = os.getenv("LOG_DIR", "logs")
