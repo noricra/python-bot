@@ -49,8 +49,7 @@ async def nowpayments_ipn(request: Request):
             cursor.execute('UPDATE orders SET payment_status = "completed", completed_at = CURRENT_TIMESTAMP, file_delivered = TRUE WHERE nowpayments_id = ?', (payment_id,))
             cursor.execute('UPDATE products SET sales_count = sales_count + 1 WHERE product_id = ?', (product_id,))
             cursor.execute('UPDATE users SET total_sales = total_sales + 1, total_revenue = total_revenue + ? WHERE user_id = ?', (seller_revenue, seller_user_id))
-            if partner_code:
-                cursor.execute('UPDATE users SET total_commission = total_commission + ? WHERE partner_code = ?', (partner_commission, partner_code))
+            # Partenariat désactivé: ignorer commissions partenaire
             conn.commit()
         conn.close()
     except sqlite3.Error:
