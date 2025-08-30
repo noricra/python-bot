@@ -753,7 +753,7 @@ class MarketplaceBot:
 
 Choisissez une option pour commencer :"""
 
-        keyboard = main_menu_keyboard()
+        keyboard = main_menu_keyboard(user.language_code or 'fr')
 
         await update.message.reply_text(
             welcome_text,
@@ -1005,9 +1005,21 @@ Choisissez une option pour commencer :"""
 
     async def buy_menu(self, query, lang):
         """Menu d'achat"""
-        keyboard = buy_menu_keyboard()
+        keyboard = buy_menu_keyboard(lang)
 
-        buy_text = """🛒 **ACHETER UNE FORMATION**
+        if lang == 'en':
+            buy_text = """🛒 **BUY A COURSE**
+
+Multiple ways to discover our courses:
+
+🔍 **Direct search** - If you have a product ID
+📂 **By categories** - Explore by domain
+🔥 **Trending** - Most popular
+🆕 **New** - Latest releases
+
+💰 **Secure crypto payment** with your integrated wallet"""
+        else:
+            buy_text = """🛒 **ACHETER UNE FORMATION**
 
 Plusieurs façons de découvrir nos formations :
 
@@ -1030,16 +1042,28 @@ Plusieurs façons de découvrir nos formations :
             'lang': lang
         }
 
-        await query.edit_message_text(
+        prompt_text = (
+            """🔍 **SEARCH BY PRODUCT ID**
+
+Enter the ID of the course you want to buy.
+
+💡 **Expected format:** `TBF-2501-ABC123`
+
+✍️ **Type the product ID:**"""
+            if lang == 'en' else
             """🔍 **RECHERCHE PAR ID PRODUIT**
 
 Saisissez l'ID de la formation que vous souhaitez acheter.
 
 💡 **Format attendu :** `TBF-2501-ABC123`
 
-✍️ **Tapez l'ID produit :**""",
+✍️ **Tapez l'ID produit :**"""
+        )
+
+        await query.edit_message_text(
+            prompt_text,
             reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Retour",
+                [[InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour",
                                        callback_data='buy_menu')]]),
             parse_mode='Markdown')
 
@@ -1069,7 +1093,7 @@ Saisissez l'ID de la formation que vous souhaitez acheter.
             ])
 
         keyboard.append(
-            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')])
+            [InlineKeyboardButton("🏠 Home" if lang == 'en' else "🏠 Accueil", callback_data='back_main')])
 
         categories_text = """📂 **CATÉGORIES DE FORMATIONS**
 
@@ -1515,7 +1539,22 @@ Choisissez un code pour continuer votre achat :
         keyboard.append(
             [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')])
 
-        crypto_text = f"""💳 **CHOISIR VOTRE CRYPTO**
+        if lang == 'en':
+            crypto_text = f"""💳 **CHOOSE YOUR CRYPTO**
+
+📦 **Product:** {product['title']}
+💰 **Price:** {product['price_eur']}€
+🎯 **Referral code:** `{user_cache['validated_referral']}`
+
+🔐 **Select your preferred crypto:**
+
+✅ **Benefits:**
+• 100% secure and private payment
+• Automatic confirmation
+• Instant delivery after payment
+• Priority support 24/7"""
+        else:
+            crypto_text = f"""💳 **CHOISIR VOTRE CRYPTO**
 
 📦 **Produit :** {product['title']}
 💰 **Prix :** {product['price_eur']}€
@@ -1614,7 +1653,26 @@ Choisissez un code pour continuer votre achat :
             payment_address = payment_data.get('pay_address', '')
             network_hint = infer_network_from_address(payment_address)
 
-            payment_text = f"""💳 **PAIEMENT EN COURS**
+            if lang == 'en':
+                payment_text = f"""💳 **PAYMENT IN PROGRESS**
+
+📋 **Order:** `{order_id}`
+📦 **Product:** {product['title']}
+💰 **Exact amount:** `{crypto_amount}` {crypto_currency.upper()}
+
+📍 **Payment address:**
+`{payment_address}`
+🧭 **Detected network:** {network_hint}
+
+⏰ **Validity:** 30 minutes
+🔄 **Confirmations:** 1-3 depending on network
+
+⚠️ **IMPORTANT:**
+• Send **exactly** the indicated amount
+• Use only {crypto_currency.upper()}
+• Detection is automatic"""
+            else:
+                payment_text = f"""💳 **PAIEMENT EN COURS**
 
 📋 **Commande :** `{order_id}`
 📦 **Produit :** {product['title']}
@@ -1633,12 +1691,12 @@ Choisissez un code pour continuer votre achat :
 • La détection est automatique"""
 
             keyboard = [[
-                InlineKeyboardButton("🔄 Vérifier paiement",
+                InlineKeyboardButton("🔄 Check payment" if lang == 'en' else "🔄 Vérifier paiement",
                                      callback_data=f'check_payment_{order_id}')
             ], [
                 InlineKeyboardButton("💬 Support", callback_data='support_menu')
             ], [
-                InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
+                InlineKeyboardButton("🏠 Home" if lang == 'en' else "🏠 Accueil", callback_data='back_main')
             ]]
 
             # Envoyer le texte avec le clavier, puis le QR séparément (évite les échecs d'edit sur media)
@@ -1769,27 +1827,27 @@ Choisissez un code pour continuer votre achat :
                 conn.close()
                 try:
                     await query.edit_message_text(
-                        f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min",
+                        (f"⏳ **PAYMENT IN PROGRESS**\n\n🔍 **Status:** {status}\n\n💡 Confirmations can take 5-30 min" if lang == 'en' else f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min"),
                         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                            "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]]))
+                            "🔄 Refresh" if lang == 'en' else "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]]))
                 except Exception:
                     await query.message.reply_text(
-                        f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min",
+                        (f"⏳ **PAYMENT IN PROGRESS**\n\n🔍 **Status:** {status}\n\n💡 Confirmations can take 5-30 min" if lang == 'en' else f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min"),
                         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                            "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]]),
+                            "🔄 Refresh" if lang == 'en' else "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]]),
                         parse_mode='Markdown')
         else:
             conn.close()
             try:
                 await query.edit_message_text(
-                    "❌ Erreur de vérification. Réessayez.",
+                    ("❌ Verification error. Please try again." if lang == 'en' else "❌ Erreur de vérification. Réessayez."),
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                        "🔄 Réessayer", callback_data=f'check_payment_{order_id}')]]))
+                        "🔄 Retry" if lang == 'en' else "🔄 Réessayer", callback_data=f'check_payment_{order_id}')]]))
             except Exception:
                 await query.message.reply_text(
-                    "❌ Erreur de vérification. Réessayez.",
+                    ("❌ Verification error. Please try again." if lang == 'en' else "❌ Erreur de vérification. Réessayez."),
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                        "🔄 Réessayer", callback_data=f'check_payment_{order_id}')]]))
+                        "🔄 Retry" if lang == 'en' else "🔄 Réessayer", callback_data=f'check_payment_{order_id}')]]))
 
     async def sell_menu(self, query, lang):
         """Menu vendeur"""
@@ -1799,7 +1857,7 @@ Choisissez un code pour continuer votre achat :
             await self.seller_dashboard(query, lang)
             return
 
-        keyboard = sell_menu_keyboard()
+        keyboard = sell_menu_keyboard(lang)
 
         sell_text = """📚 **VENDRE VOS FORMATIONS**
 
