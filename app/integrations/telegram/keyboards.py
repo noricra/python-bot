@@ -7,13 +7,13 @@ def main_menu_keyboard(lang: str):
             [InlineKeyboardButton("🛒 Buy a course", callback_data='buy_menu')],
             [InlineKeyboardButton("📚 Sell your courses", callback_data='sell_menu')],
             [InlineKeyboardButton("📊 Marketplace stats", callback_data='marketplace_stats')],
-            [InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')],
+            language_row('en'),
         ]
     return [
         [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
         [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')],
         [InlineKeyboardButton("📊 Stats marketplace", callback_data='marketplace_stats')],
-        [InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')],
+        language_row('fr'),
     ]
 
 
@@ -49,4 +49,10 @@ def sell_menu_keyboard(lang: str):
         [InlineKeyboardButton("📋 Conditions & avantages", callback_data='seller_info')],
         [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
     ]
+
+
+def language_row(lang: str):
+    if lang == 'en':
+        return [InlineKeyboardButton("🇫🇷 French", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 English", callback_data='lang_en')]
+    return [InlineKeyboardButton("🇫🇷 Français", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 English", callback_data='lang_en')]
 

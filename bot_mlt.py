@@ -2850,7 +2850,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
             conn.close()
 
             await query.answer(f"✅ Language changed to {lang}")
-            await self.back_to_main(query)
+            # Toujours renvoyer un nouveau message pour éviter l'erreur 'Message is not modified'
+            await self.back_to_main(query, force_new_message=True)
 
         except Exception as e:
             logger.error(f"Erreur changement langue: {e}")
