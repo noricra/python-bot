@@ -14,6 +14,7 @@ import json
 import hashlib
 import uuid
 import asyncio
+import threading
 import hmac
 import time
 import random
@@ -1322,99 +1323,7 @@ Soyez le premier à publier dans ce domaine !"""
                 [[InlineKeyboardButton("🔙 Retour",
                                        callback_data='buy_menu')]]))
 
-    async def check_payment_handler(self, query, order_id, lang):
-        """Vérification paiement + création payout vendeur"""
-        await query.edit_message_text("🔍 Vérification en cours...")
-
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute('SELECT * FROM orders WHERE order_id = ?', (order_id,))
-            order = cursor.fetchone()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur récupération commande: {e}")
-            conn.close()
-            return
-
-        if not order:
-            await query.edit_message_text("❌ Commande introuvable!")
-            return
-
-        payment_id = order[13]  # nowpayments_id
-        payment_status = self.check_payment_status(payment_id)
-
-        if payment_status:
-            status = payment_status.get('payment_status', 'waiting')
-
-            if status in ['finished', 'confirmed']:
-                # Paiement confirmé
-                try:
-                    cursor.execute('''
-                        UPDATE orders 
-                        SET payment_status = 'completed', 
-                            completed_at = CURRENT_TIMESTAMP,
-                            file_delivered = TRUE
-                        WHERE order_id = ?
-                    ''', (order_id,))
-
-                    # ⭐ NOUVEAU : Créer payout vendeur automatique
-                    payout_created = await self.auto_create_seller_payout(order_id)
-
-                    # Mettre à jour stats produit
-                    cursor.execute('''
-                        UPDATE products 
-                        SET sales_count = sales_count + 1
-                        WHERE product_id = ?
-                    ''', (order[3],))
-
-                    # Mettre à jour stats vendeur
-                    cursor.execute('''
-                        UPDATE users 
-                        SET total_sales = total_sales + 1,
-                            total_revenue = total_revenue + ?
-                        WHERE user_id = ?
-                    ''', (order[7], order[4]))
-
-                    conn.commit()
-                    conn.close()
-                except sqlite3.Error as e:
-                    logger.error(f"Erreur mise à jour après paiement: {e}")
-                    conn.close()
-                    return
-
-                # Message de succès
-                payout_text = "✅ Payout vendeur créé automatiquement" if payout_created else "⚠️ Payout vendeur en attente"
-
-                success_text = f"""🎉 **FÉLICITATIONS !**
-
-    ✅ **Paiement confirmé** - Commande : {order_id}
-    {payout_text}
-
-    📚 **ACCÈS IMMÉDIAT À VOTRE FORMATION**"""
-
-                keyboard = [[
-                    InlineKeyboardButton("📥 Télécharger maintenant", 
-                                    callback_data=f'download_product_{order[3]}')
-                ], [
-                    InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')
-                ]]
-
-                await query.edit_message_text(
-                    success_text,
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown')
-            else:
-                # Paiement en cours
-                conn.close()
-                await query.edit_message_text(
-                    f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Confirmations en cours...",
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔄 Rafraîchir", 
-                                        callback_data=f'check_payment_{order_id}')
-                    ]]))
-        else:
-            conn.close()
-            await query.edit_message_text("❌ Erreur de vérification. Réessayez.")
+    
 
     async def choose_random_referral(self, query, lang):
         """Choisir un code de parrainage aléatoire"""
@@ -1732,20 +1641,27 @@ Choisissez un code pour continuer votre achat :
                 InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
             ]]
 
-            # Générer et envoyer un QR code pour l'adresse de paiement
+            # Envoyer le texte avec le clavier, puis le QR séparément (évite les échecs d'edit sur media)
+            try:
+                await query.edit_message_text(
+                    payment_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown')
+            except Exception as e:
+                logger.warning(f"edit_message_text failed, sending new message: {e}")
+                await query.message.reply_text(
+                    payment_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown')
+
             try:
                 qr_img = qrcode.make(payment_address)
                 bio = BytesIO()
                 qr_img.save(bio, format='PNG')
                 bio.seek(0)
-                caption = payment_text
-                await query.message.reply_photo(photo=bio, caption=caption, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+                await query.message.reply_photo(photo=bio, caption="QR de paiement")
             except Exception as e:
                 logger.warning(f"QR code generation failed: {e}")
-                await query.edit_message_text(
-                    payment_text,
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown')
         else:
             await query.edit_message_text(
                 "❌ Erreur lors de la création du paiement. Vérifiez la configuration NOWPayments.",
@@ -1851,16 +1767,29 @@ Choisissez un code pour continuer votre achat :
                     parse_mode='Markdown')
             else:
                 conn.close()
-                await query.edit_message_text(
-                    f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                        "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]]))
+                try:
+                    await query.edit_message_text(
+                        f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min",
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                            "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]]))
+                except Exception:
+                    await query.message.reply_text(
+                        f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min",
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                            "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]]),
+                        parse_mode='Markdown')
         else:
             conn.close()
-            await query.edit_message_text(
-                "❌ Erreur de vérification. Réessayez.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                    "🔄 Réessayer", callback_data=f'check_payment_{order_id}')]]))
+            try:
+                await query.edit_message_text(
+                    "❌ Erreur de vérification. Réessayez.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                        "🔄 Réessayer", callback_data=f'check_payment_{order_id}')]]))
+            except Exception:
+                await query.message.reply_text(
+                    "❌ Erreur de vérification. Réessayez.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                        "🔄 Réessayer", callback_data=f'check_payment_{order_id}')]]))
 
     async def sell_menu(self, query, lang):
         """Menu vendeur"""
@@ -4066,6 +3995,22 @@ def main():
     if not TOKEN:
         logger.error("❌ TELEGRAM_TOKEN manquant dans .env")
         return
+
+    # Démarrer le serveur IPN FastAPI en arrière-plan pour la détection auto
+    def run_ipn_server():
+        try:
+            import uvicorn
+            from app.integrations import ipn_server
+            uvicorn.run(
+                app=ipn_server.app,
+                host=core_settings.IPN_HOST,
+                port=core_settings.IPN_PORT,
+                log_level="info",
+            )
+        except Exception as e:
+            logger.error(f"IPN server failed to start: {e}")
+
+    threading.Thread(target=run_ipn_server, daemon=True).start()
 
     # Créer l'application via app builder
     from app.integrations.telegram.app_builder import build_application
