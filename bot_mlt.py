@@ -515,6 +515,12 @@ class MarketplaceBot:
         try:
             # Normaliser l'email
             recovery_email = (recovery_email or '').strip().lower()
+
+            # S'assurer que l'utilisateur existe
+            try:
+                self.add_user(user_id, '', '', 'fr')
+            except Exception:
+                pass
             # Valider adresse Solana
             if not validate_solana_address(solana_address):
                 return {'success': False, 'error': 'Adresse Solana invalide'}
@@ -1776,6 +1782,12 @@ Prêt à commencer ?"""
 
     async def create_seller_prompt(self, query, lang):
         """Demande les informations pour créer un compte vendeur"""
+        # S'assurer que la ligne user existe avant de tenter des updates seller
+        try:
+            self.add_user(query.from_user.id, query.from_user.username or '', query.from_user.first_name or '', lang)
+        except Exception:
+            pass
+
         state = self.memory_cache.get(query.from_user.id, {})
         state.update({'creating_seller': True, 'step': 'name', 'lang': lang})
         self.memory_cache[query.from_user.id] = state
