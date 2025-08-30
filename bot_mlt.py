@@ -2835,6 +2835,14 @@ Commencez dès maintenant à monétiser votre expertise !"""
             return
 
         try:
+            # Si la langue est déjà la même, éviter l'erreur 'Message is not modified'
+            current = self.get_user(user_id)
+            current_lang = (current and current.get('language_code')) or 'fr'
+            if current_lang == lang:
+                await query.answer("✅ Language already set" if lang == 'en' else "✅ Langue déjà définie")
+                await self.back_to_main(query, force_new_message=True)
+                return
+
             conn = self.get_db_connection()
             cursor = conn.cursor()
             cursor.execute('UPDATE users SET language_code = ? WHERE user_id = ?', (lang, user_id))
@@ -2846,6 +2854,13 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
         except Exception as e:
             logger.error(f"Erreur changement langue: {e}")
+            # Gestion spécifique du cas "Message is not modified"
+            if 'Message is not modified' in str(e):
+                try:
+                    await self.back_to_main(query, force_new_message=True)
+                    return
+                except Exception:
+                    pass
             await query.answer("❌ Erreur changement langue")
 
     # AJOUTER des textes anglais dans get_text() :
@@ -2888,7 +2903,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
         }
         return texts.get(lang, texts['fr']).get(key, key)
 
-    async def back_to_main(self, query):
+    async def back_to_main(self, query, force_new_message: bool = False):
         """Menu principal avec récupération"""
         user_id = query.from_user.id
         user_data = self.get_user(user_id)
@@ -2915,17 +2930,29 @@ Commencez dès maintenant à monétiser votre expertise !"""
             ]
         ])
 
-        await query.edit_message_text(
-            """🏪 **TECHBOT MARKETPLACE**
-    *La première marketplace crypto pour formations*
-
-    🎯 **Découvrez des formations premium**
-    📚 **Vendez vos connaissances**  
-    💰 **Paiements Solana ultra-rapides**
-
-    Choisissez une option pour commencer :""",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
+        welcome_text = self.get_text('welcome', lang)
+        if force_new_message:
+            await query.message.reply_text(
+                welcome_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown')
+            return
+        try:
+            await query.edit_message_text(
+                welcome_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown')
+        except Exception as e:
+            if 'Message is not modified' in str(e):
+                await query.message.reply_text(
+                    welcome_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown')
+            else:
+                await query.message.reply_text(
+                    welcome_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown')
 
     async def account_recovery_menu(self, query, lang):
         """Menu de récupération de compte"""
