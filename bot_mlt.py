@@ -3131,7 +3131,8 @@ Saisissez l'email de votre compte vendeur :
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📧 Réinitialiser mot de passe", callback_data='account_recovery')]])
                 )
                 return
-            self.update_user_state(user_id, login_wait_code=True, login_email=email)
+            # Passer proprement à l'étape mot de passe et désactiver la saisie email
+            self.update_user_state(user_id, login_wait_email=False, login_wait_code=True, login_email=email)
             await update.message.reply_text("✉️ Email validé. Entrez votre mot de passe vendeur:")
         except Exception as e:
             logger.error(f"Erreur login email: {e}")
