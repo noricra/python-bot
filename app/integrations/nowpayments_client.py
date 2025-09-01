@@ -21,7 +21,7 @@ class NowPaymentsClient:
         }
 
     def create_payment(self, amount_usd: float, pay_currency: str, order_id: str,
-                       description: str) -> Optional[Dict]:
+                       description: str, ipn_callback_url: Optional[str] = None) -> Optional[Dict]:
         if not self.api_key:
             logger.error("NOWPAYMENTS_API_KEY manquant!")
             return None
@@ -32,6 +32,8 @@ class NowPaymentsClient:
             "order_id": order_id,
             "order_description": description,
         }
+        if ipn_callback_url:
+            payload["ipn_callback_url"] = ipn_callback_url
         try:
             response = requests.post(
                 f"{self.BASE_URL}/payment",
