@@ -114,6 +114,19 @@ def validate_email(email: str) -> bool:
     return re.match(pattern, email or '') is not None
 
 
+def generate_salt(length: int = 16) -> str:
+    import os
+    return os.urandom(length).hex()
+
+
+def hash_password(password: str, salt: str) -> str:
+    try:
+        base = f"{salt}:{password}".encode()
+        return hashlib.sha256(base).hexdigest()
+    except Exception:
+        return ''
+
+
 def infer_network_from_address(address: str) -> str:
     """Infère le réseau à partir du format d'adresse (approximation).
     - 0x... -> Réseau EVM (ERC20/BEP20/etc.)
@@ -211,9 +224,11 @@ class MarketplaceBot:
                     total_sales INTEGER DEFAULT 0,
                     total_revenue REAL DEFAULT 0.0,
 
-                    -- Système de récupération
+                    -- Système d'authentification vendeur
                     recovery_email TEXT,
                     recovery_code_hash TEXT,
+                    password_salt TEXT,
+                    password_hash TEXT,
 
                     -- Parrainage (gardé de l'original)
                     is_partner BOOLEAN DEFAULT FALSE,
@@ -403,20 +418,7 @@ class MarketplaceBot:
             logger.error(f"Erreur création table categories: {e}")
             conn.rollback()
 
-        # Table codes de parrainage par défaut
-        try:
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS default_referral_codes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    code TEXT UNIQUE,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    usage_count INTEGER DEFAULT 0
-                )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Erreur création table default_referral_codes: {e}")
-            conn.rollback()
+        # (Supprimé) Table codes de parrainage par défaut
 
         # Insérer catégories par défaut
         default_categories = [
@@ -441,22 +443,7 @@ class MarketplaceBot:
                 logger.error(f"Erreur insertion catégorie {cat_name}: {e}")
                 conn.rollback()
 
-        # Créer quelques codes par défaut si la table est vide
-        cursor.execute('SELECT COUNT(*) FROM default_referral_codes')
-        if cursor.fetchone()[0] == 0:
-            default_codes = [
-                'BRF2025', 'CRYPTO57', 'BITREF', 'PROFIT42', 'MONEY57',
-                'GAIN420'
-            ]
-            for code in default_codes:
-                try:
-                    cursor.execute(
-                        'INSERT INTO default_referral_codes (code) VALUES (?)',
-                        (code, ))
-                    conn.commit()
-                except sqlite3.Error as e:
-                    logger.error(f"Erreur insertion code {code}: {e}")
-                    conn.rollback()
+        # (Supprimé) Insertion des codes de parrainage par défaut
 
         conn.close()
 
@@ -512,17 +499,19 @@ class MarketplaceBot:
     def create_seller_account_with_recovery(self, user_id: int, seller_name: str, 
                                       seller_bio: str, recovery_email: str, 
                                       solana_address: str) -> dict:
-        """Crée un compte vendeur avec email + code de récupération"""
+        """Crée un compte vendeur avec email + mot de passe (remplace le code 6 chiffres)"""
         try:
             # Valider adresse Solana
             if not validate_solana_address(solana_address):
                 return {'success': False, 'error': 'Adresse Solana invalide'}
 
-            # Générer code de récupération 6 chiffres
-            recovery_code = f"{random.randint(100000, 999999)}"
-
-            # Hash du code (ne jamais stocker en clair)
-            code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
+            # Générer un salt et le hash du mot de passe fourni en mémoire
+            state = self.get_user_state(user_id)
+            raw_password = state.get('password')
+            if not raw_password:
+                return {'success': False, 'error': 'Mot de passe manquant'}
+            salt = generate_salt()
+            pwd_hash = hash_password(raw_password, salt)
 
             conn = self.get_db_connection()
             cursor = conn.cursor()
@@ -550,18 +539,20 @@ class MarketplaceBot:
                         seller_bio = ?,
                         seller_solana_address = ?,
                         recovery_email = ?,
-                        recovery_code_hash = ?
+                        recovery_code_hash = NULL,
+                        password_salt = ?,
+                        password_hash = ?
                     WHERE user_id = ?
-                ''', (seller_name, seller_bio, solana_address, recovery_email, code_hash, user_id))
+                ''', (seller_name, seller_bio, solana_address, recovery_email, salt, pwd_hash, user_id))
 
                 if cursor.rowcount > 0:
                     conn.commit()
                     conn.close()
 
-                    return {
-                        'success': True,
-                        'recovery_code': recovery_code
-                    }
+                    # Ne plus retourner de code, seulement succès
+                    # Nettoyer le mot de passe en mémoire
+                    state.pop('password', None)
+                    return {'success': True}
                 else:
                     conn.close()
                     return {'success': False, 'error': 'Échec mise à jour'}
@@ -619,24 +610,7 @@ class MarketplaceBot:
             conn.close()
             return None
 
-    def get_available_referral_codes(self) -> List[str]:
-        """Récupère les codes de parrainage disponibles (via ReferralService)"""
-        from app.services.referral_service import ReferralService
-        return ReferralService(self.db_path).list_all_codes()
-
-    def validate_referral_code(self, code: str) -> bool:
-        """Valide un code de parrainage"""
-        available_codes = self.get_available_referral_codes()
-        return code in available_codes
-
-    def create_partner_code(self, user_id: int) -> Optional[str]:
-        """Crée un code partenaire unique (via ReferralService)"""
-        from app.services.referral_service import ReferralService
-        for _ in range(10):
-            partner_code = f"REF{user_id % 1000}{random.randint(100, 999)}"
-            if ReferralService(self.db_path).set_partner_code_for_user(user_id, partner_code):
-                return partner_code
-        return None
+    # (Supprimé) Fonctions de parrainage
 
         conn.close()
         return None
@@ -1867,15 +1841,17 @@ Saisissez le nom qui apparaîtra sur vos formations :""",
     async def seller_login_menu(self, query, lang):
         """Menu de connexion vendeur"""
         await query.edit_message_text(
-            """🔐 **CONNEXION VENDEUR**
+            ("""🔐 **VENDOR LOGIN**
 
-Aucune action requise: votre identité Telegram est utilisée.
+Enter your email first, then your password.
 
-Si votre compte vendeur est déjà activé, vous accéderez directement à votre dashboard.
+If you don't have a seller account yet, create one first.""" if lang == 'en' else """🔐 **CONNEXION VENDEUR**
 
-Sinon, créez votre compte vendeur en quelques étapes.""",
+Saisissez d'abord votre email, puis votre mot de passe.
+
+Si vous n'avez pas de compte vendeur, créez-en un d'abord."""),
             reply_markup=InlineKeyboardMarkup([[ 
-                InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard'),
+                InlineKeyboardButton("✉️ Email", callback_data='seller_login'),
                 InlineKeyboardButton("🚀 Créer un compte", callback_data='create_seller')
             ], [
                 InlineKeyboardButton("🔙 Retour", callback_data='back_main')
@@ -2254,8 +2230,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
             await self.process_product_addition(update, message_text)
 
         # === SAISIE CODE PARRAINAGE ===
-        elif user_state.get('waiting_for_referral'):
-            await self.process_referral_input(update, message_text)
+        # (Supprimé) Saisie code parrainage
 
         # === CRÉATION TICKET SUPPORT ===
         elif user_state.get('creating_ticket'):
@@ -2468,19 +2443,33 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 return
 
             user_state['recovery_email'] = email
+            user_state['step'] = 'password'
+
+            await update.message.reply_text(
+                """🔒 **Mot de passe vendeur**
+
+Créez un mot de passe robuste (12+ caractères recommandés).""",
+                parse_mode='Markdown'
+            )
+
+        elif step == 'password':
+            # Étape 4 : Mot de passe
+            password = message_text.strip()
+            if len(password) < 8:
+                await update.message.reply_text("❌ Mot de passe trop court (8 caractères minimum).")
+                return
+            user_state['password'] = password
             user_state['step'] = 'solana_address'
 
             await update.message.reply_text(
-                f"""✅ **Email :** {email}
+                """📍 **Adresse Solana**
 
-    📍 **Étape 4/4 : Adresse Solana**
+Saisissez votre adresse Solana pour recevoir vos paiements :
 
-    Saisissez votre adresse Solana pour recevoir vos paiements :
-
-    💡 **Comment trouver votre adresse :**
-    - Ouvrez Phantom, Solflare ou votre wallet Solana
-    - Cliquez "Receive" ou "Recevoir"
-    - Copiez l'adresse (format : `5Fxk...abc`)""",
+💡 **Comment trouver votre adresse :**
+- Ouvrez Phantom, Solflare ou votre wallet Solana
+- Cliquez "Receive" ou "Recevoir"
+- Copiez l'adresse (format : `5Fxk...abc`)""",
                 parse_mode='Markdown'
             )
 
@@ -2514,12 +2503,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
     ✅ **Email :** {user_cache['recovery_email']}
     ✅ **Adresse :** `{solana_address}`
 
-    🔐 **CODE DE RÉCUPÉRATION :** `{result['recovery_code']}`
-
-    ⚠️ **SAUVEGARDEZ CE CODE !**
-    - Notez-le dans un endroit sûr
-    - Il vous permet de récupérer votre compte
-    - Ne le partagez jamais
+    🔐 **Authentification :** Mot de passe configuré
 
     💰 **Comment ça marche :**
     1. Vos clients paient en BTC/ETH/USDT/etc.
@@ -2761,35 +2745,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
             logger.error(f"Erreur suspend product: {e}")
             await update.message.reply_text("❌ Erreur suspension produit.")
 
-    async def process_referral_input(self, update, message_text):
-        """Traite la saisie du code de parrainage"""
-        user_id = update.effective_user.id
-        user_cache = self.memory_cache.get(user_id, {})
-
-        if self.validate_referral_code(message_text.strip()):
-            # Code valide
-            user_cache['validated_referral'] = message_text.strip()
-            user_cache.pop('waiting_for_referral', None)
-            self.memory_cache[user_id] = user_cache
-
-            await update.message.reply_text(
-                f"✅ **Code validé :** `{message_text.strip()}`\n\nProcédons au paiement !",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("💳 Continuer vers le paiement",
-                                         callback_data='proceed_to_payment'),
-                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
-                ]]),
-                parse_mode='Markdown')
-        else:
-            await update.message.reply_text(
-                f"❌ **Code invalide :** `{message_text.strip()}`\n\nVeuillez réessayer avec un code valide.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(
-                        "🎲 Choisir un code aléatoire",
-                        callback_data='choose_random_referral'),
-                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
-                ]]),
-                parse_mode='Markdown')
+    # (Supprimé) process_referral_input
 
     async def change_language(self, query, lang):
         """Change la langue - CORRIGÉ"""
@@ -3057,39 +3013,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
     async def process_login_email(self, update: Update, message_text: str):
         """Étape 1 du login: saisir l'email enregistré lors de la création vendeur."""
         user_id = update.effective_user.id
-        text = message_text.strip()
-
-        # Si l'utilisateur colle directement un code à 6 chiffres ici, accepter le flux "code d'abord"
-        if text.isdigit() and len(text) == 6:
-            try:
-                code_hash = hashlib.sha256(text.encode()).hexdigest()
-                conn = self.get_db_connection()
-                cursor = conn.cursor()
-                # Récupérer l'email associé pour information/consistance
-                cursor.execute('SELECT recovery_email, recovery_code_hash FROM users WHERE user_id = ?', (user_id,))
-                row = cursor.fetchone()
-                conn.close()
-                if not row:
-                    await update.message.reply_text("❌ Compte introuvable. Créez d'abord un compte vendeur.")
-                    return
-                db_email, db_code_hash = row
-                if db_code_hash == code_hash:
-                    self.set_seller_logged_in(user_id, True)
-                    self.reset_user_state_preserve_login(user_id)
-                    await update.message.reply_text(
-                        "✅ Connecté. Accédez à votre espace vendeur.",
-                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')]])
-                    )
-                    return
-                await update.message.reply_text("❌ Code incorrect. Demandez un nouveau code ou réessayez.")
-                return
-            except Exception as e:
-                logger.error(f"Erreur code-first login: {e}")
-                await update.message.reply_text("❌ Erreur interne.")
-                return
-
-        # Sinon, flux email classique
-        email = text.lower()
+        email = message_text.strip().lower()
         if not validate_email(email):
             await update.message.reply_text("❌ Email invalide. Recommencez.")
             return
@@ -3103,34 +3027,36 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 await update.message.reply_text("❌ Email non associé à votre compte Telegram.")
                 return
             self.update_user_state(user_id, login_wait_code=True, login_email=email)
-            await update.message.reply_text("✉️ Email validé. Entrez votre code de récupération (6 chiffres):")
+            await update.message.reply_text("✉️ Email validé. Entrez votre mot de passe vendeur:")
         except Exception as e:
             logger.error(f"Erreur login email: {e}")
             await update.message.reply_text("❌ Erreur interne.")
 
     async def process_login_code(self, update: Update, message_text: str):
-        """Étape 2 du login: vérifier email + code stocké lors de la création."""
+        """Étape 2 du login: vérifier email + mot de passe (hash en DB)."""
         user_id = update.effective_user.id
         state = self.memory_cache.get(user_id, {})
         email = state.get('login_email')
-        code = message_text.strip()
-        if not code.isdigit() or len(code) != 6:
-            await update.message.reply_text("❌ Code invalide.")
+        password = message_text.strip()
+        if len(password) < 1:
+            await update.message.reply_text("❌ Mot de passe invalide.")
             return
         try:
-            code_hash = hashlib.sha256(code.encode()).hexdigest()
             conn = self.get_db_connection()
             cursor = conn.cursor()
             if email:
-                cursor.execute('SELECT user_id FROM users WHERE user_id = ? AND recovery_email = ? AND recovery_code_hash = ?', (user_id, email, code_hash))
+                cursor.execute('SELECT password_salt, password_hash FROM users WHERE user_id = ? AND recovery_email = ?', (user_id, email))
                 row = cursor.fetchone()
             else:
-                # Fallback si l'email n'est plus en mémoire: valider uniquement par hash et user_id
-                cursor.execute('SELECT user_id FROM users WHERE user_id = ? AND recovery_code_hash = ?', (user_id, code_hash))
+                cursor.execute('SELECT password_salt, password_hash FROM users WHERE user_id = ?', (user_id,))
                 row = cursor.fetchone()
             conn.close()
-            if not row:
-                await update.message.reply_text("❌ Email ou code incorrect.")
+            if not row or not row[0] or not row[1]:
+                await update.message.reply_text("❌ Identifiants incorrects.")
+                return
+            salt, stored_hash = row
+            if hash_password(password, salt) != stored_hash:
+                await update.message.reply_text("❌ Identifiants incorrects.")
                 return
             # Login ok
             self.set_seller_logged_in(user_id, True)
