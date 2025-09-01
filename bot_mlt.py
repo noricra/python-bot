@@ -3039,7 +3039,15 @@ Saisissez l'email de votre compte vendeur :
                     logger.error(f"Erreur envoi email: {e}")
 
             # Poursuivre le flow: demander le code puis le nouveau mot de passe
-            self.update_user_state(user_id, waiting_for_recovery_code=True, email=email)
+            # Désactiver l'attente d'email pour éviter la confusion "Email invalide"
+            self.update_user_state(
+                user_id,
+                waiting_for_recovery_email=False,
+                login_wait_email=False,
+                login_wait_code=False,
+                waiting_for_recovery_code=True,
+                email=email
+            )
             await update.message.reply_text(
                 "📧 Code envoyé. Entrez votre code à 6 chiffres:")
         except sqlite3.Error as e:
