@@ -789,8 +789,7 @@ class MarketplaceBot:
                 await self.sell_menu(query, lang)
             elif query.data == 'seller_dashboard':
                 await self.seller_dashboard(query, lang)
-            elif query.data == 'marketplace_stats':
-                await self.marketplace_stats(query, lang)
+            # marketplace_stats déplacé dans l'admin uniquement
             elif query.data == 'support_menu':
                 await self.show_support_menu(query, lang)
             elif query.data == 'back_main':
@@ -3613,8 +3612,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 return
 
             if success:
-                # Nettoyer cache
-                del self.memory_cache[user_id]
+                # Nettoyer uniquement le contexte d'ajout de produit et conserver la session/login
+                state = self.get_user_state(user_id)
+                for k in ['adding_product', 'step', 'product_data']:
+                    state.pop(k, None)
+                self.memory_cache[user_id] = state
 
                 # Échapper Markdown via utilitaire
                 safe_filename = self.escape_markdown(filename)
