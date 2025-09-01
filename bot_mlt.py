@@ -180,6 +180,24 @@ class MarketplaceBot:
         state.update(kwargs)
         self.memory_cache[user_id] = state
 
+    def reset_conflicting_states(self, user_id: int, keep: set = None) -> None:
+        """Nettoie les états de flux concurrents pour éviter les collisions de prompts.
+        Conserve uniquement les clés présentes dans keep.
+        """
+        keep = keep or set()
+        keys_to_clear = [
+            'login_wait_email', 'login_wait_code', 'waiting_for_recovery_email',
+            'waiting_for_recovery_code', 'waiting_new_password', 'creating_ticket',
+            'waiting_for_product_id', 'adding_product', 'editing_product',
+            'editing_settings', 'admin_search_user', 'admin_search_product',
+            'admin_suspend_product'
+        ]
+        state = self.memory_cache.setdefault(user_id, {})
+        for k in keys_to_clear:
+            if k not in keep:
+                state.pop(k, None)
+        self.memory_cache[user_id] = state
+
     def get_db_connection(self) -> sqlite3.Connection:
         return get_sqlite_connection(self.db_path)
 
@@ -793,6 +811,7 @@ class MarketplaceBot:
                 await self.account_recovery_menu(query, lang)
             elif query.data == 'retry_password':
                 # Rester sur l'étape mot de passe et redemander
+                self.reset_conflicting_states(user_id, keep={'login_wait_code'})
                 self.update_user_state(user_id, login_wait_code=True)
                 await query.edit_message_text(
                     "✏️ Entrez votre mot de passe vendeur:")
@@ -807,7 +826,8 @@ class MarketplaceBot:
                 # Démarrer explicitement le flux de connexion (email puis code)
                 # Respecter la langue persistée
                 lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
-                self.update_user_state(user_id, login_wait_email=True, lang=lang)
+                self.reset_conflicting_states(user_id, keep={'login_wait_email'})
+                self.update_user_state(user_id, login_wait_email=True, login_wait_code=False, lang=lang)
                 await query.edit_message_text(self.tr(lang, "🔑 Entrez votre email de récupération :", "🔑 Enter your recovery email:"))
             # Plus de saisie de code seul: on impose email + code
 
@@ -860,6 +880,7 @@ class MarketplaceBot:
             # Récupération compte
             # (ancienne entrée de récupération retirée)
             elif query.data == 'recovery_by_email':
+                self.reset_conflicting_states(user_id, keep={'waiting_for_recovery_email'})
                 await self.recovery_by_email_prompt(query, lang)
 
             # Programme de parrainage retiré
