@@ -21,6 +21,7 @@ class PaymentService:
             pay_currency=currency,
             order_id=order_id,
             description="Formation TechBot Marketplace",
+            ipn_callback_url=core_settings.IPN_CALLBACK_URL,
         )
 
     def check_payment_status(self, payment_id: str) -> Optional[Dict]:
