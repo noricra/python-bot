@@ -2243,6 +2243,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
         # === RÉCUPÉRATION CODE ===
         elif user_state.get('waiting_for_recovery_code'):
             await self.process_recovery_code(update, message_text)
+        elif user_state.get('waiting_new_password'):
+            await self.process_set_new_password(update, message_text)
 
         # === CONNEXION (email + code fourni lors de la création) ===
         elif user_state.get('login_wait_email'):
@@ -2511,7 +2513,7 @@ Saisissez votre adresse Solana pour recevoir vos paiements :
     3. Nous vous envoyons 95% sur votre adresse
     4. Commission plateforme : 5%""",
                     reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("✅ J'ai sauvegardé mon code", 
+                        [InlineKeyboardButton("➡️ Aller au dashboard", 
                                             callback_data='seller_dashboard')]
                     ]),
                     parse_mode='Markdown'
@@ -2883,17 +2885,32 @@ Saisissez votre adresse Solana pour recevoir vos paiements :
 
     async def account_recovery_menu(self, query, lang):
         """Menu de récupération de compte"""
-        await query.edit_message_text("""🔐 **RÉCUPÉRATION COMPTE VENDEUR**
+        await query.edit_message_text((
+            """🔐 **ACCOUNT RECOVERY**
 
-    Si vous avez perdu l'accès à votre compte Telegram :
+If you've lost access to your seller account:
 
-    📧 **Récupération automatique :**
-    - Saisissez votre email de récupération
-    - Entrez votre code à 6 chiffres
-    - Accès restauré instantanément
+📧 **Reset by email:**
+- Enter your recovery email
+- You receive a one-time code
+- Enter the code
+- Set a new password
 
-    🎫 **Support manuel :**
-    - Contactez notre équipe avec preuves""",
+🎫 **Manual support:**
+- Contact our team with proof""" if lang == 'en' else
+            """🔐 **RÉCUPÉRATION COMPTE VENDEUR**
+
+Si vous avez perdu l'accès à votre compte vendeur :
+
+📧 **Réinitialisation par email :**
+- Entrez votre email de récupération
+- Vous recevez un code unique
+- Entrez le code
+- Choisissez un nouveau mot de passe
+
+🎫 **Support manuel :**
+- Contactez notre équipe avec preuves"""
+        ),
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📧 Récupération par email", callback_data='recovery_by_email')],
                 [InlineKeyboardButton("🎫 Contacter support", callback_data='create_ticket')],
@@ -2906,11 +2923,18 @@ Saisissez votre adresse Solana pour recevoir vos paiements :
         """Demande l'email pour récupération"""
         self.update_user_state(query.from_user.id, waiting_for_recovery_email=True, lang=lang)
 
-        await query.edit_message_text("""📧 **RÉCUPÉRATION PAR EMAIL**
+        await query.edit_message_text((
+            """📧 **EMAIL RECOVERY**
 
-    Saisissez l'email de votre compte vendeur :
+Enter the email of your seller account:
 
-    ✍️ **Tapez votre email :**""",
+✍️ **Type your email:**""" if lang == 'en' else
+            """📧 **RÉCUPÉRATION PAR EMAIL**
+
+Saisissez l'email de votre compte vendeur :
+
+✍️ **Tapez votre email :**"""
+        ),
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 Retour", callback_data='account_recovery')]
             ]))
@@ -2951,8 +2975,8 @@ Saisissez votre adresse Solana pour recevoir vos paiements :
                     msg = MIMEMultipart()
                     msg['From'] = SMTP_EMAIL
                     msg['To'] = email
-                    msg['Subject'] = "Code de récupération TechBot"
-                    body = f"Votre code de récupération: {recovery_code}"
+                    msg['Subject'] = "Seller password reset code"
+                    body = (f"Your reset code: {recovery_code}\nValid for 15 minutes" if (self.get_user(user_id) or {}).get('language_code') == 'en' else f"Votre code de réinitialisation: {recovery_code}\nValide 15 minutes")
                     msg.attach(MIMEText(body, 'plain'))
 
                     server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
@@ -2963,7 +2987,7 @@ Saisissez votre adresse Solana pour recevoir vos paiements :
                 except Exception as e:
                     logger.error(f"Erreur envoi email: {e}")
 
-            # Poursuivre le flow: demander le code à l'utilisateur
+            # Poursuivre le flow: demander le code puis le nouveau mot de passe
             self.update_user_state(user_id, waiting_for_recovery_code=True, email=email)
             await update.message.reply_text(
                 "📧 Code envoyé. Entrez votre code à 6 chiffres:")
@@ -2973,7 +2997,7 @@ Saisissez votre adresse Solana pour recevoir vos paiements :
             await update.message.reply_text("❌ Erreur interne.")
 
     async def process_recovery_code(self, update: Update, message_text: str):
-        """Valide le code de récupération et réactive l'accès vendeur."""
+        """Valide le code de récupération et passe à la saisie d'un nouveau mot de passe."""
         user_id = update.effective_user.id
         code = message_text.strip()
         state = self.memory_cache.get(user_id, {})
@@ -2993,21 +3017,48 @@ Saisissez votre adresse Solana pour recevoir vos paiements :
                 await update.message.reply_text("❌ Code incorrect.")
                 return
 
-            # Réactiver vendeur si besoin (ici on s'assure qu'il reste vendeur)
-            cursor.execute('UPDATE users SET is_seller = TRUE WHERE user_id = ?', (row[0],))
+            # Passer à l'étape de nouveau mot de passe
+            conn.close()
+            self.update_user_state(user_id, waiting_for_recovery_code=False, waiting_new_password=True)
+            await update.message.reply_text("🔒 Entrez votre nouveau mot de passe (8+ caractères):")
+        except Exception as e:
+            logger.error(f"Erreur vérification code: {e}")
+            await update.message.reply_text("❌ Erreur interne.")
+
+    async def process_set_new_password(self, update: Update, message_text: str):
+        """Définit un nouveau mot de passe après validation du code."""
+        user_id = update.effective_user.id
+        new_password = message_text.strip()
+        if len(new_password) < 8:
+            await update.message.reply_text("❌ Mot de passe trop court (8+ caractères).")
+            return
+
+        # Récupérer l'email stocké lors de l'étape précédente
+        state = self.get_user_state(user_id)
+        email = state.get('email')
+        if not email:
+            await update.message.reply_text("❌ Session expirée. Recommencez la récupération.")
+            state.pop('waiting_new_password', None)
+            self.memory_cache[user_id] = state
+            return
+
+        try:
+            salt = generate_salt()
+            pwd_hash = hash_password(new_password, salt)
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('UPDATE users SET password_salt = ?, password_hash = ?, recovery_code_hash = NULL WHERE recovery_email = ?', (salt, pwd_hash, email))
             conn.commit()
             conn.close()
 
-            # Marquer l'utilisateur comme connecté pour éviter toute boucle
-            self.set_seller_logged_in(user_id, True)
+            # Nettoyer l'état de récupération
+            for k in ['waiting_new_password', 'email']:
+                state.pop(k, None)
+            self.memory_cache[user_id] = state
 
-            self.reset_user_state_preserve_login(user_id)
-            await update.message.reply_text(
-                "✅ Vérification réussie. Accédez à votre dashboard.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')]])
-            )
+            await update.message.reply_text("✅ Mot de passe mis à jour. Connectez-vous avec email + mot de passe.")
         except Exception as e:
-            logger.error(f"Erreur vérification code: {e}")
+            logger.error(f"Erreur reset mot de passe: {e}")
             await update.message.reply_text("❌ Erreur interne.")
 
     async def process_login_email(self, update: Update, message_text: str):
