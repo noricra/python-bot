@@ -244,6 +244,29 @@ class MarketplaceBot:
             logger.error(f"Erreur création table users: {e}")
             conn.rollback()
 
+        # Migration légère: ajouter colonnes manquantes si la table existe déjà
+        try:
+            cursor.execute("PRAGMA table_info(users)")
+            existing_cols = {row[1] for row in cursor.fetchall()}
+            altered = False
+            if 'password_salt' not in existing_cols:
+                cursor.execute("ALTER TABLE users ADD COLUMN password_salt TEXT")
+                altered = True
+            if 'password_hash' not in existing_cols:
+                cursor.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+                altered = True
+            if 'recovery_code_hash' not in existing_cols:
+                cursor.execute("ALTER TABLE users ADD COLUMN recovery_code_hash TEXT")
+                altered = True
+            if 'email' not in existing_cols:
+                cursor.execute("ALTER TABLE users ADD COLUMN email TEXT")
+                altered = True
+            if altered:
+                conn.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Erreur migration colonnes users: {e}")
+            conn.rollback()
+
         # Table des payouts vendeurs (NOUVELLE)
         try:
             cursor.execute('''
