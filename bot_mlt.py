@@ -940,17 +940,24 @@ class MarketplaceBot:
                 product_id = query.data[17:]
                 await self.download_product(query, context, product_id, lang)
             elif query.data.startswith('contact_seller_'):
+                from app.integrations.telegram.handlers import support_handlers as sh
                 product_id = query.data.split('contact_seller_')[-1]
-                await self.contact_seller_start(query, product_id, lang)
+                sh.contact_seller_start(self, query, product_id, lang)
             elif query.data.startswith('view_ticket_'):
+                from app.integrations.telegram.handlers import support_handlers as sh
                 ticket_id = query.data.split('view_ticket_')[-1]
-                await self.view_ticket(query, ticket_id)
+                sh.view_ticket(self, query, ticket_id)
             elif query.data.startswith('reply_ticket_'):
+                from app.integrations.telegram.handlers import support_handlers as sh
                 ticket_id = query.data.split('reply_ticket_')[-1]
-                await self.reply_ticket_prepare(query, ticket_id)
+                sh.reply_ticket_prepare(self, query, ticket_id)
             elif query.data.startswith('escalate_ticket_'):
+                from app.integrations.telegram.handlers import support_handlers as sh
                 ticket_id = query.data.split('escalate_ticket_')[-1]
-                await self.escalate_ticket(query, ticket_id)
+                sh.escalate_ticket(self, query, ticket_id)
+            elif query.data == 'admin_tickets':
+                from app.integrations.telegram.handlers import support_handlers as sh
+                sh.admin_tickets(self, query)
             elif query.data == 'my_library':
                 await self.show_my_library(query, lang)
 
@@ -2339,7 +2346,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
         elif user_state.get('creating_ticket'):
             await self.process_support_ticket(update, message_text)
         elif user_state.get('waiting_reply_ticket_id'):
-            await self.process_messaging_reply(update, message_text)
+            from app.integrations.telegram.handlers import support_handlers as sh
+            sh.process_messaging_reply(self, update, message_text)
+        elif user_state.get('waiting_admin_reply_ticket_id'):
+            from app.integrations.telegram.handlers import support_handlers as sh
+            sh.process_admin_reply(self, update, message_text)
 
         # === RÉCUPÉRATION PAR EMAIL ===
         elif user_state.get('waiting_for_recovery_email'):
