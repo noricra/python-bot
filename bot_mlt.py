@@ -788,8 +788,10 @@ class MarketplaceBot:
             # 'Accéder à mon compte' retiré pour simplifier l'UX (doublon du dashboard)
             elif query.data == 'seller_login':
                 # Démarrer explicitement le flux de connexion (email puis code)
-                self.update_user_state(user_id, login_wait_email=True)
-                await query.edit_message_text("🔑 Entrez votre email de récupération :")
+                # Respecter la langue persistée
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                self.update_user_state(user_id, login_wait_email=True, lang=lang)
+                await query.edit_message_text(self.tr(lang, "🔑 Entrez votre email de récupération :", "🔑 Enter your recovery email:"))
             # Plus de saisie de code seul: on impose email + code
 
             # Achat
@@ -920,10 +922,12 @@ class MarketplaceBot:
                 await self.seller_settings(query, lang)
             elif query.data == 'edit_seller_name':
                 self.update_user_state(user_id, editing_settings=True, step='edit_name')
-                await query.edit_message_text("Entrez le nouveau nom vendeur:")
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                await query.edit_message_text(self.tr(lang, "Entrez le nouveau nom vendeur:", "Enter the new seller name:"))
             elif query.data == 'edit_seller_bio':
                 self.update_user_state(user_id, editing_settings=True, step='edit_bio')
-                await query.edit_message_text("Entrez la nouvelle biographie:")
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                await query.edit_message_text(self.tr(lang, "Entrez la nouvelle biographie:", "Enter the new biography:"))
             elif query.data.startswith('edit_product_'):
                 product_id = query.data.split('edit_product_')[-1]
                 self.update_user_state(user_id, editing_product=True, product_id=product_id, step='choose_field')
@@ -934,15 +938,18 @@ class MarketplaceBot:
                     [InlineKeyboardButton("🔙 Retour", callback_data='my_products')],
                     [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
                 ]
-                await query.edit_message_text(f"Édition produit `{product_id}`:", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                await query.edit_message_text(self.tr(lang, f"Édition produit `{product_id}`:", f"Editing product `{product_id}`:"), parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
             elif query.data.startswith('edit_field_title_'):
                 product_id = query.data.split('edit_field_title_')[-1]
                 self.update_user_state(user_id, editing_product=True, product_id=product_id, step='edit_title_input')
-                await query.edit_message_text("Entrez le nouveau titre:")
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                await query.edit_message_text(self.tr(lang, "Entrez le nouveau titre:", "Enter the new title:"))
             elif query.data.startswith('edit_field_price_'):
                 product_id = query.data.split('edit_field_price_')[-1]
                 self.update_user_state(user_id, editing_product=True, product_id=product_id, step='edit_price_input')
-                await query.edit_message_text("Entrez le nouveau prix (EUR):")
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                await query.edit_message_text(self.tr(lang, "Entrez le nouveau prix (EUR):", "Enter the new price (EUR):"))
             elif query.data.startswith('edit_field_toggle_'):
                 product_id = query.data.split('edit_field_toggle_')[-1]
                 try:
@@ -952,7 +959,8 @@ class MarketplaceBot:
                     row = cursor.fetchone()
                     if not row:
                         conn.close()
-                        await query.edit_message_text("❌ Produit introuvable.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='my_products')]]))
+                        lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                        await query.edit_message_text(self.tr(lang, "❌ Produit introuvable.", "❌ Product not found."), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(self.tr(lang, "🔙 Retour", "🔙 Back"), callback_data='my_products')]]))
                     else:
                         new_status = 'inactive' if row[0] == 'active' else 'active'
                         cursor.execute('UPDATE products SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND seller_user_id = ?', (new_status, product_id, user_id))
@@ -961,7 +969,8 @@ class MarketplaceBot:
                         await self.show_my_products(query, 'fr')
                 except Exception as e:
                     logger.error(f"Erreur toggle statut produit: {e}")
-                    await query.edit_message_text("❌ Erreur mise à jour statut.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='my_products')]]))
+                    lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                    await query.edit_message_text(self.tr(lang, "❌ Erreur mise à jour statut.", "❌ Error updating status."), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(self.tr(lang, "🔙 Retour", "🔙 Back"), callback_data='my_products')]]))
             elif query.data.startswith('delete_product_'):
                 product_id = query.data.split('delete_product_')[-1]
                 self.update_user_state(user_id, confirm_delete_product=product_id)
@@ -970,7 +979,8 @@ class MarketplaceBot:
                     [InlineKeyboardButton("❌ Annuler", callback_data='my_products')],
                     [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
                 ]
-                await query.edit_message_text(f"Confirmer la suppression du produit `{product_id}` ?", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                await query.edit_message_text(self.tr(lang, f"Confirmer la suppression du produit `{product_id}` ?", f"Confirm deletion of product `{product_id}`?"), parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
             elif query.data.startswith('confirm_delete_'):
                 product_id = query.data.split('confirm_delete_')[-1]
                 try:
@@ -982,23 +992,26 @@ class MarketplaceBot:
                     await self.show_my_products(query, lang)
                 except Exception as e:
                     logger.error(f"Erreur suppression produit: {e}")
-                    await query.edit_message_text("❌ Erreur lors de la suppression.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='my_products')]]))
+                    lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                    await query.edit_message_text(self.tr(lang, "❌ Erreur lors de la suppression.", "❌ Error during deletion."), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(self.tr(lang, "🔙 Retour", "🔙 Back"), callback_data='my_products')]]))
             elif query.data == 'seller_info':
                 await self.seller_info(query, lang)
 
             else:
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
                 await query.edit_message_text(
-                    "🚧 Fonction en cours de développement...",
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
+                    self.tr(lang, "🚧 Fonction en cours de développement...", "🚧 Feature under development..."),
+                    reply_markup=InlineKeyboardMarkup([[ 
+                        InlineKeyboardButton(self.tr(lang, "🏠 Accueil", "🏠 Home"), callback_data='back_main')
                     ]]))
 
         except Exception as e:
             logger.error(f"Erreur button_handler: {e}")
+            lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
             await query.edit_message_text(
-                "❌ Erreur temporaire. Retour au menu principal.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
+                self.tr(lang, "❌ Erreur temporaire. Retour au menu principal.", "❌ Temporary error. Back to main menu."),
+                reply_markup=InlineKeyboardMarkup([[ 
+                    InlineKeyboardButton(self.tr(lang, "🏠 Accueil", "🏠 Home"), callback_data='back_main')
                 ]]))
 
     async def buy_menu(self, query, lang):
@@ -2839,6 +2852,9 @@ Commencez dès maintenant à monétiser votre expertise !"""
             conn.commit()
             conn.close()
 
+            # Mettre à jour aussi l'état mémoire pour utilisation immédiate
+            self.update_user_state(user_id, lang=lang)
+
             await query.answer(f"✅ Language changed to {lang}")
             await self.back_to_main(query)
 
@@ -2889,6 +2905,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
             }
         }
         return texts.get(lang, texts['fr']).get(key, key)
+
+    def tr(self, lang: str, fr_text: str, en_text: str) -> str:
+        """Retourne le texte dans la langue demandée, FR par défaut."""
+        return en_text if lang == 'en' else fr_text
 
     async def back_to_main(self, query):
         """Menu principal avec récupération"""
