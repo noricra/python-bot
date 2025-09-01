@@ -9,7 +9,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'cta_buy': "🛒 Acheter une formation",
         'cta_sell': "📚 Vendre vos formations",
         # 'cta_account': removed to simplify UX
-        'cta_stats': "📊 Stats marketplace",
+        # 'cta_stats': removed from main menu
         'cta_support': "🆘 Support & aide",
         'cta_home': "🏠 Accueil",
         'seller_space': "🏪 Mon espace vendeur",
@@ -21,7 +21,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'cta_buy': "🛒 Buy a course",
         'cta_sell': "📚 Sell your courses",
         # 'cta_account': removed to simplify UX
-        'cta_stats': "📊 Marketplace stats",
+        # 'cta_stats': removed from main menu
         'cta_support': "🆘 Support & help",
         'cta_home': "🏠 Home",
         'seller_space': "🏪 My seller space",

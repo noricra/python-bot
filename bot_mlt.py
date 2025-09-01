@@ -751,7 +751,21 @@ class MarketplaceBot:
         lang = user_data['language_code'] if user_data and user_data.get('language_code') else (user.language_code or 'fr')
 
         welcome_text = self.get_text('welcome', lang)
-        keyboard = main_menu_keyboard(lang)
+        # Construire dynamiquement le menu principal pour éviter les doublons
+        is_seller = user_data and user_data.get('is_seller')
+        keyboard = [
+            [InlineKeyboardButton(self.get_text('buy_menu', lang), callback_data='buy_menu')]
+        ]
+        if is_seller:
+            keyboard.append([InlineKeyboardButton(self.get_text('seller_dashboard', lang), callback_data='seller_dashboard')])
+        else:
+            keyboard.append([InlineKeyboardButton(self.get_text('sell_menu', lang), callback_data='sell_menu')])
+        keyboard.append([
+            InlineKeyboardButton(self.get_text('support', lang), callback_data='support_menu')
+        ])
+        keyboard.append([
+            InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')
+        ])
 
         await update.message.reply_text(
             welcome_text,
@@ -845,16 +859,7 @@ class MarketplaceBot:
             elif query.data == 'recovery_by_email':
                 await self.recovery_by_email_prompt(query, lang)
 
-            # Parrainage (si gardé)
-            elif query.data == 'enter_referral_manual':
-                await self.enter_referral_manual(query, lang)
-            elif query.data == 'choose_random_referral':
-                await self.choose_random_referral(query, lang)
-            elif query.data.startswith('use_referral_'):
-                code = query.data[13:]
-                await self.validate_and_proceed(query, code, lang)
-            elif query.data == 'become_partner':
-                await self.become_partner(query, lang)
+            # Programme de parrainage retiré
 
             # Paiement
             elif query.data == 'proceed_to_payment':
@@ -1273,7 +1278,7 @@ Soyez le premier à publier dans ce domaine !"""
             parse_mode='Markdown')
 
     async def buy_product_prompt(self, query, product_id, lang):
-        """Demande code de parrainage pour un produit"""
+        """Démarrer l'achat sans parrainage (parrainage retiré)"""
         user_id = query.from_user.id
 
         # Vérifier si déjà acheté
@@ -1300,47 +1305,10 @@ Soyez le premier à publier dans ce domaine !"""
             conn.close()
             return
 
-        # Stocker le produit à acheter
+        # Stocker le produit à acheter et passer directement au choix crypto
         self.update_user_state(user_id, buying_product_id=product_id, lang=lang)
 
-        keyboard = [
-            [
-                InlineKeyboardButton("✍️ Saisir mon code",
-                                     callback_data='enter_referral_manual')
-            ],
-            [
-                InlineKeyboardButton("🎲 Choisir un code aléatoire",
-                                     callback_data='choose_random_referral')
-            ],
-            [
-                InlineKeyboardButton("🚀 Devenir partenaire (10% commission!)",
-                                     callback_data='become_partner')
-            ],
-            [
-                InlineKeyboardButton("🔙 Retour",
-                                     callback_data=f'product_{product_id}')
-            ]
-        ]
-
-        referral_text = """🎯 **CODE DE PARRAINAGE OBLIGATOIRE**
-
-⚠️ **IMPORTANT :** Un code de parrainage est requis pour acheter.
-
-💡 **3 OPTIONS DISPONIBLES :**
-
-1️⃣ **Vous avez un code ?** Saisissez-le !
-
-2️⃣ **Pas de code ?** Choisissez-en un gratuitement !
-
-3️⃣ **MEILLEURE OPTION :** Devenez partenaire !
-   • ✅ Gagnez 10% sur chaque vente
-   • ✅ Votre propre code de parrainage
-   • ✅ Dashboard vendeur complet"""
-
-        await query.edit_message_text(
-            referral_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
+        await self.show_crypto_options(query, lang)
 
     async def enter_referral_manual(self, query, lang):
         """Demander la saisie manuelle du code"""
@@ -1483,19 +1451,9 @@ Choisissez un code pour continuer votre achat :
                 ]]))
 
     async def show_crypto_options(self, query, lang):
-        """Affiche les options de crypto pour le paiement"""
+        """Affiche les options de crypto pour le paiement (sans parrainage)"""
         user_id = query.from_user.id
         user_cache = self.get_user_state(user_id)
-
-        # Vérifier le code de parrainage validé
-        if 'validated_referral' not in user_cache:
-            await query.edit_message_text("❌ Code de parrainage requis !",
-                                          reply_markup=InlineKeyboardMarkup([[
-                                              InlineKeyboardButton(
-                                                  "🎯 Entrer un code",
-                                                  callback_data='buy_menu')
-                                          ]]))
-            return
 
         # Récupérer le produit
         product_id = user_cache.get('buying_product_id')
@@ -1553,8 +1511,6 @@ Choisissez un code pour continuer votre achat :
 
 📦 **Product:** {product['title']}
 💰 **Price:** {product['price_eur']}€
-🎯 **Referral code:** `{user_cache['validated_referral']}`
-
 🔐 **Select your preferred crypto:**
 
 ✅ **Benefits:**
@@ -1567,8 +1523,6 @@ Choisissez un code pour continuer votre achat :
 
 📦 **Produit :** {product['title']}
 💰 **Prix :** {product['price_eur']}€
-🎯 **Code parrainage :** `{user_cache['validated_referral']}`
-
 🔐 **Sélectionnez votre crypto préférée :**
 
 ✅ **Avantages :**
@@ -1583,12 +1537,12 @@ Choisissez un code pour continuer votre achat :
             parse_mode='Markdown')
 
     async def process_payment(self, query, crypto_currency, lang):
-        """Traite le paiement avec code de parrainage"""
+        """Traite le paiement (parrainage retiré)"""
         user_id = query.from_user.id
         user_cache = self.get_user_state(user_id)
 
         # Vérifier les données nécessaires
-        if 'validated_referral' not in user_cache or 'buying_product_id' not in user_cache:
+        if 'buying_product_id' not in user_cache:
             await query.edit_message_text("❌ Données de commande manquantes !",
                                           reply_markup=InlineKeyboardMarkup([[
                                               InlineKeyboardButton(
@@ -1598,7 +1552,6 @@ Choisissez un code pour continuer votre achat :
             return
 
         product_id = user_cache['buying_product_id']
-        referral_code = user_cache['validated_referral']
 
         product = self.get_product_by_id(product_id)
         if not product:
@@ -1617,8 +1570,8 @@ Choisissez un code pour continuer votre achat :
         product_price_usd = product_price_eur * rate
 
         platform_commission = product_price_eur * PLATFORM_COMMISSION_RATE
-        partner_commission = product_price_eur * PARTNER_COMMISSION_RATE
-        seller_revenue = product_price_eur - platform_commission - partner_commission
+        partner_commission = 0.0  # Parrainage désactivé
+        seller_revenue = product_price_eur - platform_commission
 
         # Créer paiement NOWPayments
         payment_data = await asyncio.to_thread(
@@ -1642,7 +1595,7 @@ Choisissez un code pour continuer votre achat :
                       partner_commission, crypto_currency,
                       payment_data.get('pay_amount',
                                        0), payment_data.get('payment_id'),
-                      payment_data.get('pay_address', ''), referral_code))
+                      payment_data.get('pay_address', ''), None))
                 conn.commit()
                 conn.close()
             except sqlite3.Error as e:
@@ -2917,19 +2870,13 @@ Commencez dès maintenant à monétiser votre expertise !"""
         lang = user_data['language_code'] if user_data else 'fr'
         is_seller = user_data and user_data['is_seller']
 
-        keyboard = [
-            [InlineKeyboardButton(self.get_text('buy_menu', lang), callback_data='buy_menu')],
-            [InlineKeyboardButton(self.get_text('sell_menu', lang), callback_data='sell_menu')]
-        ]
-
-        # Accès rapide espace vendeur si déjà vendeur
+        keyboard = [[InlineKeyboardButton(self.get_text('buy_menu', lang), callback_data='buy_menu')]]
         if is_seller:
-            keyboard.append([
-                InlineKeyboardButton(self.get_text('seller_dashboard', lang), callback_data='seller_dashboard')
-            ])
+            keyboard.append([InlineKeyboardButton(self.get_text('seller_dashboard', lang), callback_data='seller_dashboard')])
+        else:
+            keyboard.append([InlineKeyboardButton(self.get_text('sell_menu', lang), callback_data='sell_menu')])
 
         keyboard.extend([
-            [InlineKeyboardButton(self.get_text('marketplace_stats', lang), callback_data='marketplace_stats')],
             [InlineKeyboardButton(self.get_text('support', lang), callback_data='support_menu')],
             [
                 InlineKeyboardButton("🇫🇷 Français", callback_data='lang_fr'),
