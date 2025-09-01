@@ -3057,11 +3057,42 @@ Commencez dès maintenant à monétiser votre expertise !"""
     async def process_login_email(self, update: Update, message_text: str):
         """Étape 1 du login: saisir l'email enregistré lors de la création vendeur."""
         user_id = update.effective_user.id
-        email = message_text.strip().lower()
+        text = message_text.strip()
+
+        # Si l'utilisateur colle directement un code à 6 chiffres ici, accepter le flux "code d'abord"
+        if text.isdigit() and len(text) == 6:
+            try:
+                code_hash = hashlib.sha256(text.encode()).hexdigest()
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
+                # Récupérer l'email associé pour information/consistance
+                cursor.execute('SELECT recovery_email, recovery_code_hash FROM users WHERE user_id = ?', (user_id,))
+                row = cursor.fetchone()
+                conn.close()
+                if not row:
+                    await update.message.reply_text("❌ Compte introuvable. Créez d'abord un compte vendeur.")
+                    return
+                db_email, db_code_hash = row
+                if db_code_hash == code_hash:
+                    self.set_seller_logged_in(user_id, True)
+                    self.reset_user_state_preserve_login(user_id)
+                    await update.message.reply_text(
+                        "✅ Connecté. Accédez à votre espace vendeur.",
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏪 Mon dashboard", callback_data='seller_dashboard')]])
+                    )
+                    return
+                await update.message.reply_text("❌ Code incorrect. Demandez un nouveau code ou réessayez.")
+                return
+            except Exception as e:
+                logger.error(f"Erreur code-first login: {e}")
+                await update.message.reply_text("❌ Erreur interne.")
+                return
+
+        # Sinon, flux email classique
+        email = text.lower()
         if not validate_email(email):
             await update.message.reply_text("❌ Email invalide. Recommencez.")
             return
-        # Vérifier l'existence de l'email
         try:
             conn = self.get_db_connection()
             cursor = conn.cursor()
@@ -3071,7 +3102,6 @@ Commencez dès maintenant à monétiser votre expertise !"""
             if not row:
                 await update.message.reply_text("❌ Email non associé à votre compte Telegram.")
                 return
-            # Passer à l'étape code
             self.update_user_state(user_id, login_wait_code=True, login_email=email)
             await update.message.reply_text("✉️ Email validé. Entrez votre code de récupération (6 chiffres):")
         except Exception as e:
@@ -3084,15 +3114,20 @@ Commencez dès maintenant à monétiser votre expertise !"""
         state = self.memory_cache.get(user_id, {})
         email = state.get('login_email')
         code = message_text.strip()
-        if not email or not code.isdigit() or len(code) != 6:
+        if not code.isdigit() or len(code) != 6:
             await update.message.reply_text("❌ Code invalide.")
             return
         try:
             code_hash = hashlib.sha256(code.encode()).hexdigest()
             conn = self.get_db_connection()
             cursor = conn.cursor()
-            cursor.execute('SELECT user_id FROM users WHERE user_id = ? AND recovery_email = ? AND recovery_code_hash = ?', (user_id, email, code_hash))
-            row = cursor.fetchone()
+            if email:
+                cursor.execute('SELECT user_id FROM users WHERE user_id = ? AND recovery_email = ? AND recovery_code_hash = ?', (user_id, email, code_hash))
+                row = cursor.fetchone()
+            else:
+                # Fallback si l'email n'est plus en mémoire: valider uniquement par hash et user_id
+                cursor.execute('SELECT user_id FROM users WHERE user_id = ? AND recovery_code_hash = ?', (user_id, code_hash))
+                row = cursor.fetchone()
             conn.close()
             if not row:
                 await update.message.reply_text("❌ Email ou code incorrect.")
