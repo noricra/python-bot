@@ -28,3 +28,12 @@ class MessagingService:
     def get_participants(self, ticket_id: str) -> Optional[Dict]:
         return self.repo.get_ticket_participants(ticket_id)
 
+    def escalate(self, ticket_id: str, admin_user_id: int) -> bool:
+        return self.repo.escalate_ticket(ticket_id, admin_user_id)
+
+    def list_recent_tickets(self, limit: int = 10) -> List[Dict]:
+        return self.repo.list_recent_tickets(limit)
+
+    def get_ticket(self, ticket_id: str) -> Optional[Dict]:
+        return self.repo.get_ticket(ticket_id)
+
