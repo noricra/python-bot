@@ -35,6 +35,7 @@ class NowPaymentsClient:
         if ipn_callback_url:
             payload["ipn_callback_url"] = ipn_callback_url
         try:
+            logger.info(f"NOWPayments create_payment start order_id={order_id} pay_currency={pay_currency.lower()} price_usd={amount_usd}")
             response = requests.post(
                 f"{self.BASE_URL}/payment",
                 headers=self._headers(),
@@ -42,19 +43,25 @@ class NowPaymentsClient:
                 timeout=30,
             )
             if response.status_code == 201:
+                logger.info(f"NOWPayments create_payment success order_id={order_id} pay_currency={pay_currency.lower()}")
                 return response.json()
-            logger.error(
-                f"Erreur paiement: {response.status_code} - {response.text}"
-            )
+            # Log détaillé en cas d'erreur
+            err_text = response.text
+            try:
+                err_json = response.json()
+            except Exception:
+                err_json = None
+            logger.error(f"NOWPayments create_payment failed order_id={order_id} pay_currency={pay_currency.lower()} status={response.status_code} body={err_text} json={err_json}")
             return None
         except Exception as exc:
-            logger.error(f"Erreur create_payment: {exc}")
+            logger.error(f"NOWPayments create_payment exception order_id={order_id} pay_currency={pay_currency.lower()} error={exc}")
             return None
 
     def get_payment(self, payment_id: str) -> Optional[Dict]:
         if not self.api_key:
             return None
         try:
+            logger.info(f"NOWPayments get_payment payment_id={payment_id}")
             response = requests.get(
                 f"{self.BASE_URL}/payment/{payment_id}",
                 headers={"x-api-key": self.api_key},
@@ -62,9 +69,10 @@ class NowPaymentsClient:
             )
             if response.status_code == 200:
                 return response.json()
+            logger.error(f"NOWPayments get_payment failed payment_id={payment_id} status={response.status_code} body={response.text}")
             return None
         except Exception as exc:
-            logger.error(f"Erreur get_payment: {exc}")
+            logger.error(f"NOWPayments get_payment exception payment_id={payment_id} error={exc}")
             return None
 
     def list_currencies(self) -> List[str]:
