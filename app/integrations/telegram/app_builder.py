@@ -8,6 +8,9 @@ def build_application(bot_instance) -> Application:
 
     application.add_handler(CommandHandler("start", bot_instance.start_command))
     application.add_handler(CommandHandler("admin", bot_instance.admin_command))
+    # Help/support commands
+    application.add_handler(CommandHandler("help", bot_instance.help_command))
+    application.add_handler(CommandHandler("support", bot_instance.support_command))
     application.add_handler(CallbackQueryHandler(bot_instance.button_handler))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, bot_instance.handle_text_message)

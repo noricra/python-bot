@@ -144,7 +144,7 @@ class MarketplaceBot:
         self.memory_cache = {}
 
     def is_seller_logged_in(self, user_id: int) -> bool:
-        state = self.memory_cache.get(user_id, {})
+        state = self.get_user_state(user_id)
         return bool(state.get('seller_logged_in'))
 
     def set_seller_logged_in(self, user_id: int, logged_in: bool) -> None:
@@ -155,7 +155,9 @@ class MarketplaceBot:
         """Nettoie l'état utilisateur tout en préservant le flag de connexion vendeur."""
         current = self.memory_cache.get(user_id, {})
         logged = bool(current.get('seller_logged_in'))
-        self.memory_cache[user_id] = {'seller_logged_in': logged}
+        lang = current.get('lang')
+        # Conserver aussi la langue si présente
+        self.memory_cache[user_id] = {'seller_logged_in': logged, **({'lang': lang} if lang else {})}
 
     def get_user_state(self, user_id: int) -> dict:
         return self.memory_cache.setdefault(user_id, {})
@@ -744,16 +746,12 @@ class MarketplaceBot:
         # Conserver l'état (ne pas déconnecter). Simplement assurer l'inscription DB.
         self.add_user(user.id, user.username, user.first_name, user.language_code or 'fr')
 
-        welcome_text = """🏪 **TECHBOT MARKETPLACE**
-*La première marketplace crypto pour formations*
+        # Déterminer la langue depuis la base si disponible (persistance)
+        user_data = self.get_user(user.id)
+        lang = user_data['language_code'] if user_data and user_data.get('language_code') else (user.language_code or 'fr')
 
-🎯 **Découvrez des formations premium**
-📚 **Vendez vos connaissances**  
-💰 **Wallet crypto intégré**
-
-Choisissez une option pour commencer :"""
-
-        keyboard = main_menu_keyboard(user.language_code or 'fr')
+        welcome_text = self.get_text('welcome', lang)
+        keyboard = main_menu_keyboard(lang)
 
         await update.message.reply_text(
             welcome_text,
@@ -790,8 +788,10 @@ Choisissez une option pour commencer :"""
             # 'Accéder à mon compte' retiré pour simplifier l'UX (doublon du dashboard)
             elif query.data == 'seller_login':
                 # Démarrer explicitement le flux de connexion (email puis code)
-                self.update_user_state(user_id, login_wait_email=True)
-                await query.edit_message_text("🔑 Entrez votre email de récupération :")
+                # Respecter la langue persistée
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                self.update_user_state(user_id, login_wait_email=True, lang=lang)
+                await query.edit_message_text(self.tr(lang, "🔑 Entrez votre email de récupération :", "🔑 Enter your recovery email:"))
             # Plus de saisie de code seul: on impose email + code
 
             # Achat
@@ -922,10 +922,12 @@ Choisissez une option pour commencer :"""
                 await self.seller_settings(query, lang)
             elif query.data == 'edit_seller_name':
                 self.update_user_state(user_id, editing_settings=True, step='edit_name')
-                await query.edit_message_text("Entrez le nouveau nom vendeur:")
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                await query.edit_message_text(self.tr(lang, "Entrez le nouveau nom vendeur:", "Enter the new seller name:"))
             elif query.data == 'edit_seller_bio':
                 self.update_user_state(user_id, editing_settings=True, step='edit_bio')
-                await query.edit_message_text("Entrez la nouvelle biographie:")
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                await query.edit_message_text(self.tr(lang, "Entrez la nouvelle biographie:", "Enter the new biography:"))
             elif query.data.startswith('edit_product_'):
                 product_id = query.data.split('edit_product_')[-1]
                 self.update_user_state(user_id, editing_product=True, product_id=product_id, step='choose_field')
@@ -936,15 +938,18 @@ Choisissez une option pour commencer :"""
                     [InlineKeyboardButton("🔙 Retour", callback_data='my_products')],
                     [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
                 ]
-                await query.edit_message_text(f"Édition produit `{product_id}`:", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                await query.edit_message_text(self.tr(lang, f"Édition produit `{product_id}`:", f"Editing product `{product_id}`:"), parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
             elif query.data.startswith('edit_field_title_'):
                 product_id = query.data.split('edit_field_title_')[-1]
                 self.update_user_state(user_id, editing_product=True, product_id=product_id, step='edit_title_input')
-                await query.edit_message_text("Entrez le nouveau titre:")
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                await query.edit_message_text(self.tr(lang, "Entrez le nouveau titre:", "Enter the new title:"))
             elif query.data.startswith('edit_field_price_'):
                 product_id = query.data.split('edit_field_price_')[-1]
                 self.update_user_state(user_id, editing_product=True, product_id=product_id, step='edit_price_input')
-                await query.edit_message_text("Entrez le nouveau prix (EUR):")
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                await query.edit_message_text(self.tr(lang, "Entrez le nouveau prix (EUR):", "Enter the new price (EUR):"))
             elif query.data.startswith('edit_field_toggle_'):
                 product_id = query.data.split('edit_field_toggle_')[-1]
                 try:
@@ -954,7 +959,8 @@ Choisissez une option pour commencer :"""
                     row = cursor.fetchone()
                     if not row:
                         conn.close()
-                        await query.edit_message_text("❌ Produit introuvable.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='my_products')]]))
+                        lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                        await query.edit_message_text(self.tr(lang, "❌ Produit introuvable.", "❌ Product not found."), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(self.tr(lang, "🔙 Retour", "🔙 Back"), callback_data='my_products')]]))
                     else:
                         new_status = 'inactive' if row[0] == 'active' else 'active'
                         cursor.execute('UPDATE products SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND seller_user_id = ?', (new_status, product_id, user_id))
@@ -963,7 +969,8 @@ Choisissez une option pour commencer :"""
                         await self.show_my_products(query, 'fr')
                 except Exception as e:
                     logger.error(f"Erreur toggle statut produit: {e}")
-                    await query.edit_message_text("❌ Erreur mise à jour statut.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='my_products')]]))
+                    lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                    await query.edit_message_text(self.tr(lang, "❌ Erreur mise à jour statut.", "❌ Error updating status."), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(self.tr(lang, "🔙 Retour", "🔙 Back"), callback_data='my_products')]]))
             elif query.data.startswith('delete_product_'):
                 product_id = query.data.split('delete_product_')[-1]
                 self.update_user_state(user_id, confirm_delete_product=product_id)
@@ -972,7 +979,8 @@ Choisissez une option pour commencer :"""
                     [InlineKeyboardButton("❌ Annuler", callback_data='my_products')],
                     [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
                 ]
-                await query.edit_message_text(f"Confirmer la suppression du produit `{product_id}` ?", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                await query.edit_message_text(self.tr(lang, f"Confirmer la suppression du produit `{product_id}` ?", f"Confirm deletion of product `{product_id}`?"), parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
             elif query.data.startswith('confirm_delete_'):
                 product_id = query.data.split('confirm_delete_')[-1]
                 try:
@@ -984,23 +992,26 @@ Choisissez une option pour commencer :"""
                     await self.show_my_products(query, lang)
                 except Exception as e:
                     logger.error(f"Erreur suppression produit: {e}")
-                    await query.edit_message_text("❌ Erreur lors de la suppression.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='my_products')]]))
+                    lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+                    await query.edit_message_text(self.tr(lang, "❌ Erreur lors de la suppression.", "❌ Error during deletion."), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(self.tr(lang, "🔙 Retour", "🔙 Back"), callback_data='my_products')]]))
             elif query.data == 'seller_info':
                 await self.seller_info(query, lang)
 
             else:
+                lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
                 await query.edit_message_text(
-                    "🚧 Fonction en cours de développement...",
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
+                    self.tr(lang, "🚧 Fonction en cours de développement...", "🚧 Feature under development..."),
+                    reply_markup=InlineKeyboardMarkup([[ 
+                        InlineKeyboardButton(self.tr(lang, "🏠 Accueil", "🏠 Home"), callback_data='back_main')
                     ]]))
 
         except Exception as e:
             logger.error(f"Erreur button_handler: {e}")
+            lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
             await query.edit_message_text(
-                "❌ Erreur temporaire. Retour au menu principal.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
+                self.tr(lang, "❌ Erreur temporaire. Retour au menu principal.", "❌ Temporary error. Back to main menu."),
+                reply_markup=InlineKeyboardMarkup([[ 
+                    InlineKeyboardButton(self.tr(lang, "🏠 Accueil", "🏠 Home"), callback_data='back_main')
                 ]]))
 
     async def buy_menu(self, query, lang):
@@ -1037,10 +1048,7 @@ Plusieurs façons de découvrir nos formations :
 
     async def search_product_prompt(self, query, lang):
         """Demande de saisir un ID produit"""
-        self.memory_cache[query.from_user.id] = {
-            'waiting_for_product_id': True,
-            'lang': lang
-        }
+        self.update_user_state(query.from_user.id, waiting_for_product_id=True, lang=lang)
 
         prompt_text = (
             """🔍 **SEARCH BY PRODUCT ID**
@@ -1293,10 +1301,7 @@ Soyez le premier à publier dans ce domaine !"""
             return
 
         # Stocker le produit à acheter
-        self.memory_cache[user_id] = {
-            'buying_product_id': product_id,
-            'lang': lang
-        }
+        self.update_user_state(user_id, buying_product_id=product_id, lang=lang)
 
         keyboard = [
             [
@@ -1339,7 +1344,7 @@ Soyez le premier à publier dans ce domaine !"""
 
     async def enter_referral_manual(self, query, lang):
         """Demander la saisie manuelle du code"""
-        self.memory_cache[query.from_user.id]['waiting_for_referral'] = True
+        self.update_user_state(query.from_user.id, waiting_for_referral=True, lang=lang)
 
         await query.edit_message_text(
             "✍️ **Veuillez saisir votre code de parrainage :**\n\nTapez le code exactement comme vous l'avez reçu.",
@@ -1402,10 +1407,7 @@ Choisissez un code pour continuer votre achat :
             return
 
         # Stocker le code validé
-        user_cache = self.memory_cache.get(query.from_user.id, {})
-        user_cache['validated_referral'] = referral_code
-        user_cache['lang'] = lang
-        self.memory_cache[query.from_user.id] = user_cache
+        self.update_user_state(query.from_user.id, validated_referral=referral_code, lang=lang)
 
         await query.edit_message_text(
             f"✅ **Code validé :** `{referral_code}`\n\nProcédons au paiement !",
@@ -1423,9 +1425,9 @@ Choisissez un code pour continuer votre achat :
 
         if user_data and user_data['is_partner']:
             await query.edit_message_text(
-                "✅ Vous êtes déjà partenaire !",
+                ("✅ You are already a partner!" if lang == 'en' else "✅ Vous êtes déjà partenaire !"),
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("📊 Mon dashboard",
+                    InlineKeyboardButton("📊 My dashboard" if lang == 'en' else "📊 Mon dashboard",
                                          callback_data='seller_dashboard')
                 ]]))
             return
@@ -1434,13 +1436,20 @@ Choisissez un code pour continuer votre achat :
 
         if partner_code:
             # Valider automatiquement son propre code
-            user_cache = self.memory_cache.get(user_id, {})
-            user_cache['validated_referral'] = partner_code
-            user_cache['lang'] = lang
-            user_cache['self_referral'] = True
-            self.memory_cache[user_id] = user_cache
+            self.update_user_state(user_id, validated_referral=partner_code, lang=lang, self_referral=True)
 
-            welcome_text = f"""🎊 **BIENVENUE DANS L'ÉQUIPE !**
+            welcome_text = (
+                f"""🎊 **WELCOME TO THE TEAM!**
+
+✅ Your partner account is activated!
+
+🎯 **YOUR UNIQUE CODE:** `{partner_code}`
+
+💰 **Partner benefits:**
+• Earn 10% on each sale
+• Use YOUR code for your own purchases
+• Full seller dashboard
+• Priority support""" if lang == 'en' else f"""🎊 **BIENVENUE DANS L'ÉQUIPE !**
 
 ✅ Votre compte partenaire est activé !
 
@@ -1450,15 +1459,15 @@ Choisissez un code pour continuer votre achat :
 • Gagnez 10% sur chaque vente
 • Utilisez VOTRE code pour vos achats
 • Dashboard vendeur complet
-• Support prioritaire"""
+• Support prioritaire""")
 
             keyboard = [[
-                InlineKeyboardButton("💳 Continuer l'achat",
+                InlineKeyboardButton("💳 Continue purchase" if lang == 'en' else "💳 Continuer l'achat",
                                      callback_data='proceed_to_payment')
             ],
                         [
                             InlineKeyboardButton(
-                                "📊 Mon dashboard",
+                                "📊 My dashboard" if lang == 'en' else "📊 Mon dashboard",
                                 callback_data='seller_dashboard')
                         ]]
 
@@ -1468,15 +1477,15 @@ Choisissez un code pour continuer votre achat :
                 parse_mode='Markdown')
         else:
             await query.edit_message_text(
-                "❌ Erreur lors de la création du compte partenaire.",
+                ("❌ Error while creating the partner account." if lang == 'en' else "❌ Erreur lors de la création du compte partenaire."),
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
+                    InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour", callback_data='buy_menu')
                 ]]))
 
     async def show_crypto_options(self, query, lang):
         """Affiche les options de crypto pour le paiement"""
         user_id = query.from_user.id
-        user_cache = self.memory_cache.get(user_id, {})
+        user_cache = self.get_user_state(user_id)
 
         # Vérifier le code de parrainage validé
         if 'validated_referral' not in user_cache:
@@ -1576,7 +1585,7 @@ Choisissez un code pour continuer votre achat :
     async def process_payment(self, query, crypto_currency, lang):
         """Traite le paiement avec code de parrainage"""
         user_id = query.from_user.id
-        user_cache = self.memory_cache.get(user_id, {})
+        user_cache = self.get_user_state(user_id)
 
         # Vérifier les données nécessaires
         if 'validated_referral' not in user_cache or 'buying_product_id' not in user_cache:
@@ -1642,11 +1651,11 @@ Choisissez un code pour continuer votre achat :
                 return
 
             # Nettoyer le cache de l'achat uniquement (conserver l'état global/login)
+            # Nettoyer uniquement les clés liées à l'achat, conserver le reste (dont lang/login)
             if user_id in self.memory_cache:
-                user_cache = self.memory_cache.get(user_id, {})
+                user_cache = self.get_user_state(user_id)
                 for k in ['buying_product_id', 'validated_referral', 'self_referral']:
-                    if k in user_cache:
-                        user_cache.pop(k, None)
+                    user_cache.pop(k, None)
                 self.memory_cache[user_id] = user_cache
 
             crypto_amount = payment_data.get('pay_amount', 0)
@@ -1884,11 +1893,7 @@ Prêt à commencer ?"""
 
     async def create_seller_prompt(self, query, lang):
         """Demande les informations pour créer un compte vendeur"""
-        self.memory_cache[query.from_user.id] = {
-            'creating_seller': True,
-            'step': 'name',
-            'lang': lang
-        }
+        self.update_user_state(query.from_user.id, creating_seller=True, step='name', lang=lang)
 
         await query.edit_message_text("""🚀 **CRÉATION COMPTE VENDEUR**
 
@@ -2271,16 +2276,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
         user_id = update.effective_user.id
         message_text = update.message.text
 
-        if user_id not in self.memory_cache:
-            await update.message.reply_text(
-                "💬 Utilisez le menu principal pour naviguer.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🏠 Menu principal",
-                                         callback_data='back_main')
-                ]]))
-            return
+        # S'assurer qu'un état existe pour l'utilisateur, il peut être vide mais persistant
+        self.memory_cache.setdefault(user_id, {})
 
-        user_state = self.memory_cache[user_id]
+        user_state = self.get_user_state(user_id)
 
         # === RECHERCHE PRODUIT ===
         if user_state.get('waiting_for_product_id'):
@@ -2335,7 +2334,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
                     cursor.execute('UPDATE products SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND seller_user_id = ?', (new_title, product_id, user_id))
                     conn.commit()
                     conn.close()
-                    self.memory_cache.pop(user_id, None)
+                    # Nettoyer uniquement le contexte d'édition produit
+                    state = self.get_user_state(user_id)
+                    for k in ['editing_product', 'product_id', 'step']:
+                        state.pop(k, None)
+                    self.memory_cache[user_id] = state
                     await update.message.reply_text("✅ Titre mis à jour.")
                 except Exception as e:
                     logger.error(f"Erreur maj titre produit: {e}")
@@ -2350,7 +2353,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
                     cursor.execute('UPDATE products SET price_eur = ?, price_usd = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND seller_user_id = ?', (price, price * self.get_exchange_rate(), product_id, user_id))
                     conn.commit()
                     conn.close()
-                    self.memory_cache.pop(user_id, None)
+                    # Nettoyer uniquement le contexte d'édition produit
+                    state = self.get_user_state(user_id)
+                    for k in ['editing_product', 'product_id', 'step']:
+                        state.pop(k, None)
+                    self.memory_cache[user_id] = state
                     await update.message.reply_text("✅ Prix mis à jour.")
                 except Exception as e:
                     logger.error(f"Erreur maj prix produit: {e}")
@@ -2530,7 +2537,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 return
 
             # Créer le compte vendeur
-            user_cache = self.memory_cache[user_id]
+            user_cache = self.get_user_state(user_id)
             result = self.create_seller_account_with_recovery(
                 user_id,
                 user_cache['seller_name'],
@@ -2676,27 +2683,36 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
     async def process_support_ticket(self, update: Update, message_text: str):
         user_id = update.effective_user.id
-        state = self.memory_cache[user_id]
+        state = self.get_user_state(user_id)
         step = state.get('step')
 
         if step == 'subject':
             state['subject'] = message_text[:100]
             state['step'] = 'message'
-            await update.message.reply_text("Entrez votre message détaillé:")
+            # UI i18n
+            user_data = self.get_user(user_id)
+            lang = user_data['language_code'] if user_data else 'fr'
+            await update.message.reply_text("Enter your detailed message:" if lang == 'en' else "Entrez votre message détaillé:")
             return
 
         if step == 'message':
-            subject = state.get('subject', 'Sans sujet')
+            user_data = self.get_user(user_id)
+            lang = user_data['language_code'] if user_data else 'fr'
+            subject = state.get('subject', 'No subject' if lang == 'en' else 'Sans sujet')
             content = message_text[:2000]
 
             from app.services.support_service import SupportService
             ticket_id = SupportService(self.db_path).create_ticket(user_id, subject, content)
             if ticket_id:
-                self.memory_cache.pop(user_id, None)
+                # Nettoyer uniquement le contexte de création de ticket
+                state = self.get_user_state(user_id)
+                for k in ['creating_ticket', 'step', 'subject']:
+                    state.pop(k, None)
+                self.memory_cache[user_id] = state
                 await update.message.reply_text(
-                    f"🎫 Ticket créé: {ticket_id}\nNotre équipe vous répondra bientôt.")
+                    (f"🎫 Ticket created: {ticket_id}\nOur team will get back to you soon." if lang == 'en' else f"🎫 Ticket créé: {ticket_id}\nNotre équipe vous répondra bientôt."))
             else:
-                await update.message.reply_text("❌ Erreur lors de la création du ticket.")
+                await update.message.reply_text("❌ Error while creating the ticket." if lang == 'en' else "❌ Erreur lors de la création du ticket.")
 
     async def process_seller_settings(self, update: Update, message_text: str):
         user_id = update.effective_user.id
@@ -2710,7 +2726,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 cursor.execute('UPDATE users SET seller_name = ? WHERE user_id = ?', (new_name, user_id))
                 conn.commit()
                 conn.close()
-                self.memory_cache.pop(user_id, None)
+                # Nettoyer uniquement le contexte d'édition paramètres
+                state = self.get_user_state(user_id)
+                for k in ['editing_settings', 'step']:
+                    state.pop(k, None)
+                self.memory_cache[user_id] = state
                 await update.message.reply_text("✅ Nom mis à jour.")
             except Exception as e:
                 logger.error(f"Erreur maj nom vendeur: {e}")
@@ -2723,7 +2743,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 cursor.execute('UPDATE users SET seller_bio = ? WHERE user_id = ?', (new_bio, user_id))
                 conn.commit()
                 conn.close()
-                self.memory_cache.pop(user_id, None)
+                # Nettoyer uniquement le contexte d'édition paramètres
+                state = self.get_user_state(user_id)
+                for k in ['editing_settings', 'step']:
+                    state.pop(k, None)
+                self.memory_cache[user_id] = state
                 await update.message.reply_text("✅ Biographie mise à jour.")
             except Exception as e:
                 logger.error(f"Erreur maj bio vendeur: {e}")
@@ -2828,6 +2852,9 @@ Commencez dès maintenant à monétiser votre expertise !"""
             conn.commit()
             conn.close()
 
+            # Mettre à jour aussi l'état mémoire pour utilisation immédiate
+            self.update_user_state(user_id, lang=lang)
+
             await query.answer(f"✅ Language changed to {lang}")
             await self.back_to_main(query)
 
@@ -2879,6 +2906,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
         }
         return texts.get(lang, texts['fr']).get(key, key)
 
+    def tr(self, lang: str, fr_text: str, en_text: str) -> str:
+        """Retourne le texte dans la langue demandée, FR par défaut."""
+        return en_text if lang == 'en' else fr_text
+
     async def back_to_main(self, query):
         """Menu principal avec récupération"""
         user_id = query.from_user.id
@@ -2918,6 +2949,32 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown')
 
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Redirige vers la FAQ en respectant la langue de l'utilisateur."""
+        user = update.effective_user
+        user_data = self.get_user(user.id)
+        lang = user_data['language_code'] if user_data else (user.language_code or 'fr')
+        # Utiliser le même écran que le bouton FAQ
+        class DummyQuery:
+            def __init__(self, uid):
+                self.from_user = type('u', (), {'id': uid})
+            async def edit_message_text(self, *args, **kwargs):
+                await update.message.reply_text(*args, **kwargs)
+        await self.show_faq(DummyQuery(user.id), lang)
+
+    async def support_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Redirige vers la création de ticket de support directement."""
+        user = update.effective_user
+        user_data = self.get_user(user.id)
+        lang = user_data['language_code'] if user_data else (user.language_code or 'fr')
+        # Ouvre directement la création de ticket
+        class DummyQuery:
+            def __init__(self, uid):
+                self.from_user = type('u', (), {'id': uid})
+            async def edit_message_text(self, *args, **kwargs):
+                await update.message.reply_text(*args, **kwargs)
+        await self.create_ticket(DummyQuery(user.id), lang)
+
     async def account_recovery_menu(self, query, lang):
         """Menu de récupération de compte"""
         await query.edit_message_text("""🔐 **RÉCUPÉRATION COMPTE VENDEUR**
@@ -2941,10 +2998,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
     async def recovery_by_email_prompt(self, query, lang):
         """Demande l'email pour récupération"""
-        self.memory_cache[query.from_user.id] = {
-            'waiting_for_recovery_email': True,
-            'lang': lang
-        }
+        self.update_user_state(query.from_user.id, waiting_for_recovery_email=True, lang=lang)
 
         await query.edit_message_text("""📧 **RÉCUPÉRATION PAR EMAIL**
 
@@ -2971,7 +3025,11 @@ Commencez dès maintenant à monétiser votre expertise !"""
             if not row:
                 conn.close()
                 await update.message.reply_text("❌ Email non trouvé.")
-                self.memory_cache.pop(user_id, None)
+                # Nettoyer uniquement le contexte de récupération
+                state = self.get_user_state(user_id)
+                for k in ['waiting_for_recovery_email', 'email']:
+                    state.pop(k, None)
+                self.memory_cache[user_id] = state
                 return
 
             # Générer un nouveau code (stocké en hash)
@@ -3000,7 +3058,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
                     logger.error(f"Erreur envoi email: {e}")
 
             # Poursuivre le flow: demander le code à l'utilisateur
-            self.memory_cache[user_id] = {'waiting_for_recovery_code': True, 'email': email}
+            self.update_user_state(user_id, waiting_for_recovery_code=True, email=email)
             await update.message.reply_text(
                 "📧 Code envoyé. Entrez votre code à 6 chiffres:")
         except sqlite3.Error as e:
@@ -3064,7 +3122,7 @@ Commencez dès maintenant à monétiser votre expertise !"""
                 await update.message.reply_text("❌ Email non associé à votre compte Telegram.")
                 return
             # Passer à l'étape code
-            self.memory_cache[user_id] = {'login_wait_code': True, 'login_email': email}
+            self.update_user_state(user_id, login_wait_code=True, login_email=email)
             await update.message.reply_text("✉️ Email validé. Entrez votre code de récupération (6 chiffres):")
         except Exception as e:
             logger.error(f"Erreur login email: {e}")
@@ -3719,14 +3777,24 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
     async def show_support_menu(self, query, lang):
         """Affiche le menu support"""
-        keyboard = [
-            [InlineKeyboardButton("FAQ", callback_data='faq')],
-            [InlineKeyboardButton("Créer un ticket", callback_data='create_ticket')],
-            [InlineKeyboardButton("Mes tickets", callback_data='my_tickets')],
-            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
-        ]
+        if lang == 'en':
+            keyboard = [
+                [InlineKeyboardButton("FAQ", callback_data='faq')],
+                [InlineKeyboardButton("Create a ticket", callback_data='create_ticket')],
+                [InlineKeyboardButton("My tickets", callback_data='my_tickets')],
+                [InlineKeyboardButton("🏠 Home", callback_data='back_main')]
+            ]
+            support_text = """Support
 
-        support_text = """Assistance et support
+How can we help you?"""
+        else:
+            keyboard = [
+                [InlineKeyboardButton("FAQ", callback_data='faq')],
+                [InlineKeyboardButton("Créer un ticket", callback_data='create_ticket')],
+                [InlineKeyboardButton("Mes tickets", callback_data='my_tickets')],
+                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+            ]
+            support_text = """Assistance et support
 
 Comment pouvons-nous vous aider ?"""
 
@@ -3737,7 +3805,20 @@ Comment pouvons-nous vous aider ?"""
 
     async def show_faq(self, query, lang):
         """Affiche la FAQ"""
-        faq_text = """**FAQ**
+        if lang == 'en':
+            faq_text = """**FAQ**
+
+Q: How to buy a course?
+A: Browse categories or search by ID.
+
+Q: How to sell a course?
+A: Become a seller and add your products.
+
+Q: How to recover my account?
+A: Use the recovery email."""
+            keyboard = [[InlineKeyboardButton("Back", callback_data='support_menu')]]
+        else:
+            faq_text = """**FAQ**
 
 Q: Comment acheter une formation ?
 R: Parcourez les catégories ou recherchez par ID.
@@ -3747,8 +3828,7 @@ R: Devenez vendeur et ajoutez vos produits.
 
 Q: Comment récupérer mon compte ?
 R: Utilisez l'email de récupération."""
-
-        keyboard = [[InlineKeyboardButton("Retour", callback_data='support_menu')]]
+            keyboard = [[InlineKeyboardButton("Retour", callback_data='support_menu')]]
 
         await query.edit_message_text(
             faq_text,
@@ -3757,15 +3837,17 @@ R: Utilisez l'email de récupération."""
 
     async def create_ticket(self, query, lang):
         """Crée un ticket de support"""
-        self.memory_cache[query.from_user.id] = {
-            'creating_ticket': True,
-            'step': 'subject',
-            'lang': lang
-        }
-        await query.edit_message_text(
-            "🆘 Nouveau ticket\n\nEntrez un sujet pour votre demande:",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='support_menu')]])
-        )
+        self.update_user_state(query.from_user.id, creating_ticket=True, step='subject', lang=lang)
+        if lang == 'en':
+            await query.edit_message_text(
+                "🆘 New ticket\n\nEnter a subject for your request:",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='support_menu')]])
+            )
+        else:
+            await query.edit_message_text(
+                "🆘 Nouveau ticket\n\nEntrez un sujet pour votre demande:",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour", callback_data='support_menu')]])
+            )
 
     async def show_my_tickets(self, query, lang):
         """Affiche les tickets de support de l'utilisateur"""
@@ -3980,7 +4062,7 @@ Top produits:\n"""
     async def admin_search_user(self, query):
         if query.from_user.id != ADMIN_USER_ID:
             return
-        self.memory_cache[query.from_user.id] = {'admin_search_user': True}
+        self.update_user_state(query.from_user.id, admin_search_user=True)
         await query.edit_message_text("🔎 Entrez un user_id ou un partner_code à rechercher:")
 
     async def admin_export_users(self, query):
@@ -4007,13 +4089,13 @@ Top produits:\n"""
     async def admin_search_product(self, query):
         if query.from_user.id != ADMIN_USER_ID:
             return
-        self.memory_cache[query.from_user.id] = {'admin_search_product': True}
+        self.update_user_state(query.from_user.id, admin_search_product=True)
         await query.edit_message_text("🔎 Entrez un product_id exact à rechercher:")
 
     async def admin_suspend_product(self, query):
         if query.from_user.id != ADMIN_USER_ID:
             return
-        self.memory_cache[query.from_user.id] = {'admin_suspend_product': True}
+        self.update_user_state(query.from_user.id, admin_suspend_product=True)
         await query.edit_message_text("⛔ Entrez un product_id à suspendre:")
 
     # access_account_prompt supprimé pour simplifier l'UX (remplacé par seller_dashboard/seller_login)
