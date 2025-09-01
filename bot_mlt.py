@@ -939,6 +939,9 @@ class MarketplaceBot:
             elif query.data.startswith('download_product_'):
                 product_id = query.data[17:]
                 await self.download_product(query, context, product_id, lang)
+            elif query.data.startswith('contact_seller_'):
+                product_id = query.data.split('contact_seller_')[-1]
+                await self.contact_seller_start(query, product_id, lang)
             elif query.data == 'my_library':
                 await self.show_my_library(query, lang)
 
@@ -2326,6 +2329,8 @@ Commencez dès maintenant à monétiser votre expertise !"""
         # === CRÉATION TICKET SUPPORT ===
         elif user_state.get('creating_ticket'):
             await self.process_support_ticket(update, message_text)
+        elif user_state.get('waiting_reply_ticket_id'):
+            await self.process_messaging_reply(update, message_text)
 
         # === RÉCUPÉRATION PAR EMAIL ===
         elif user_state.get('waiting_for_recovery_email'):
@@ -2746,6 +2751,36 @@ Saisissez votre adresse Solana pour recevoir vos paiements :
                     (f"🎫 Ticket created: {ticket_id}\nOur team will get back to you soon." if lang == 'en' else f"🎫 Ticket créé: {ticket_id}\nNotre équipe vous répondra bientôt."))
             else:
                 await update.message.reply_text("❌ Error while creating the ticket." if lang == 'en' else "❌ Erreur lors de la création du ticket.")
+
+    async def process_messaging_reply(self, update: Update, message_text: str):
+        """Ajoute un message dans le thread Acheteur↔Vendeur et notifie le vendeur (plus tard admin)."""
+        user_id = update.effective_user.id
+        state = self.get_user_state(user_id)
+        ticket_id = state.get('waiting_reply_ticket_id')
+        if not ticket_id:
+            await update.message.reply_text("❌ Session expirée. Relancez le contact vendeur depuis votre bibliothèque.")
+            return
+        msg = message_text.strip()
+        if not msg:
+            await update.message.reply_text("❌ Message vide.")
+            return
+        try:
+            from app.services.messaging_service import MessagingService
+            ok = MessagingService(self.db_path).post_user_message(ticket_id, user_id, msg)
+            if not ok:
+                await update.message.reply_text("❌ Erreur lors de l'envoi du message.")
+                return
+            # Nettoyer l'état de saisie
+            state.pop('waiting_reply_ticket_id', None)
+            self.memory_cache[user_id] = state
+
+            # Afficher le récapitulatif des derniers messages
+            messages = MessagingService(self.db_path).list_recent_messages(ticket_id, 5)
+            thread = "\n".join([f"[{m['created_at']}] {m['sender_role']}: {m['message']}" for m in reversed(messages)])
+            await update.message.reply_text(f"✅ Message envoyé.\n\n🧵 Derniers messages:\n{thread}")
+        except Exception as e:
+            logger.error(f"Erreur reply ticket: {e}")
+            await update.message.reply_text("❌ Erreur interne.")
 
     async def process_seller_settings(self, update: Update, message_text: str):
         user_id = update.effective_user.id
@@ -4014,10 +4049,54 @@ R: Utilisez l'email de récupération."""
         keyboard = []
         for product_id, title, price in rows[:10]:
             text += f"• {title} — {price}€\n"
-            keyboard.append([InlineKeyboardButton("📥 Télécharger", callback_data=f'download_product_{product_id}')])
+            keyboard.append([
+                InlineKeyboardButton("📥 Télécharger", callback_data=f'download_product_{product_id}'),
+                InlineKeyboardButton("📨 Contacter le vendeur", callback_data=f'contact_seller_{product_id}')
+            ])
 
         keyboard.append([InlineKeyboardButton("🏠 Accueil", callback_data='back_main')])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    async def contact_seller_start(self, query, product_id: str, lang: str):
+        """Démarre un thread Acheteur↔Vendeur uniquement si la commande est payée."""
+        buyer_id = query.from_user.id
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT o.order_id, p.seller_user_id, p.title
+                FROM orders o
+                JOIN products p ON p.product_id = o.product_id
+                WHERE o.buyer_user_id = ? AND o.product_id = ? AND o.payment_status = 'completed'
+                ORDER BY o.completed_at DESC LIMIT 1
+            ''', (buyer_id, product_id))
+            row = cursor.fetchone()
+            conn.close()
+            if not row:
+                await query.edit_message_text("❌ Vous devez avoir acheté ce produit pour contacter le vendeur.")
+                return
+            order_id, seller_user_id, title = row
+        except Exception as e:
+            logger.error(f"Erreur recherche commande pour contact vendeur: {e}")
+            await query.edit_message_text("❌ Erreur lors de l'initiation du contact.")
+            return
+
+        try:
+            from app.services.messaging_service import MessagingService
+            ticket_id = MessagingService(self.db_path).start_or_get_ticket(buyer_id, order_id, seller_user_id, f"Contact vendeur: {title}")
+            if not ticket_id:
+                await query.edit_message_text("❌ Impossible de créer le ticket.")
+                return
+            # Armer l'état de réponse utilisateur
+            self.reset_conflicting_states(buyer_id, keep={'waiting_reply_ticket_id'})
+            self.update_user_state(buyer_id, waiting_reply_ticket_id=ticket_id)
+            await query.edit_message_text(
+                f"📨 Contact vendeur pour `{title}`\n\n✍️ Écrivez votre message:",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.error(f"Erreur init ticket: {e}")
+            await query.edit_message_text("❌ Erreur lors de la création du ticket.")
 
     async def payout_history(self, query):
         try:
