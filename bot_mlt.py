@@ -1682,10 +1682,14 @@ Choisissez un code pour continuer votre achat :
             except Exception as e:
                 logger.warning(f"QR code generation failed: {e}")
         else:
+            logger.error(f"create_payment returned None order_id={order_id} crypto={crypto_currency} amount_usd={product_price_usd}")
             await query.edit_message_text(
-                "❌ Erreur lors de la création du paiement. Vérifiez la configuration NOWPayments.",
+                "❌ Erreur NOWPayments lors de la création du paiement. Réessayez ou choisissez une autre crypto.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔄 Réessayer",
+                                         callback_data='proceed_to_payment')
+                ], [
+                    InlineKeyboardButton("💱 Changer de crypto",
                                          callback_data='proceed_to_payment')
                 ]]))
 

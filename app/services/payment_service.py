@@ -16,16 +16,30 @@ class PaymentService:
         self._currencies_cache = {}
 
     def create_payment(self, amount_usd: float, currency: str, order_id: str) -> Optional[Dict]:
-        return self.client.create_payment(
-            amount_usd=amount_usd,
-            pay_currency=currency,
-            order_id=order_id,
-            description="Formation TechBot Marketplace",
-            ipn_callback_url=core_settings.IPN_CALLBACK_URL,
-        )
+        try:
+            resp = self.client.create_payment(
+                amount_usd=amount_usd,
+                pay_currency=currency,
+                order_id=order_id,
+                description="Formation TechBot Marketplace",
+                ipn_callback_url=core_settings.IPN_CALLBACK_URL,
+            )
+            if not resp:
+                logger.error(f"PaymentService.create_payment returned None order_id={order_id} currency={currency} amount_usd={amount_usd}")
+            return resp
+        except Exception as e:
+            logger.error(f"PaymentService.create_payment exception order_id={order_id} currency={currency} error={e}")
+            return None
 
     def check_payment_status(self, payment_id: str) -> Optional[Dict]:
-        return self.client.get_payment(payment_id)
+        try:
+            resp = self.client.get_payment(payment_id)
+            if not resp:
+                logger.error(f"PaymentService.check_payment_status got no data payment_id={payment_id}")
+            return resp
+        except Exception as e:
+            logger.error(f"PaymentService.check_payment_status exception payment_id={payment_id} error={e}")
+            return None
 
     def get_exchange_rate(self) -> float:
         try:
