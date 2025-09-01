@@ -789,6 +789,13 @@ class MarketplaceBot:
             # marketplace_stats déplacé dans l'admin uniquement
             elif query.data == 'support_menu':
                 await self.show_support_menu(query, lang)
+            elif query.data == 'account_recovery':
+                await self.account_recovery_menu(query, lang)
+            elif query.data == 'retry_password':
+                # Rester sur l'étape mot de passe et redemander
+                self.update_user_state(user_id, login_wait_code=True)
+                await query.edit_message_text(
+                    "✏️ Entrez votre mot de passe vendeur:")
             elif query.data == 'back_main':
                 await self.back_to_main(query)
             elif query.data.startswith('lang_'):
@@ -3098,7 +3105,10 @@ Saisissez l'email de votre compte vendeur :
             row = cursor.fetchone()
             conn.close()
             if not row:
-                await update.message.reply_text("❌ Email non associé à votre compte Telegram.")
+                await update.message.reply_text(
+                    "❌ Email non associé à votre compte Telegram.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📧 Réinitialiser mot de passe", callback_data='account_recovery')]])
+                )
                 return
             self.update_user_state(user_id, login_wait_code=True, login_email=email)
             await update.message.reply_text("✉️ Email validé. Entrez votre mot de passe vendeur:")
@@ -3113,7 +3123,10 @@ Saisissez l'email de votre compte vendeur :
         email = state.get('login_email')
         password = message_text.strip()
         if len(password) < 1:
-            await update.message.reply_text("❌ Mot de passe invalide.")
+            await update.message.reply_text(
+                "❌ Mot de passe invalide.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔁 Réessayer", callback_data='retry_password')], [InlineKeyboardButton("📧 Réinitialiser mot de passe", callback_data='account_recovery')]])
+            )
             return
         try:
             conn = self.get_db_connection()
@@ -3126,11 +3139,17 @@ Saisissez l'email de votre compte vendeur :
                 row = cursor.fetchone()
             conn.close()
             if not row or not row[0] or not row[1]:
-                await update.message.reply_text("❌ Identifiants incorrects.")
+                await update.message.reply_text(
+                    "❌ Identifiants incorrects.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔁 Réessayer", callback_data='retry_password')], [InlineKeyboardButton("📧 Réinitialiser mot de passe", callback_data='account_recovery')]])
+                )
                 return
             salt, stored_hash = row
             if hash_password(password, salt) != stored_hash:
-                await update.message.reply_text("❌ Identifiants incorrects.")
+                await update.message.reply_text(
+                    "❌ Identifiants incorrects.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔁 Réessayer", callback_data='retry_password')], [InlineKeyboardButton("📧 Réinitialiser mot de passe", callback_data='account_recovery')]])
+                )
                 return
             # Login ok
             self.set_seller_logged_in(user_id, True)
