@@ -443,6 +443,46 @@ class MarketplaceBot:
             logger.error(f"Erreur création table support_tickets: {e}")
             conn.rollback()
 
+        # Migration légère: colonnes supplémentaires pour le routage des tickets
+        try:
+            cursor.execute("PRAGMA table_info(support_tickets)")
+            cols = {row[1] for row in cursor.fetchall()}
+            altered = False
+            if 'order_id' not in cols:
+                cursor.execute("ALTER TABLE support_tickets ADD COLUMN order_id TEXT")
+                altered = True
+            if 'seller_user_id' not in cols:
+                cursor.execute("ALTER TABLE support_tickets ADD COLUMN seller_user_id INTEGER")
+                altered = True
+            if 'assigned_to_user_id' not in cols:
+                cursor.execute("ALTER TABLE support_tickets ADD COLUMN assigned_to_user_id INTEGER")
+                altered = True
+            if 'updated_at' not in cols:
+                cursor.execute("ALTER TABLE support_tickets ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                altered = True
+            if altered:
+                conn.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Erreur migration support_tickets: {e}")
+            conn.rollback()
+
+        # Nouvelle table: messages de support (thread par ticket)
+        try:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS support_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ticket_id TEXT,
+                    sender_user_id INTEGER,
+                    sender_role TEXT,
+                    message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Erreur création table support_messages: {e}")
+            conn.rollback()
+
         # Table catégories
         try:
             cursor.execute('''
