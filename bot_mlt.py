@@ -3998,7 +3998,16 @@ R: Utilisez l'email de récupération."""
         await query.edit_message_text(text)
 
     async def copy_address(self, query):
-        await query.answer("Adresse copiée", show_alert=False)
+        await query.answer()
+        user_data = self.get_user(query.from_user.id)
+        addr = (user_data or {}).get('seller_solana_address')
+        if not addr:
+            await query.edit_message_text("❌ Aucune adresse configurée.")
+            return
+        try:
+            await query.message.reply_text(f"📋 Adresse de retrait:\n`{addr}`\n\nCopiez-collez cette adresse dans votre wallet.", parse_mode='Markdown')
+        except Exception:
+            await query.edit_message_text(f"📋 Adresse de retrait:\n`{addr}`\n\nCopiez-collez cette adresse dans votre wallet.", parse_mode='Markdown')
 
     async def seller_analytics(self, query, lang):
         try:
