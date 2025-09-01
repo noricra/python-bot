@@ -92,3 +92,41 @@ class MessagingRepository:
             return None
         finally:
             conn.close()
+
+    def escalate_ticket(self, ticket_id: str, admin_user_id: int) -> bool:
+        conn = get_sqlite_connection(self.database_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute('UPDATE support_tickets SET assigned_to_user_id = ?, status = "pending_admin", updated_at = CURRENT_TIMESTAMP WHERE ticket_id = ?', (admin_user_id, ticket_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error:
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def list_recent_tickets(self, limit: int = 10) -> List[Dict]:
+        conn = get_sqlite_connection(self.database_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute('SELECT ticket_id, user_id, seller_user_id, subject, status, updated_at FROM support_tickets ORDER BY updated_at DESC LIMIT ?', (limit,))
+            return [dict(r) for r in cursor.fetchall()]
+        except sqlite3.Error:
+            return []
+        finally:
+            conn.close()
+
+    def get_ticket(self, ticket_id: str) -> Optional[Dict]:
+        conn = get_sqlite_connection(self.database_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute('SELECT * FROM support_tickets WHERE ticket_id = ?', (ticket_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except sqlite3.Error:
+            return None
+        finally:
+            conn.close()

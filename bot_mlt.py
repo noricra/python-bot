@@ -942,6 +942,15 @@ class MarketplaceBot:
             elif query.data.startswith('contact_seller_'):
                 product_id = query.data.split('contact_seller_')[-1]
                 await self.contact_seller_start(query, product_id, lang)
+            elif query.data.startswith('view_ticket_'):
+                ticket_id = query.data.split('view_ticket_')[-1]
+                await self.view_ticket(query, ticket_id)
+            elif query.data.startswith('reply_ticket_'):
+                ticket_id = query.data.split('reply_ticket_')[-1]
+                await self.reply_ticket_prepare(query, ticket_id)
+            elif query.data.startswith('escalate_ticket_'):
+                ticket_id = query.data.split('escalate_ticket_')[-1]
+                await self.escalate_ticket(query, ticket_id)
             elif query.data == 'my_library':
                 await self.show_my_library(query, lang)
 
@@ -2777,10 +2786,48 @@ Saisissez votre adresse Solana pour recevoir vos paiements :
             # Afficher le récapitulatif des derniers messages
             messages = MessagingService(self.db_path).list_recent_messages(ticket_id, 5)
             thread = "\n".join([f"[{m['created_at']}] {m['sender_role']}: {m['message']}" for m in reversed(messages)])
-            await update.message.reply_text(f"✅ Message envoyé.\n\n🧵 Derniers messages:\n{thread}")
+            keyboard = [[
+                InlineKeyboardButton("↩️ Répondre", callback_data=f'reply_ticket_{ticket_id}'),
+                InlineKeyboardButton("🚀 Escalader", callback_data=f'escalate_ticket_{ticket_id}')
+            ]]
+            await update.message.reply_text(f"✅ Message envoyé.\n\n🧵 Derniers messages:\n{thread}", reply_markup=InlineKeyboardMarkup(keyboard))
         except Exception as e:
             logger.error(f"Erreur reply ticket: {e}")
             await update.message.reply_text("❌ Erreur interne.")
+
+    async def view_ticket(self, query, ticket_id: str):
+        try:
+            from app.services.messaging_service import MessagingService
+            messages = MessagingService(self.db_path).list_recent_messages(ticket_id, 10)
+            if not messages:
+                await query.edit_message_text("🎫 Aucun message dans ce ticket.")
+                return
+            thread = "\n".join([f"[{m['created_at']}] {m['sender_role']}: {m['message']}" for m in reversed(messages)])
+            keyboard = [[
+                InlineKeyboardButton("↩️ Répondre", callback_data=f'reply_ticket_{ticket_id}'),
+                InlineKeyboardButton("🚀 Escalader", callback_data=f'escalate_ticket_{ticket_id}')
+            ]]
+            await query.edit_message_text(f"🧵 Thread ticket `{ticket_id}`:\n\n{thread}", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as e:
+            logger.error(f"Erreur view ticket: {e}")
+            await query.edit_message_text("❌ Erreur interne.")
+
+    async def reply_ticket_prepare(self, query, ticket_id: str):
+        self.reset_conflicting_states(query.from_user.id, keep={'waiting_reply_ticket_id'})
+        self.update_user_state(query.from_user.id, waiting_reply_ticket_id=ticket_id)
+        await query.edit_message_text("✍️ Écrivez votre réponse:")
+
+    async def escalate_ticket(self, query, ticket_id: str):
+        try:
+            from app.services.messaging_service import MessagingService
+            ok = MessagingService(self.db_path).escalate(ticket_id, ADMIN_USER_ID or query.from_user.id)
+            if not ok:
+                await query.edit_message_text("❌ Impossible d'escalader ce ticket.")
+                return
+            await query.edit_message_text("🚀 Ticket escaladé au support.")
+        except Exception as e:
+            logger.error(f"Erreur escalade: {e}")
+            await query.edit_message_text("❌ Erreur interne.")
 
     async def process_seller_settings(self, update: Update, message_text: str):
         user_id = update.effective_user.id
