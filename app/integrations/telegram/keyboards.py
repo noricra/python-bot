@@ -6,13 +6,11 @@ def main_menu_keyboard(lang: str):
         return [
             [InlineKeyboardButton("🛒 Buy a course", callback_data='buy_menu')],
             [InlineKeyboardButton("📚 Sell your courses", callback_data='sell_menu')],
-            [InlineKeyboardButton("📊 Marketplace stats", callback_data='marketplace_stats')],
             [InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')],
         ]
     return [
         [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
         [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')],
-        [InlineKeyboardButton("📊 Stats marketplace", callback_data='marketplace_stats')],
         [InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')],
     ]
 
