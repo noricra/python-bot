@@ -31,6 +31,8 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_admin_payouts': "💸 Vendeurs à payer",
         # Buy menu text
         'buy_menu_text': """🛒 **ACHETER UNE FORMATION**\n\nPlusieurs façons de découvrir nos formations :\n\n🔍 **Recherche directe** - Si vous avez un ID produit\n📂 **Par catégories** - Explorez par domaine\n🔥 **Tendances** - Les plus populaires\n🆕 **Nouveautés** - Dernières publications\n\n💰 **Paiement crypto sécurisé** avec votre wallet intégré""",
+        # Sell menu text
+        'sell_menu_text': """📚 **VENDRE VOS FORMATIONS**\n\n🎯 Valorisez votre expertise\n\n💰 **Avantages vendeur :**\n• 95% des revenus pour vous (5% commission plateforme)\n• Paiements automatiques en crypto\n• Wallet intégré sécurisé\n• Gestion complète de vos produits\n• Support marketing inclus\n\n🔐 **Sécurité**\n• Réinitialisation de mot de passe par email\n• Adresse Solana de paiement à votre nom\n• Contrôle total de vos fonds\n\nPrêt à commencer ?""",
         # Search
         'search_prompt': """🔍 **RECHERCHE PAR ID PRODUIT**\n\nSaisissez l'ID de la formation que vous souhaitez acheter.\n\n💡 **Format attendu :** `TBF-2501-ABC123`\n\n✍️ **Tapez l'ID produit :**""",
         # Categories
@@ -148,6 +150,8 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_admin_payouts': "💸 Sellers to pay",
         # Buy menu text
         'buy_menu_text': """🛒 **BUY A COURSE**\n\nMultiple ways to discover our courses:\n\n🔍 **Direct search** - If you have a product ID\n📂 **By categories** - Explore by domain\n🔥 **Trending** - Most popular\n🆕 **New** - Latest releases\n\n💰 **Secure crypto payment** with your integrated wallet""",
+        # Sell menu text
+        'sell_menu_text': """📚 **SELL YOUR COURSES**\n\n🎯 Showcase your expertise\n\n💰 **Seller benefits:**\n• 95% revenue for you (5% platform fee)\n• Automatic crypto payments\n• Secure integrated wallet\n• Full product management\n• Marketing support included\n\n🔐 **Security**\n• Password reset via email\n• Solana payout address in your name\n• Full control of your funds\n\nReady to start?""",
         # Search
         'search_prompt': """🔍 **SEARCH BY PRODUCT ID**\n\nEnter the ID of the course you want to buy.\n\n💡 **Expected format:** `TBF-2501-ABC123`\n\n✍️ **Type the product ID:**""",
         # Categories
