@@ -1281,12 +1281,13 @@ Soyez le premier à publier dans ce domaine !"""
         product = self.get_product_by_id(product_id)
 
         if not product:
+            from app.core.i18n import t as i18n
             await query.edit_message_text(
-                f"❌ **Produit introuvable :** `{product_id}`\n\nVérifiez l'ID ou cherchez dans les catégories.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔍 Rechercher",
+                (f"❌ **Product not found:** `{product_id}`\n\nCheck the ID or browse categories." if lang=='en' else f"❌ **Produit introuvable :** `{product_id}`\n\nVérifiez l'ID ou cherchez dans les catégories."),
+                reply_markup=InlineKeyboardMarkup([[ 
+                    InlineKeyboardButton(i18n(lang, 'btn_search'),
                                          callback_data='search_product'),
-                    InlineKeyboardButton("📂 Catégories",
+                    InlineKeyboardButton(i18n(lang, 'btn_categories'),
                                          callback_data='browse_categories')
                 ]]),
                 parse_mode='Markdown')
@@ -1769,13 +1770,14 @@ Choisissez un code pour continuer votre achat :
                 logger.warning(f"QR code generation failed: {e}")
         else:
             logger.error(f"create_payment returned None order_id={order_id} crypto={crypto_currency} amount_usd={product_price_usd}")
+            from app.core.i18n import t as i18n
             await query.edit_message_text(
-                "❌ Erreur NOWPayments lors de la création du paiement. Réessayez ou choisissez une autre crypto.",
+                i18n(lang, 'err_nowpayments'),
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔄 Réessayer",
+                    InlineKeyboardButton(i18n(lang, 'btn_retry'),
                                          callback_data='proceed_to_payment')
                 ], [
-                    InlineKeyboardButton("💱 Changer de crypto",
+                    InlineKeyboardButton("💱 Change crypto" if lang=='en' else "💱 Changer de crypto",
                                          callback_data='proceed_to_payment')
                 ]]))
 
@@ -1890,15 +1892,17 @@ Choisissez un code pour continuer votre achat :
         else:
             conn.close()
             try:
+                from app.core.i18n import t as i18n
                 await query.edit_message_text(
-                    ("❌ Verification error. Please try again." if lang == 'en' else "❌ Erreur de vérification. Réessayez."),
+                    i18n(lang, 'err_verify'),
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                        "🔄 Retry" if lang == 'en' else "🔄 Réessayer", callback_data=f'check_payment_{order_id}')]]))
+                        i18n(lang, 'btn_retry'), callback_data=f'check_payment_{order_id}')]]))
             except Exception:
+                from app.core.i18n import t as i18n
                 await query.message.reply_text(
-                    ("❌ Verification error. Please try again." if lang == 'en' else "❌ Erreur de vérification. Réessayez."),
+                    i18n(lang, 'err_verify'),
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                        "🔄 Retry" if lang == 'en' else "🔄 Réessayer", callback_data=f'check_payment_{order_id}')]]))
+                        i18n(lang, 'btn_retry'), callback_data=f'check_payment_{order_id}')]]))
 
     async def sell_menu(self, query, lang):
         """Menu vendeur"""

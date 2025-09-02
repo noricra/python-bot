@@ -61,6 +61,12 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'err_temp': "❌ Erreur temporaire. Retour au menu principal.",
         'err_internal': "❌ Erreur interne.",
         'btn_library': "📚 Ma bibliothèque",
+        'err_nowpayments': "❌ Erreur NOWPayments lors de la création du paiement. Réessayez ou choisissez une autre crypto.",
+        'err_verify': "❌ Erreur de vérification. Réessayez.",
+        'btn_retry': "🔄 Réessayer",
+        'btn_search': "🔍 Rechercher",
+        'btn_categories': "📂 Catégories",
+        'label_file': "📁 **Fichier :**",
     },
     'en': {
         'main_title': "🏪 TECHBOT MARKETPLACE",
@@ -121,6 +127,12 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'err_temp': "❌ Temporary error. Back to main menu.",
         'err_internal': "❌ Internal error.",
         'btn_library': "📚 My library",
+        'err_nowpayments': "❌ NOWPayments error while creating the payment. Try again or choose another crypto.",
+        'err_verify': "❌ Verification error. Please try again.",
+        'btn_retry': "🔄 Retry",
+        'btn_search': "🔍 Search",
+        'btn_categories': "📂 Categories",
+        'label_file': "📁 **File:**",
     },
 }
 
