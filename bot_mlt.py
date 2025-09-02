@@ -1365,7 +1365,33 @@ Soyez le premier à publier dans ce domaine !"""
             [InlineKeyboardButton(i18n(lang, 'btn_buy'), callback_data=f'buy_product_{product_id}')],
             [InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data=f'product_{product_id}')]
         ]
-        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+        # Afficher d'abord le texte
+        try:
+            await query.edit_message_text(text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception:
+            await query.message.reply_text(text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+
+        # Si un PDF est disponible, tenter un aperçu visuel de la première page
+        try:
+            import os
+            main_path = product.get('main_file_path') or ''
+            if isinstance(main_path, str) and main_path.lower().endswith('.pdf') and os.path.exists(main_path):
+                try:
+                    import fitz  # PyMuPDF
+                    doc = fitz.open(main_path)
+                    if doc.page_count > 0:
+                        page = doc.load_page(0)
+                        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                        bio = BytesIO(pix.tobytes('png'))
+                        bio.seek(0)
+                        caption = ("Preview — page 1" if lang=='en' else "Aperçu — page 1")
+                        await query.message.reply_photo(photo=bio, caption=caption)
+                        doc.close()
+                except Exception as e:
+                    # Si PyMuPDF n'est pas dispo ou erreur lecture, ignorer proprement
+                    pass
+        except Exception:
+            pass
 
     async def buy_product_prompt(self, query, product_id, lang):
         """Démarrer l'achat sans parrainage (parrainage retiré)"""
