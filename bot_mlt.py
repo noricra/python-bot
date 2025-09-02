@@ -2351,10 +2351,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
             await self.process_support_ticket(update, message_text)
         elif user_state.get('waiting_reply_ticket_id'):
             from app.integrations.telegram.handlers import support_handlers as sh
-            sh.process_messaging_reply(self, update, message_text)
+            await sh.process_messaging_reply(self, update, message_text)
         elif user_state.get('waiting_admin_reply_ticket_id'):
             from app.integrations.telegram.handlers import support_handlers as sh
-            sh.process_admin_reply(self, update, message_text)
+            await sh.process_admin_reply(self, update, message_text)
 
         # === RÉCUPÉRATION PAR EMAIL ===
         elif user_state.get('waiting_for_recovery_email'):
