@@ -1305,38 +1305,34 @@ Soyez le premier à publier dans ce domaine !"""
             logger.error(f"Erreur mise à jour vues produit: {e}")
             conn.close()
 
-        product_text = f"""📦 **{product['title']}**
-
-👤 **Vendeur :** {product['seller_name']}
-📂 **Catégorie :** {product['category']}
-💰 **Prix :** {product['price_eur']}€
-
-📖 **Description :**
-{product['description'] or 'Aucune description disponible'}
-
-🧾 **Bio vendeur :**
-{product.get('seller_bio') or 'Non renseignée'}
-
-📊 **Statistiques :**
-• 👁️ {product['views_count']} vues
-• 🛒 {product['sales_count']} ventes
-
-📁 **Fichier :** {product['file_size_mb']:.1f} MB"""
+        from app.core.i18n import t as i18n
+        product_text = (
+            f"📦 **{product['title']}**\n\n"
+            f"{i18n(lang, 'label_seller')} {product['seller_name']}\n"
+            f"{i18n(lang, 'label_category')} {product['category']}\n"
+            f"{i18n(lang, 'label_price')} {product['price_eur']}€\n\n"
+            f"{i18n(lang, 'label_description')}\n{product['description'] or ('No description' if lang=='en' else 'Aucune description disponible')}\n\n"
+            f"{i18n(lang, 'label_seller_bio')}\n{product.get('seller_bio') or ('Not provided' if lang=='en' else 'Non renseignée')}\n\n"
+            f"{i18n(lang, 'stats_title')}\n"
+            f"• {i18n(lang, 'label_views')} {product['views_count']} {'views' if lang=='en' else 'vues'}\n"
+            f"• {i18n(lang, 'label_sales')} {product['sales_count']} {'sales' if lang=='en' else 'ventes'}\n\n"
+            f"📁 **Fichier :** {product['file_size_mb']:.1f} MB"
+        )
 
         keyboard = [[
-            InlineKeyboardButton("🛒 Acheter maintenant",
+            InlineKeyboardButton(i18n(lang, 'btn_buy'),
                                  callback_data=f'buy_product_{product_id}')
         ],
                     [
-                        InlineKeyboardButton("👀 Aperçu",
+                        InlineKeyboardButton(i18n(lang, 'btn_preview'),
                                              callback_data=f'preview_product_{product_id}')
                     ],
                     [
-                        InlineKeyboardButton("📂 Autres produits",
+                        InlineKeyboardButton(i18n(lang, 'btn_other_products'),
                                              callback_data='browse_categories')
                     ],
                     [
-                        InlineKeyboardButton("🔙 Retour",
+                        InlineKeyboardButton(i18n(lang, 'btn_back'),
                                              callback_data='buy_menu')
                     ]]
 
