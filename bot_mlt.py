@@ -3176,7 +3176,9 @@ Saisissez l'email de votre compte vendeur :
         user_id = update.effective_user.id
         email = message_text.strip().lower()
         if not validate_email(email):
-            await update.message.reply_text("❌ Email invalide. Recommencez.")
+            from app.core.i18n import t as i18n
+            lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
+            await update.message.reply_text(i18n(lang, 'err_invalid_email'))
             return
 
         conn = self.get_db_connection()
@@ -3311,18 +3313,17 @@ Saisissez l'email de votre compte vendeur :
         try:
             conn = self.get_db_connection()
             cursor = conn.cursor()
-            cursor.execute('SELECT user_id FROM users WHERE user_id = ? AND recovery_email = ?', (user_id, email))
+            # Accept login by email regardless of Telegram account binding
+            cursor.execute('SELECT user_id FROM users WHERE recovery_email = ?', (email,))
             row = cursor.fetchone()
             conn.close()
             if not row:
-                await update.message.reply_text(
-                    "❌ Email non associé à votre compte Telegram.",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📧 Réinitialiser mot de passe", callback_data='account_recovery')]])
-                )
+                from app.core.i18n import t as i18n
+                await update.message.reply_text(i18n(lang, 'err_invalid_email'))
                 return
             # Passer proprement à l'étape mot de passe et désactiver la saisie email
             self.update_user_state(user_id, login_wait_email=False, login_wait_code=True, login_email=email)
-            await update.message.reply_text("✉️ Email validé. Entrez votre mot de passe vendeur:")
+            await update.message.reply_text(i18n(lang, 'prompt_enter_password'))
         except Exception as e:
             logger.error(f"Erreur login email: {e}")
             await update.message.reply_text("❌ Erreur interne.")
@@ -3833,7 +3834,7 @@ Saisissez l'email de votre compte vendeur :
             return
 
         try:
-            await update.message.reply_text("📤 **Upload en cours...**", parse_mode='Markdown')
+            await update.message.reply_text(i18n(user_state.get('lang','fr'), 'upload_in_progress'), parse_mode='Markdown')
 
             # Vérifier que le dossier uploads existe
             # Centraliser le répertoire d'uploads à la racine du projet
@@ -3896,17 +3897,17 @@ Saisissez l'email de votre compte vendeur :
                 safe_title = self.escape_markdown(product_data['title'])
                 safe_category = self.escape_markdown(product_data['category'])
 
-                success_text = f"""🎉 **FORMATION CRÉÉE AVEC SUCCÈS \\!**
-
-✅ **ID Produit :** `{product_id}`
-📦 **Titre :** {safe_title}
-💰 **Prix :** {product_data['price_eur']}€
-📂 **Catégorie :** {safe_category}
-📁 **Fichier :** {safe_filename}
-
-🚀 **Votre formation est maintenant en vente \\!**
-
-🔗 **Lien direct :** Les clients peuvent la trouver avec l'ID `{product_id}`"""
+                lang = user_state.get('lang','fr')
+                success_text = (
+                    f"{i18n(lang, 'product_created_title')}\n\n"
+                    f"{i18n(lang, 'product_created_id').format(id=product_id)}\n"
+                    f"{i18n(lang, 'product_created_name').format(title=safe_title)}\n"
+                    f"{i18n(lang, 'product_created_price').format(price=product_data['price_eur'])}\n"
+                    f"{i18n(lang, 'product_created_category').format(category=safe_category)}\n"
+                    f"{i18n(lang, 'product_created_file').format(filename=safe_filename)}\n\n"
+                    f"{i18n(lang, 'product_created_ready')}\n\n"
+                    f"{i18n(lang, 'product_created_hint').format(id=product_id)}"
+                )
 
                 keyboard = [[
                     InlineKeyboardButton("📊 Voir mon produit",
@@ -4271,15 +4272,15 @@ Top produits:\n"""
 
     async def seller_settings(self, query, lang):
         self.update_user_state(query.from_user.id, editing_settings=True, step='menu')
+        from app.core.i18n import t as i18n
         keyboard = [
-            [InlineKeyboardButton("✏️ Modifier nom", callback_data='edit_seller_name')],
-            [InlineKeyboardButton("📝 Modifier bio", callback_data='edit_seller_bio')],
-            [InlineKeyboardButton("💸 Payouts / Adresse", callback_data='my_wallet')],
-            [InlineKeyboardButton("🚪 Se déconnecter", callback_data='seller_logout')],
-            [InlineKeyboardButton("🗑️ Supprimer le compte vendeur", callback_data='delete_seller')],
-            [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
+            [InlineKeyboardButton("✏️ " + ("Edit name" if lang=='en' else "Modifier nom"), callback_data='edit_seller_name')],
+            [InlineKeyboardButton("📝 " + ("Edit bio" if lang=='en' else "Modifier bio"), callback_data='edit_seller_bio')],
+            [InlineKeyboardButton(i18n(lang, 'btn_my_wallet'), callback_data='my_wallet')],
+            [InlineKeyboardButton(i18n(lang, 'btn_logout'), callback_data='seller_logout')],
+            [InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')],
         ]
-        await query.edit_message_text("Paramètres vendeur:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text(("Seller settings:" if lang=='en' else "Paramètres vendeur :"), reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def seller_info(self, query, lang):
         await query.edit_message_text("Conditions & avantages vendeur (à implémenter)")
