@@ -3543,10 +3543,16 @@ Saisissez l'email de votre compte vendeur :
 
     async def admin_menu_display(self, update):
         """Affiche le menu admin"""
+        from app.core.i18n import t as i18n
+        lang = (self.get_user(update.effective_user.id) or {}).get('language_code', 'fr')
         keyboard = [[
                         InlineKeyboardButton(
                             "📊 Stats marketplace",
                             callback_data='admin_marketplace_stats')
+                    ],
+                    [
+                        InlineKeyboardButton(i18n(lang, 'btn_admin_payouts'),
+                                             callback_data='admin_payouts')
                     ],
                     [
                         InlineKeyboardButton("👥 Gestion utilisateurs",
@@ -3571,10 +3577,16 @@ Saisissez l'email de votre compte vendeur :
         if query.from_user.id != ADMIN_USER_ID:
             return
 
+        from app.core.i18n import t as i18n
+        lang = (self.get_user(query.from_user.id) or {}).get('language_code', 'fr')
         keyboard = [[
                         InlineKeyboardButton(
                             "📊 Stats marketplace",
                             callback_data='admin_marketplace_stats')
+                    ],
+                    [
+                        InlineKeyboardButton(i18n(lang, 'btn_admin_payouts'),
+                                             callback_data='admin_payouts')
                     ],
                     [
                         InlineKeyboardButton("👥 Gestion utilisateurs",
