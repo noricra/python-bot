@@ -120,6 +120,16 @@ TEXTS: Dict[str, Dict[str, str]] = {
         # Errors
         'err_unauthorized': "❌ Accès non autorisé.",
         'err_login_required': "❌ Connectez-vous d'abord (email + mot de passe)",
+        # Upload/product creation
+        'upload_in_progress': "📤 **Upload en cours...**",
+        'product_created_title': "🎉 **FORMATION CRÉÉE AVEC SUCCÈS !**",
+        'product_created_id': "✅ **ID Produit :** {id}",
+        'product_created_name': "📦 **Titre :** {title}",
+        'product_created_price': "💰 **Prix :** {price}€",
+        'product_created_category': "📂 **Catégorie :** {category}",
+        'product_created_file': "📁 **Fichier :** {filename}",
+        'product_created_ready': "🚀 **Votre formation est maintenant en vente !**",
+        'product_created_hint': "🔗 **Lien direct :** Les clients peuvent la trouver avec l'ID `{id}`",
     },
     'en': {
         'main_title': "🏪 TECHBOT MARKETPLACE",
@@ -239,6 +249,16 @@ TEXTS: Dict[str, Dict[str, str]] = {
         # Errors
         'err_unauthorized': "❌ Unauthorized.",
         'err_login_required': "❌ Please log in first (email + password)",
+        # Upload/product creation
+        'upload_in_progress': "📤 **Uploading...**",
+        'product_created_title': "🎉 **COURSE CREATED SUCCESSFULLY!**",
+        'product_created_id': "✅ **Product ID:** {id}",
+        'product_created_name': "📦 **Title:** {title}",
+        'product_created_price': "💰 **Price:** {price}€",
+        'product_created_category': "📂 **Category:** {category}",
+        'product_created_file': "📁 **File:** {filename}",
+        'product_created_ready': "🚀 **Your course is now on sale!**",
+        'product_created_hint': "🔗 **Direct link:** Customers can find it using ID `{id}`",
     },
 }
 
