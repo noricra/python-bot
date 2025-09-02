@@ -1987,21 +1987,14 @@ Saisissez le nom qui apparaîtra sur vos formations :""",
 
     async def seller_login_menu(self, query, lang):
         """Menu de connexion vendeur"""
+        from app.core.i18n import t as i18n
         await query.edit_message_text(
-            ("""🔐 **VENDOR LOGIN**
-
-Enter your email first, then your password.
-
-If you don't have a seller account yet, create one first.""" if lang == 'en' else """🔐 **CONNEXION VENDEUR**
-
-Saisissez d'abord votre email, puis votre mot de passe.
-
-Si vous n'avez pas de compte vendeur, créez-en un d'abord."""),
+            i18n(lang, 'login_title'),
             reply_markup=InlineKeyboardMarkup([[ 
-                InlineKeyboardButton("✉️ Email", callback_data='seller_login'),
-                InlineKeyboardButton("🚀 Créer un compte", callback_data='create_seller')
+                InlineKeyboardButton(i18n(lang, 'btn_email'), callback_data='seller_login'),
+                InlineKeyboardButton(i18n(lang, 'btn_create_seller'), callback_data='create_seller')
             ], [
-                InlineKeyboardButton("🔙 Retour", callback_data='back_main')
+                InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='back_main')
             ]]),
             parse_mode='Markdown')
 
