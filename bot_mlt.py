@@ -1113,28 +1113,8 @@ class MarketplaceBot:
         """Menu d'achat"""
         keyboard = buy_menu_keyboard(lang)
 
-        if lang == 'en':
-            buy_text = """🛒 **BUY A COURSE**
-
-Multiple ways to discover our courses:
-
-🔍 **Direct search** - If you have a product ID
-📂 **By categories** - Explore by domain
-🔥 **Trending** - Most popular
-🆕 **New** - Latest releases
-
-💰 **Secure crypto payment** with your integrated wallet"""
-        else:
-            buy_text = """🛒 **ACHETER UNE FORMATION**
-
-Plusieurs façons de découvrir nos formations :
-
-🔍 **Recherche directe** - Si vous avez un ID produit
-📂 **Par catégories** - Explorez par domaine
-🔥 **Tendances** - Les plus populaires
-🆕 **Nouveautés** - Dernières publications
-
-💰 **Paiement crypto sécurisé** avec votre wallet intégré"""
+        from app.core.i18n import t as i18n
+        buy_text = i18n(lang, 'buy_menu_text')
 
         await query.edit_message_text(
             buy_text,
@@ -1145,23 +1125,7 @@ Plusieurs façons de découvrir nos formations :
         """Demande de saisir un ID produit"""
         self.update_user_state(query.from_user.id, waiting_for_product_id=True, lang=lang)
 
-        prompt_text = (
-            """🔍 **SEARCH BY PRODUCT ID**
-
-Enter the ID of the course you want to buy.
-
-💡 **Expected format:** `TBF-2501-ABC123`
-
-✍️ **Type the product ID:**"""
-            if lang == 'en' else
-            """🔍 **RECHERCHE PAR ID PRODUIT**
-
-Saisissez l'ID de la formation que vous souhaitez acheter.
-
-💡 **Format attendu :** `TBF-2501-ABC123`
-
-✍️ **Tapez l'ID produit :**"""
-        )
+        prompt_text = i18n(lang, 'search_prompt')
 
         await query.edit_message_text(
             prompt_text,
@@ -1198,9 +1162,7 @@ Saisissez l'ID de la formation que vous souhaitez acheter.
         keyboard.append(
             [InlineKeyboardButton("🏠 Home" if lang == 'en' else "🏠 Accueil", callback_data='back_main')])
 
-        categories_text = """📂 **CATÉGORIES DE FORMATIONS**
-
-Choisissez votre domaine d'intérêt :"""
+        categories_text = i18n(lang, 'categories_title')
 
         await query.edit_message_text(
             categories_text,
