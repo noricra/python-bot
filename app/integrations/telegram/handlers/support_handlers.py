@@ -98,7 +98,8 @@ async def escalate_ticket(bot, query, ticket_id: str) -> None:
 
 
 async def admin_tickets(bot, query) -> None:
-    if query.from_user.id != core_settings.ADMIN_USER_ID:
+    if core_settings.ADMIN_USER_ID is None or query.from_user.id != core_settings.ADMIN_USER_ID:
+        await query.edit_message_text("❌ Accès non autorisé.")
         return
     rows = MessagingService(bot.db_path).list_recent_tickets(10)
     if not rows:
@@ -116,7 +117,8 @@ async def admin_tickets(bot, query) -> None:
 
 
 async def admin_reply_prepare(bot, query, ticket_id: str) -> None:
-    if query.from_user.id != core_settings.ADMIN_USER_ID:
+    if core_settings.ADMIN_USER_ID is None or query.from_user.id != core_settings.ADMIN_USER_ID:
+        await query.edit_message_text("❌ Accès non autorisé.")
         return
     bot.reset_conflicting_states(query.from_user.id, keep={'waiting_admin_reply_ticket_id'})
     bot.update_user_state(query.from_user.id, waiting_admin_reply_ticket_id=ticket_id)
