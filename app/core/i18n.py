@@ -26,6 +26,34 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_create_ticket': "Créer un ticket",
         'btn_my_tickets': "Mes tickets",
         'btn_back': "🔙 Retour",
+        # Admin
+        'btn_admin_payouts': "💸 Vendeurs à payer",
+        # Buy menu text
+        'buy_menu_text': """🛒 **ACHETER UNE FORMATION**\n\nPlusieurs façons de découvrir nos formations :\n\n🔍 **Recherche directe** - Si vous avez un ID produit\n📂 **Par catégories** - Explorez par domaine\n🔥 **Tendances** - Les plus populaires\n🆕 **Nouveautés** - Dernières publications\n\n💰 **Paiement crypto sécurisé** avec votre wallet intégré""",
+        # Search
+        'search_prompt': """🔍 **RECHERCHE PAR ID PRODUIT**\n\nSaisissez l'ID de la formation que vous souhaitez acheter.\n\n💡 **Format attendu :** `TBF-2501-ABC123`\n\n✍️ **Tapez l'ID produit :**""",
+        # Categories
+        'categories_title': """📂 **CATÉGORIES DE FORMATIONS**\n\nChoisissez votre domaine d'intérêt :""",
+        'no_products_category': "Aucune formation disponible dans cette catégorie pour le moment.\n\nSoyez le premier à publier dans ce domaine !",
+        # Product detail labels
+        'label_seller': "👤 **Vendeur :**",
+        'label_category': "📂 **Catégorie :**",
+        'label_price': "💰 **Prix :**",
+        'label_description': "📖 **Description :**",
+        'label_seller_bio': "🧾 **Bio vendeur :**",
+        'stats_title': "📊 **Statistiques :**",
+        'label_views': "👁️",
+        'label_sales': "🛒",
+        # Library
+        'already_owned': "✅ **VOUS POSSÉDEZ DÉJÀ CE PRODUIT**\n\nAccédez-y depuis votre bibliothèque.",
+        'library_title': "📚 Vos achats:",
+        'library_empty': "📚 Votre bibliothèque est vide.",
+        # Buttons common
+        'btn_download': "📥 Télécharger",
+        'btn_contact_seller': "📨 Contacter le vendeur",
+        'btn_preview': "👀 Aperçu",
+        'btn_buy': "🛒 Acheter",
+        'btn_other_products': "📂 Autres produits",
     },
     'en': {
         'main_title': "🏪 TECHBOT MARKETPLACE",
@@ -51,6 +79,34 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_create_ticket': "Create a ticket",
         'btn_my_tickets': "My tickets",
         'btn_back': "🔙 Back",
+        # Admin
+        'btn_admin_payouts': "💸 Sellers to pay",
+        # Buy menu text
+        'buy_menu_text': """🛒 **BUY A COURSE**\n\nMultiple ways to discover our courses:\n\n🔍 **Direct search** - If you have a product ID\n📂 **By categories** - Explore by domain\n🔥 **Trending** - Most popular\n🆕 **New** - Latest releases\n\n💰 **Secure crypto payment** with your integrated wallet""",
+        # Search
+        'search_prompt': """🔍 **SEARCH BY PRODUCT ID**\n\nEnter the ID of the course you want to buy.\n\n💡 **Expected format:** `TBF-2501-ABC123`\n\n✍️ **Type the product ID:**""",
+        # Categories
+        'categories_title': """📂 **COURSE CATEGORIES**\n\nChoose your area of interest:""",
+        'no_products_category': "No course available in this category yet.\n\nBe the first to publish here!",
+        # Product detail labels
+        'label_seller': "👤 **Seller:**",
+        'label_category': "📂 **Category:**",
+        'label_price': "💰 **Price:**",
+        'label_description': "📖 **Description:**",
+        'label_seller_bio': "🧾 **Seller bio:**",
+        'stats_title': "📊 **Statistics:**",
+        'label_views': "👁️",
+        'label_sales': "🛒",
+        # Library
+        'already_owned': "✅ **YOU ALREADY OWN THIS PRODUCT**\n\nOpen it from your library.",
+        'library_title': "📚 Your purchases:",
+        'library_empty': "📚 Your library is empty.",
+        # Buttons common
+        'btn_download': "📥 Download",
+        'btn_contact_seller': "📨 Contact seller",
+        'btn_preview': "👀 Preview",
+        'btn_buy': "🛒 Buy",
+        'btn_other_products': "📂 Other products",
     },
 }
 
