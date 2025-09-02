@@ -885,6 +885,9 @@ class MarketplaceBot:
             elif query.data.startswith('buy_product_'):
                 product_id = query.data[12:]
                 await self.buy_product_prompt(query, product_id, lang)
+            elif query.data.startswith('preview_product_'):
+                product_id = query.data.split('preview_product_')[-1]
+                await self.preview_product(query, product_id, lang)
 
             # Vente
             elif query.data == 'create_seller':
@@ -1363,6 +1366,10 @@ Soyez le premier à publier dans ce domaine !"""
                                  callback_data=f'buy_product_{product_id}')
         ],
                     [
+                        InlineKeyboardButton("👀 Aperçu",
+                                             callback_data=f'preview_product_{product_id}')
+                    ],
+                    [
                         InlineKeyboardButton("📂 Autres produits",
                                              callback_data='browse_categories')
                     ],
@@ -1375,6 +1382,24 @@ Soyez le premier à publier dans ce domaine !"""
             product_text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown')
+
+    async def preview_product(self, query, product_id: str, lang: str):
+        product = self.get_product_by_id(product_id)
+        if not product:
+            await query.edit_message_text("❌ Produit introuvable.")
+            return
+        # Extrait de description (200-300 chars)
+        desc = (product['description'] or '')
+        snippet = (desc[:300] + '…') if len(desc) > 300 else desc or ("No preview available" if lang=='en' else "Aucun aperçu disponible")
+        text = (
+            f"👀 **PREVIEW**\n\n📦 {product['title']}\n\n{snippet}" if lang=='en'
+            else f"👀 **APERÇU**\n\n📦 {product['title']}\n\n{snippet}"
+        )
+        keyboard = [
+            [InlineKeyboardButton("🛒 Acheter", callback_data=f'buy_product_{product_id}')],
+            [InlineKeyboardButton("🔙 Retour", callback_data=f'product_{product_id}')]
+        ]
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def buy_product_prompt(self, query, product_id, lang):
         """Démarrer l'achat sans parrainage (parrainage retiré)"""
