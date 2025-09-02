@@ -3980,26 +3980,14 @@ Saisissez l'email de votre compte vendeur :
 
     async def show_support_menu(self, query, lang):
         """Affiche le menu support"""
-        if lang == 'en':
-            keyboard = [
-                [InlineKeyboardButton("FAQ", callback_data='faq')],
-                [InlineKeyboardButton("Create a ticket", callback_data='create_ticket')],
-                [InlineKeyboardButton("My tickets", callback_data='my_tickets')],
-                [InlineKeyboardButton("🏠 Home", callback_data='back_main')]
-            ]
-            support_text = """Support
-
-How can we help you?"""
-        else:
-            keyboard = [
-                [InlineKeyboardButton("FAQ", callback_data='faq')],
-                [InlineKeyboardButton("Créer un ticket", callback_data='create_ticket')],
-                [InlineKeyboardButton("Mes tickets", callback_data='my_tickets')],
-                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
-            ]
-            support_text = """Assistance et support
-
-Comment pouvons-nous vous aider ?"""
+        from app.core.i18n import t as i18n
+        keyboard = [
+            [InlineKeyboardButton(i18n(lang, 'btn_faq'), callback_data='faq')],
+            [InlineKeyboardButton(i18n(lang, 'btn_create_ticket'), callback_data='create_ticket')],
+            [InlineKeyboardButton(i18n(lang, 'btn_my_tickets'), callback_data='my_tickets')],
+            [InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')]
+        ]
+        support_text = f"{i18n(lang, 'support_title')}\n\n{i18n(lang, 'support_sub')}"
 
         await query.edit_message_text(
             support_text,
