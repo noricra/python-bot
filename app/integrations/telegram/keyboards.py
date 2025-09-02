@@ -22,7 +22,6 @@ def buy_menu_keyboard(lang: str):
             [InlineKeyboardButton("📂 Browse categories", callback_data='browse_categories')],
             [InlineKeyboardButton("🔥 Bestsellers", callback_data='category_bestsellers')],
             [InlineKeyboardButton("🆕 New", callback_data='category_new')],
-            [InlineKeyboardButton("💸 Payouts / Withdrawal address", callback_data='my_wallet')],
             [InlineKeyboardButton("🏠 Home", callback_data='back_main')],
         ]
     return [
@@ -30,7 +29,6 @@ def buy_menu_keyboard(lang: str):
         [InlineKeyboardButton("📂 Parcourir catégories", callback_data='browse_categories')],
         [InlineKeyboardButton("🔥 Meilleures ventes", callback_data='category_bestsellers')],
         [InlineKeyboardButton("🆕 Nouveautés", callback_data='category_new')],
-        [InlineKeyboardButton("💸 Payouts / Adresse de retrait", callback_data='my_wallet')],
         [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
     ]
 

@@ -677,7 +677,7 @@ class MarketplaceBot:
         try:
             cursor.execute(
                 '''
-                SELECT p.*, u.seller_name, u.seller_rating
+                SELECT p.*, u.seller_name, u.seller_rating, u.seller_bio
                 FROM products p
                 JOIN users u ON p.seller_user_id = u.user_id
                 WHERE p.product_id = ? AND p.status = 'active'
@@ -1277,9 +1277,8 @@ Soyez le premier à publier dans ce domaine !"""
             keyboard = []
             for product in products:
                 product_id, title, price, sales, rating, seller = product
-                stars = "⭐" * int(rating) if rating > 0 else "⭐⭐⭐⭐⭐"
                 products_text += f"📦 **{title}**\n"
-                products_text += f"💰 {price}€ • 👤 {seller} • {stars} • 🛒 {sales} ventes\n\n"
+                products_text += f"💰 {price}€ • 👤 {seller} • 🛒 {sales} ventes\n\n"
 
                 keyboard.append([
                     InlineKeyboardButton(f"📖 {title[:40]}...",
@@ -1327,20 +1326,19 @@ Soyez le premier à publier dans ce domaine !"""
             logger.error(f"Erreur mise à jour vues produit: {e}")
             conn.close()
 
-        stars = "⭐" * int(
-            product['rating']) if product['rating'] > 0 else "⭐⭐⭐⭐⭐"
-
         product_text = f"""📦 **{product['title']}**
 
-👤 **Vendeur :** {product['seller_name']} ({product['seller_rating']:.1f}/5)
+👤 **Vendeur :** {product['seller_name']}
 📂 **Catégorie :** {product['category']}
 💰 **Prix :** {product['price_eur']}€
 
 📖 **Description :**
 {product['description'] or 'Aucune description disponible'}
 
+🧾 **Bio vendeur :**
+{product.get('seller_bio') or 'Non renseignée'}
+
 📊 **Statistiques :**
-• {stars} ({product['reviews_count']} avis)
 • 👁️ {product['views_count']} vues
 • 🛒 {product['sales_count']} ventes
 
@@ -3515,10 +3513,6 @@ Saisissez l'email de votre compte vendeur :
     async def admin_menu_display(self, update):
         """Affiche le menu admin"""
         keyboard = [[
-            InlineKeyboardButton("💰 Commissions à payer",
-                                 callback_data='admin_commissions')
-        ],
-                    [
                         InlineKeyboardButton(
                             "📊 Stats marketplace",
                             callback_data='admin_marketplace_stats')
@@ -3547,10 +3541,6 @@ Saisissez l'email de votre compte vendeur :
             return
 
         keyboard = [[
-            InlineKeyboardButton("💰 Commissions à payer",
-                                 callback_data='admin_commissions')
-        ],
-                    [
                         InlineKeyboardButton(
                             "📊 Stats marketplace",
                             callback_data='admin_marketplace_stats')
