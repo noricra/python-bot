@@ -26,6 +26,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_create_ticket': "Créer un ticket",
         'btn_my_tickets': "Mes tickets",
         'btn_back': "🔙 Retour",
+        'btn_cancel': "❌ Annuler",
         # Admin
         'btn_admin_payouts': "💸 Vendeurs à payer",
         # Buy menu text
@@ -54,6 +55,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_preview': "👀 Aperçu",
         'btn_buy': "🛒 Acheter",
         'btn_other_products': "📂 Autres produits",
+        'btn_categories': "📂 Catégories",
         # Errors/common
         'err_product_not_found': "❌ Produit introuvable.",
         'err_update_status': "❌ Erreur mise à jour statut.",
@@ -67,6 +69,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_search': "🔍 Rechercher",
         'btn_categories': "📂 Catégories",
         'label_file': "📁 **Fichier :**",
+        'label_product_title': "📦 **Titre :**",
         # Seller creation/login/settings
         'seller_create_title': "🚀 **CRÉATION COMPTE VENDEUR**",
         'seller_create_intro': "Pour créer votre compte vendeur sécurisé, nous avons besoin de quelques informations.",
@@ -74,8 +77,8 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'seller_step1_prompt': "Saisissez le nom qui apparaîtra sur vos formations :",
         'seller_step2_title': "📝 **Étape 2/4 : Biographie**",
         'seller_step2_prompt': "Décrivez votre expertise :",
-        'seller_step3_title': "📧 **Étape 3/4 : Email de récupération**",
-        'seller_step3_prompt': "Saisissez un email valide pour récupérer votre compte :",
+        'seller_step3_title': "📧 **Étape 3/4 : Email**",
+        'seller_step3_prompt': "Saisissez un email valide :",
         'seller_step4_title': "📍 **Étape 4/4 : Adresse Solana**",
         'seller_step4_prompt': "Saisissez votre adresse Solana pour recevoir vos paiements :",
         'err_invalid_email': "❌ **Email invalide**\n\nFormat attendu : exemple@domaine.com",
@@ -120,6 +123,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_create_ticket': "Create a ticket",
         'btn_my_tickets': "My tickets",
         'btn_back': "🔙 Back",
+        'btn_cancel': "❌ Cancel",
         # Admin
         'btn_admin_payouts': "💸 Sellers to pay",
         # Buy menu text
@@ -148,6 +152,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_preview': "👀 Preview",
         'btn_buy': "🛒 Buy",
         'btn_other_products': "📂 Other products",
+        'btn_categories': "📂 Categories",
         # Errors/common
         'err_product_not_found': "❌ Product not found.",
         'err_update_status': "❌ Error updating status.",
@@ -161,6 +166,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_search': "🔍 Search",
         'btn_categories': "📂 Categories",
         'label_file': "📁 **File:**",
+        'label_product_title': "📦 **Title:**",
         # Seller creation/login/settings
         'seller_create_title': "🚀 **CREATE SELLER ACCOUNT**",
         'seller_create_intro': "To create your secure seller account, we need a few details.",

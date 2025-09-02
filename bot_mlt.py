@@ -1240,11 +1240,8 @@ class MarketplaceBot:
         # Reste du code identique pour l'affichage...
 
         if not products:
-            products_text = f"""📂 **{category_name.upper()}**
-
-Aucune formation disponible dans cette catégorie pour le moment.
-
-Soyez le premier à publier dans ce domaine !"""
+            safe_name = self.escape_markdown(category_name.upper())
+            products_text = f"📂 **{safe_name}**\n\n" + i18n(lang, 'no_products_category')
 
             keyboard = [[
                 InlineKeyboardButton("🚀 Créer une formation",
@@ -1256,13 +1253,16 @@ Soyez le premier à publier dans ce domaine !"""
                                 callback_data='browse_categories')
                         ]]
         else:
-            products_text = f"📂 **{category_name.upper()}** ({len(products)} formations)\n\n"
+            safe_name = self.escape_markdown(category_name.upper())
+            products_text = f"📂 **{safe_name}** ({len(products)} formations)\n\n"
 
             keyboard = []
             for product in products:
                 product_id, title, price, sales, rating, seller = product
-                products_text += f"📦 **{title}**\n"
-                products_text += f"💰 {price}€ • 👤 {seller} • 🛒 {sales} ventes\n\n"
+                safe_title = self.escape_markdown(title)
+                safe_seller = self.escape_markdown(seller)
+                products_text += f"📦 **{safe_title}**\n"
+                products_text += f"💰 {price}€ • 👤 {safe_seller} • 🛒 {sales} ventes\n\n"
 
                 keyboard.append([
                     InlineKeyboardButton(f"📖 {title[:40]}...",
@@ -1276,10 +1276,16 @@ Soyez le premier à publier dans ce domaine !"""
                 InlineKeyboardButton("🔙 Menu achat", callback_data='buy_menu')
             ]])
 
-        await query.edit_message_text(
-            products_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
+        try:
+            await query.edit_message_text(
+                products_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown')
+        except Exception as e:
+            logger.warning(f"Markdown render failed in category list, falling back: {e}")
+            await query.edit_message_text(
+                products_text.replace('*', ''),
+                reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def show_product_details(self, query, product_id, lang):
         """Affiche les détails d'un produit"""
@@ -1312,13 +1318,20 @@ Soyez le premier à publier dans ce domaine !"""
             conn.close()
 
         from app.core.i18n import t as i18n
+        safe_title = self.escape_markdown(str(product.get('title') or ''))
+        safe_seller = self.escape_markdown(str(product.get('seller_name') or ''))
+        safe_category = self.escape_markdown(str(product.get('category') or ''))
+        desc_raw = product.get('description') or ("No description" if lang=='en' else "Aucune description disponible")
+        safe_desc = self.escape_markdown(str(desc_raw))
+        bio_raw = product.get('seller_bio') or ("Not provided" if lang=='en' else "Non renseignée")
+        safe_bio = self.escape_markdown(str(bio_raw))
         product_text = (
-            f"📦 **{product['title']}**\n\n"
-            f"{i18n(lang, 'label_seller')} {product['seller_name']}\n"
-            f"{i18n(lang, 'label_category')} {product['category']}\n"
+            f"📦 **{safe_title}**\n\n"
+            f"{i18n(lang, 'label_seller')} {safe_seller}\n"
+            f"{i18n(lang, 'label_category')} {safe_category}\n"
             f"{i18n(lang, 'label_price')} {product['price_eur']}€\n\n"
-            f"{i18n(lang, 'label_description')}\n{product['description'] or ('No description' if lang=='en' else 'Aucune description disponible')}\n\n"
-            f"{i18n(lang, 'label_seller_bio')}\n{product.get('seller_bio') or ('Not provided' if lang=='en' else 'Non renseignée')}\n\n"
+            f"{i18n(lang, 'label_description')}\n{safe_desc}\n\n"
+            f"{i18n(lang, 'label_seller_bio')}\n{safe_bio}\n\n"
             f"{i18n(lang, 'stats_title')}\n"
             f"• {i18n(lang, 'label_views')} {product['views_count']} {'views' if lang=='en' else 'vues'}\n"
             f"• {i18n(lang, 'label_sales')} {product['sales_count']} {'sales' if lang=='en' else 'ventes'}\n\n"
@@ -1342,10 +1355,16 @@ Soyez le premier à publier dans ce domaine !"""
                                              callback_data='buy_menu')
                     ]]
 
-        await query.edit_message_text(
-            product_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
+        try:
+            await query.edit_message_text(
+                product_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown')
+        except Exception as e:
+            logger.warning(f"Markdown render failed in product details, falling back: {e}")
+            await query.edit_message_text(
+                product_text.replace('*', ''),
+                reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def preview_product(self, query, product_id: str, lang: str):
         product = self.get_product_by_id(product_id)
@@ -1355,10 +1374,12 @@ Soyez le premier à publier dans ce domaine !"""
             return
         # Extrait de description (200-300 chars)
         desc = (product['description'] or '')
-        snippet = (desc[:300] + '…') if len(desc) > 300 else desc or ("No preview available" if lang=='en' else "Aucun aperçu disponible")
+        snippet_raw = (desc[:300] + '…') if len(desc) > 300 else desc or ("No preview available" if lang=='en' else "Aucun aperçu disponible")
+        safe_title = self.escape_markdown(str(product.get('title') or ''))
+        snippet = self.escape_markdown(snippet_raw)
         text = (
-            f"👀 **PREVIEW**\n\n📦 {product['title']}\n\n{snippet}" if lang=='en'
-            else f"👀 **APERÇU**\n\n📦 {product['title']}\n\n{snippet}"
+            f"👀 **PREVIEW**\n\n📦 {safe_title}\n\n{snippet}" if lang=='en'
+            else f"👀 **APERÇU**\n\n📦 {safe_title}\n\n{snippet}"
         )
         from app.core.i18n import t as i18n
         keyboard = [
@@ -1368,7 +1389,8 @@ Soyez le premier à publier dans ce domaine !"""
         # Afficher d'abord le texte
         try:
             await query.edit_message_text(text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Fallback to reply_text for preview: {e}")
             await query.message.reply_text(text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
         # Si un PDF est disponible, tenter un aperçu visuel de la première page
@@ -1971,19 +1993,11 @@ Prêt à commencer ?"""
     async def create_seller_prompt(self, query, lang):
         """Demande les informations pour créer un compte vendeur"""
         self.update_user_state(query.from_user.id, creating_seller=True, step='name', lang=lang)
-
-        await query.edit_message_text("""🚀 **CRÉATION COMPTE VENDEUR**
-
-Pour créer votre compte vendeur sécurisé, nous avons besoin de quelques informations.
-
-👤 **Étape 1/2 : Nom public**
-
-Saisissez le nom qui apparaîtra sur vos formations :""",
-                                      reply_markup=InlineKeyboardMarkup([[
-                                          InlineKeyboardButton(
-                                              "❌ Annuler",
-                                              callback_data='sell_menu')
-                                      ]]))
+        from app.core.i18n import t as i18n
+        await query.edit_message_text(
+            f"{i18n(lang, 'seller_create_title')}\n\n{i18n(lang, 'seller_create_intro')}\n\n{i18n(lang, 'seller_step1_title')}\n\n{i18n(lang, 'seller_step1_prompt')}",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(i18n(lang, 'btn_cancel'), callback_data='sell_menu')]]),
+            parse_mode='Markdown')
 
     async def seller_login_menu(self, query, lang):
         """Menu de connexion vendeur"""
@@ -2561,44 +2575,38 @@ Commencez dès maintenant à monétiser votre expertise !"""
             user_state['seller_name'] = message_text
             user_state['step'] = 'bio'
 
+            from app.core.i18n import t as i18n
+            safe_name = self.escape_markdown(message_text)
             await update.message.reply_text(
-                f"✅ **Nom :** {message_text}\n\n📝 **Étape 2/4 : Biographie**\n\nDecrivez votre expertise :",
-                parse_mode='Markdown'
-            )
+                f"✅ **Nom :** {safe_name}\n\n{i18n(user_state.get('lang','fr'), 'seller_step2_title')}\n\n{i18n(user_state.get('lang','fr'), 'seller_step2_prompt')}",
+                parse_mode='Markdown')
 
         elif step == 'bio':
             # Étape 2 : Bio
             user_state['seller_bio'] = message_text[:500]
             user_state['step'] = 'email'
 
+            from app.core.i18n import t as i18n
+            lang = user_state.get('lang','fr')
             await update.message.reply_text(
-                f"""✅ **Bio sauvegardée**
-
-    📧 **Étape 3/4 : Email de récupération**
-
-    Saisissez un email valide pour récupérer votre compte :
-
-    ⚠️ **Important :** Cet email servira à récupérer votre compte vendeur""",
-                parse_mode='Markdown'
-            )
+                f"✅ **Bio sauvegardée**\n\n{i18n(lang, 'seller_step3_title')}\n\n{i18n(lang, 'seller_step3_prompt')}\n\n⚠️ **Important :** " + ("This email will be used to recover your seller account" if lang=='en' else "Cet email servira à récupérer votre compte vendeur"),
+                parse_mode='Markdown')
 
         elif step == 'email':
             # Étape 3 : Email
             email = message_text.strip().lower()
 
+            from app.core.i18n import t as i18n
+            lang = user_state.get('lang','fr')
             if not validate_email(email):
-                await update.message.reply_text("❌ **Email invalide**\n\nFormat attendu : exemple@domaine.com")
+                await update.message.reply_text(i18n(lang, 'err_invalid_email'))
                 return
 
             user_state['recovery_email'] = email
             user_state['step'] = 'password'
 
-            await update.message.reply_text(
-                """🔒 **Mot de passe vendeur**
-
-Créez un mot de passe robuste (12+ caractères recommandés).""",
-                parse_mode='Markdown'
-            )
+            from app.core.i18n import t as i18n
+            await update.message.reply_text(i18n(user_state.get('lang','fr'), 'seller_password_prompt'), parse_mode='Markdown')
 
         elif step == 'password':
             # Étape 4 : Mot de passe
@@ -2609,24 +2617,26 @@ Créez un mot de passe robuste (12+ caractères recommandés).""",
             user_state['password'] = password
             user_state['step'] = 'solana_address'
 
-            await update.message.reply_text(
-                """📍 **Adresse Solana**
+            from app.core.i18n import t as i18n
+            lang = user_state.get('lang','fr')
+            prompt = ("""📍 **Solana address**
 
-Saisissez votre adresse Solana pour recevoir vos paiements :
+Enter your Solana address to receive your payouts:
 
-💡 **Comment trouver votre adresse :**
-- Ouvrez Phantom, Solflare ou votre wallet Solana
-- Cliquez "Receive" ou "Recevoir"
-- Copiez l'adresse (format : `5Fxk...abc`)""",
-                parse_mode='Markdown'
-            )
+💡 **How to find your address:**
+- Open Phantom, Solflare, or your Solana wallet
+- Click \"Receive\"
+- Copy the address (format: `5Fxk...abc`)""" if lang=='en' else f"{i18n(lang, 'seller_step4_title')}\n\n{i18n(lang, 'seller_step4_prompt')}\n\n💡 **Comment trouver votre adresse :**\n- Ouvrez Phantom, Solflare ou votre wallet Solana\n- Cliquez \"Receive\" ou \"Recevoir\"\n- Copiez l'adresse (format : `5Fxk...abc`)")
+            await update.message.reply_text(prompt, parse_mode='Markdown')
 
         elif step == 'solana_address':
             # Étape 4 : Adresse Solana
             solana_address = message_text.strip()
 
+            from app.core.i18n import t as i18n
+            lang = user_state.get('lang','fr')
             if not validate_solana_address(solana_address):
-                await update.message.reply_text("❌ **Adresse Solana invalide**\n\nVérifiez le format depuis votre wallet")
+                await update.message.reply_text(i18n(lang, 'err_invalid_solana'))
                 return
 
             # Créer le compte vendeur
@@ -2645,25 +2655,16 @@ Saisissez votre adresse Solana pour recevoir vos paiements :
             if result['success']:
                 # Marquer l'utilisateur comme connecté (évite la boucle d'accès)
                 self.set_seller_logged_in(user_id, True)
-                await update.message.reply_text(f"""🎉 **COMPTE VENDEUR CRÉÉ !**
-
-    ✅ **Nom :** {user_cache['seller_name']}
-    ✅ **Email :** {user_cache['recovery_email']}
-    ✅ **Adresse :** `{solana_address}`
-
-    🔐 **Authentification :** Mot de passe configuré
-
-    💰 **Comment ça marche :**
-    1. Vos clients paient en BTC/ETH/USDT/etc.
-    2. Nous recevons en Solana
-    3. Nous vous envoyons 95% sur votre adresse
-    4. Commission plateforme : 5%""",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("➡️ Aller au dashboard", 
-                                            callback_data='seller_dashboard')]
-                    ]),
-                    parse_mode='Markdown'
+                from app.core.i18n import t as i18n
+                msg = i18n(user_state.get('lang','fr'), 'seller_created_msg').format(
+                    name=self.escape_markdown(user_cache['seller_name']),
+                    email=self.escape_markdown(user_cache['recovery_email']),
+                    address=self.escape_markdown(solana_address)
                 )
+                await update.message.reply_text(
+                    msg,
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(i18n(user_state.get('lang','fr'), 'btn_dashboard'), callback_data='seller_dashboard')]]),
+                    parse_mode='Markdown')
             else:
                 await update.message.reply_text("❌ Erreur création compte")
 
@@ -2710,8 +2711,10 @@ Saisissez votre adresse Solana pour recevoir vos paiements :
             product_data['title'] = message_text
             user_state['step'] = 'description'
 
+            from app.core.i18n import t as i18n
+            lang = user_state.get('lang','fr')
             await update.message.reply_text(
-                f"✅ **Titre :** {message_text}\n\n📝 **Étape 2/5 : Description**\n\nDecrivez votre formation (contenu, objectifs, prérequis...) :",
+                f"✅ **Titre :** {self.escape_markdown(message_text)}\n\n📝 **Étape 2/5 : Description**\n\n" + ("Describe your course (content, goals, prerequisites...) :" if lang=='en' else "Decrivez votre formation (contenu, objectifs, prérequis...) :"),
                 parse_mode='Markdown')
 
 # Dans process_product_addition(), REMPLACER la section step == 'description' :
@@ -2746,7 +2749,7 @@ Saisissez votre adresse Solana pour recevoir vos paiements :
             ])
 
             await update.message.reply_text(
-                "✅ **Description sauvegardée**\n\n📂 **Étape 3/5 : Catégorie**\n\nChoisissez la catégorie :",
+                ("✅ **Description saved**\n\n📂 **Step 3/5: Category**\n\nChoose a category:" if user_state.get('lang','fr')=='en' else "✅ **Description sauvegardée**\n\n📂 **Étape 3/5 : Catégorie**\n\nChoisissez la catégorie :"),
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown')
 
