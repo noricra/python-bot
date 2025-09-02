@@ -1374,12 +1374,13 @@ Soyez le premier à publier dans ce domaine !"""
                 (user_id, product_id))
             if cursor.fetchone()[0] > 0:
                 conn.close()
+                from app.core.i18n import t as i18n
                 await query.edit_message_text(
-                    "✅ **VOUS POSSÉDEZ DÉJÀ CE PRODUIT**\n\nAccédez-y depuis votre bibliothèque.",
+                    i18n(lang, 'already_owned'),
                     reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("📚 Ma bibliothèque",
+                        InlineKeyboardButton(i18n(lang, 'btn_library'),
                                              callback_data='my_library'),
-                        InlineKeyboardButton("🔙 Retour",
+                        InlineKeyboardButton(i18n(lang, 'btn_back'),
                                              callback_data=f'product_{product_id}')
                     ]]))
                 return
