@@ -868,7 +868,8 @@ class MarketplaceBot:
                 lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
                 self.reset_conflicting_states(user_id, keep={'login_wait_email'})
                 self.update_user_state(user_id, login_wait_email=True, login_wait_code=False, lang=lang)
-                await query.edit_message_text(self.tr(lang, "🔑 Entrez votre email de récupération :", "🔑 Enter your recovery email:"))
+                from app.core.i18n import t as i18n
+                await query.edit_message_text(i18n(lang, 'prompt_enter_recovery_email'))
             # Plus de saisie de code seul: on impose email + code
 
             # Achat
@@ -1018,11 +1019,13 @@ class MarketplaceBot:
             elif query.data == 'edit_seller_name':
                 self.update_user_state(user_id, editing_settings=True, step='edit_name')
                 lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
-                await query.edit_message_text(self.tr(lang, "Entrez le nouveau nom vendeur:", "Enter the new seller name:"))
+                from app.core.i18n import t as i18n
+                await query.edit_message_text(i18n(lang, 'prompt_new_seller_name'))
             elif query.data == 'edit_seller_bio':
                 self.update_user_state(user_id, editing_settings=True, step='edit_bio')
                 lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
-                await query.edit_message_text(self.tr(lang, "Entrez la nouvelle biographie:", "Enter the new biography:"))
+                from app.core.i18n import t as i18n
+                await query.edit_message_text(i18n(lang, 'prompt_new_seller_bio'))
             elif query.data.startswith('edit_product_'):
                 product_id = query.data.split('edit_product_')[-1]
                 self.update_user_state(user_id, editing_product=True, product_id=product_id, step='choose_field')
@@ -1039,12 +1042,14 @@ class MarketplaceBot:
                 product_id = query.data.split('edit_field_title_')[-1]
                 self.update_user_state(user_id, editing_product=True, product_id=product_id, step='edit_title_input')
                 lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
-                await query.edit_message_text(self.tr(lang, "Entrez le nouveau titre:", "Enter the new title:"))
+                from app.core.i18n import t as i18n
+                await query.edit_message_text(i18n(lang, 'prompt_new_title'))
             elif query.data.startswith('edit_field_price_'):
                 product_id = query.data.split('edit_field_price_')[-1]
                 self.update_user_state(user_id, editing_product=True, product_id=product_id, step='edit_price_input')
                 lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
-                await query.edit_message_text(self.tr(lang, "Entrez le nouveau prix (EUR):", "Enter the new price (EUR):"))
+                from app.core.i18n import t as i18n
+                await query.edit_message_text(i18n(lang, 'prompt_new_price'))
             elif query.data.startswith('edit_field_toggle_'):
                 product_id = query.data.split('edit_field_toggle_')[-1]
                 try:
