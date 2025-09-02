@@ -2024,13 +2024,14 @@ Prêt à commencer ?"""
             )
             return
         if not self.is_seller_logged_in(query.from_user.id):
-            # Proposer directement la connexion simple (email + code)
+            from app.core.i18n import t as i18n
+            lang = (self.get_user(query.from_user.id) or {}).get('language_code', 'fr')
             keyboard = [
-                [InlineKeyboardButton("🔐 Se connecter", callback_data='seller_login')],
-                [InlineKeyboardButton("🚀 Créer un compte vendeur", callback_data='create_seller')],
-                [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]
+                [InlineKeyboardButton(i18n(lang, 'btn_email'), callback_data='seller_login')],
+                [InlineKeyboardButton(i18n(lang, 'btn_create_seller'), callback_data='create_seller')],
+                [InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')]
             ]
-            await query.edit_message_text("🔑 Connexion vendeur\n\nConnectez-vous avec votre email et votre code de récupération.", reply_markup=InlineKeyboardMarkup(keyboard))
+            await query.edit_message_text(i18n(lang, 'login_subtitle_simple'), reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
         # Récupérer les stats vendeur
