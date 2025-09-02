@@ -1211,11 +1211,18 @@ Choisissez votre domaine d'intérêt :"""
         if category_key == 'bestsellers':
             category_name = 'Meilleures ventes'
             base_query = '''
-                SELECT p.product_id, p.title, p.price_eur, p.sales_count, p.rating, u.seller_name
+                SELECT p.product_id,
+                       p.title,
+                       p.price_eur,
+                       COALESCE(COUNT(o.order_id), 0) AS sales,
+                       0 AS rating,
+                       u.seller_name
                 FROM products p
                 JOIN users u ON p.seller_user_id = u.user_id
+                LEFT JOIN orders o ON o.product_id = p.product_id AND o.payment_status = 'completed'
                 WHERE p.status = 'active'
-                ORDER BY p.sales_count DESC
+                GROUP BY p.product_id
+                ORDER BY sales DESC
             '''
             query_params = ()
         elif category_key == 'new':
@@ -1232,11 +1239,18 @@ Choisissez votre domaine d'intérêt :"""
             # Catégorie normale
             category_name = category_key.replace('_', ' ').replace('and', '&')
             base_query = '''
-                SELECT p.product_id, p.title, p.price_eur, p.sales_count, p.rating, u.seller_name
+                SELECT p.product_id,
+                       p.title,
+                       p.price_eur,
+                       COALESCE(COUNT(o.order_id), 0) AS sales,
+                       0 AS rating,
+                       u.seller_name
                 FROM products p
                 JOIN users u ON p.seller_user_id = u.user_id
+                LEFT JOIN orders o ON o.product_id = p.product_id AND o.payment_status = 'completed'
                 WHERE p.status = 'active' AND p.category = ?
-                ORDER BY p.sales_count DESC
+                GROUP BY p.product_id
+                ORDER BY sales DESC
             '''
             query_params = (category_name,)
 
