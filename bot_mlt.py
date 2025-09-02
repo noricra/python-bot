@@ -1344,7 +1344,8 @@ Soyez le premier à publier dans ce domaine !"""
     async def preview_product(self, query, product_id: str, lang: str):
         product = self.get_product_by_id(product_id)
         if not product:
-            await query.edit_message_text("❌ Produit introuvable.")
+            from app.core.i18n import t as i18n
+            await query.edit_message_text(i18n(lang, 'err_product_not_found'))
             return
         # Extrait de description (200-300 chars)
         desc = (product['description'] or '')
@@ -1353,9 +1354,10 @@ Soyez le premier à publier dans ce domaine !"""
             f"👀 **PREVIEW**\n\n📦 {product['title']}\n\n{snippet}" if lang=='en'
             else f"👀 **APERÇU**\n\n📦 {product['title']}\n\n{snippet}"
         )
+        from app.core.i18n import t as i18n
         keyboard = [
-            [InlineKeyboardButton("🛒 Acheter", callback_data=f'buy_product_{product_id}')],
-            [InlineKeyboardButton("🔙 Retour", callback_data=f'product_{product_id}')]
+            [InlineKeyboardButton(i18n(lang, 'btn_buy'), callback_data=f'buy_product_{product_id}')],
+            [InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data=f'product_{product_id}')]
         ]
         await query.edit_message_text(text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 

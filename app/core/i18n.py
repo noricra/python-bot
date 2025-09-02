@@ -54,6 +54,13 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_preview': "👀 Aperçu",
         'btn_buy': "🛒 Acheter",
         'btn_other_products': "📂 Autres produits",
+        # Errors/common
+        'err_product_not_found': "❌ Produit introuvable.",
+        'err_update_status': "❌ Erreur mise à jour statut.",
+        'err_delete': "❌ Erreur lors de la suppression.",
+        'err_temp': "❌ Erreur temporaire. Retour au menu principal.",
+        'err_internal': "❌ Erreur interne.",
+        'btn_library': "📚 Ma bibliothèque",
     },
     'en': {
         'main_title': "🏪 TECHBOT MARKETPLACE",
@@ -107,6 +114,13 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_preview': "👀 Preview",
         'btn_buy': "🛒 Buy",
         'btn_other_products': "📂 Other products",
+        # Errors/common
+        'err_product_not_found': "❌ Product not found.",
+        'err_update_status': "❌ Error updating status.",
+        'err_delete': "❌ Error during deletion.",
+        'err_temp': "❌ Temporary error. Back to main menu.",
+        'err_internal': "❌ Internal error.",
+        'btn_library': "📚 My library",
     },
 }
 
