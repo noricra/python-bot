@@ -13,6 +13,12 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'cta_support': "🆘 Support & aide",
         'cta_home': "🏠 Accueil",
         'seller_space': "🏪 Mon espace vendeur",
+        # Buttons (menus)
+        'btn_search_product': "🔍 Rechercher par ID produit",
+        'btn_browse_categories': "📂 Parcourir catégories",
+        'btn_bestsellers': "🔥 Meilleures ventes",
+        'btn_new': "🆕 Nouveautés",
+        'btn_home': "🏠 Accueil",
     },
     'en': {
         'main_title': "🏪 TECHBOT MARKETPLACE",
@@ -25,6 +31,12 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'cta_support': "🆘 Support & help",
         'cta_home': "🏠 Home",
         'seller_space': "🏪 My seller space",
+        # Buttons (menus)
+        'btn_search_product': "🔍 Search by product ID",
+        'btn_browse_categories': "📂 Browse categories",
+        'btn_bestsellers': "🔥 Bestsellers",
+        'btn_new': "🆕 New",
+        'btn_home': "🏠 Home",
     },
 }
 
