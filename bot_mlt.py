@@ -31,6 +31,7 @@ from dotenv import load_dotenv
 import re
 import base58 # Import manquant
 from app.core import settings as core_settings, configure_logging, get_sqlite_connection
+from app.core.i18n import t as i18n
 from app.integrations.telegram.keyboards import main_menu_keyboard, buy_menu_keyboard, sell_menu_keyboard
 import qrcode
 from io import BytesIO
@@ -1128,16 +1129,26 @@ class MarketplaceBot:
 
     async def search_product_prompt(self, query, lang):
         """Demande de saisir un ID produit"""
+        # Clear other states to avoid collisions
+        self.reset_conflicting_states(query.from_user.id, keep={'waiting_for_product_id'})
         self.update_user_state(query.from_user.id, waiting_for_product_id=True, lang=lang)
 
         prompt_text = i18n(lang, 'search_prompt')
 
-        await query.edit_message_text(
-            prompt_text,
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour",
-                                       callback_data='buy_menu')]]),
-            parse_mode='Markdown')
+        try:
+            await query.edit_message_text(
+                prompt_text,
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour",
+                                           callback_data='buy_menu')]]),
+                parse_mode='Markdown')
+        except Exception:
+            await query.message.reply_text(
+                prompt_text,
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour",
+                                           callback_data='buy_menu')]]),
+                parse_mode='Markdown')
 
     async def browse_categories(self, query, lang):
         """Affiche les catégories disponibles"""
@@ -2069,53 +2080,57 @@ Prêt à commencer ?"""
 
         conn.close()
 
-        dashboard_text = f"""🏪 **DASHBOARD VENDEUR**
-
-👋 Bienvenue **{user_data['seller_name']}** !
-
-📊 **Statistiques :**
-• 📦 Produits actifs : {active_products}
-• 🛒 Ventes ce mois : {month_sales}
-• 💰 Revenus ce mois : {month_revenue:.2f}€
-• ⭐ Note moyenne : {user_data['seller_rating']:.1f}/5
-
-💸 **Payouts / Adresse :** {'✅ Configurée' if user_data['seller_solana_address'] else '❌ À configurer'}"""
+        from app.core.i18n import t as i18n
+        dashboard_text = (
+            f"{i18n(lang, 'dashboard_title')}\n\n"
+            f"{i18n(lang, 'welcome_user').format(name=self.escape_markdown(user_data['seller_name']))}\n\n"
+            f"📊 **Statistiques :**\n"
+            f"{i18n(lang, 'seller_stats_products_active').format(count=active_products)}\n"
+            f"{i18n(lang, 'seller_stats_month_sales').format(count=month_sales)}\n"
+            f"{i18n(lang, 'seller_stats_month_revenue').format(amount=f"{month_revenue:.2f}")}\n"
+            f"{i18n(lang, 'seller_stats_rating').format(rating=f"{user_data['seller_rating']:.1f}")}\n\n"
+            f"💸 **Payouts / Adresse :** {i18n(lang, 'wallet_configured') if user_data['seller_solana_address'] else i18n(lang, 'wallet_to_configure')}"
+        )
 
         keyboard = [[
-            InlineKeyboardButton("➕ Ajouter un produit",
-                                 callback_data='add_product')
+            InlineKeyboardButton(i18n(lang, 'btn_add_product'), callback_data='add_product')
         ], [
-            InlineKeyboardButton("📦 Mes produits", callback_data='my_products')
-        ], [InlineKeyboardButton("💸 Payouts / Adresse", callback_data='my_wallet')],
+            InlineKeyboardButton(i18n(lang, 'btn_my_products'), callback_data='my_products')
+        ], [InlineKeyboardButton(i18n(lang, 'btn_my_wallet'), callback_data='my_wallet')],
                     [
-                        InlineKeyboardButton("📊 Analytics détaillées",
-                                             callback_data='seller_analytics')
+                        InlineKeyboardButton(i18n(lang, 'btn_seller_analytics'), callback_data='seller_analytics')
                     ],
                     [
-                        InlineKeyboardButton("⚙️ Paramètres",
-                                             callback_data='seller_settings')
+                        InlineKeyboardButton(i18n(lang, 'btn_seller_settings'), callback_data='seller_settings')
                     ],
                     [
-                        InlineKeyboardButton("🏠 Accueil",
-                                             callback_data='back_main')
+                        InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')
                     ]]
 
-        await query.edit_message_text(
-            dashboard_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
+        try:
+            await query.edit_message_text(
+                dashboard_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown')
+        except Exception:
+            await query.edit_message_text(
+                dashboard_text.replace('*', ''),
+                reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def add_product_prompt(self, query, lang):
         """Demande les informations pour ajouter un produit"""
         user_data = self.get_user(query.from_user.id)
 
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
+            from app.core.i18n import t as i18n
             await query.edit_message_text(
-                "❌ Connectez-vous d'abord (email + code)",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]])
+                i18n(lang, 'err_login_required'),
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')]])
             )
             return
 
+        # Clear conflicting states to avoid search validator catching this step
+        self.reset_conflicting_states(query.from_user.id, keep={'adding_product'})
         self.update_user_state(query.from_user.id, adding_product=True, step='title', product_data={}, lang=lang)
 
         await query.edit_message_text("""➕ **AJOUTER UN NOUVEAU PRODUIT**
@@ -2138,9 +2153,10 @@ Saisissez le titre de votre formation :
         user_data = self.get_user(query.from_user.id)
 
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
+            from app.core.i18n import t as i18n
             await query.edit_message_text(
-                "❌ Connectez-vous d'abord (email + code)",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]])
+                i18n(lang, 'err_login_required'),
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')]])
             )
             return
 
@@ -2214,9 +2230,10 @@ Commencez dès maintenant à monétiser votre expertise !"""
         user_data = self.get_user(query.from_user.id)
 
         if not user_data or not user_data['is_seller'] or not self.is_seller_logged_in(query.from_user.id):
+            from app.core.i18n import t as i18n
             await query.edit_message_text(
-                "❌ Connectez-vous d'abord (email + code)",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Accueil", callback_data='back_main')]])
+                i18n(lang, 'err_login_required'),
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')]])
             )
             return
 
@@ -2487,10 +2504,12 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
         # Format attendu: TBF-YYMM-XXXXXX (lettres sans I/O et chiffres sans 0/1)
         if not re.match(r'^TBF-\d{4}-[A-HJ-NP-Z2-9]{6}$', product_id):
+            from app.core.i18n import t as i18n
+            lang = user_state.get('lang','fr')
             await update.message.reply_text(
-                f"❌ **Format ID invalide :** `{product_id}`\n\n💡 **Format attendu :** `TBF-2501-ABC123`",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
+                f"❌ **Format ID invalide :** `{self.escape_markdown(product_id)}`\n\n💡 **Format attendu :** `TBF-2501-ABC123`",
+                reply_markup=InlineKeyboardMarkup([[ 
+                    InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='buy_menu')
                 ]]),
                 parse_mode='Markdown')
             return
@@ -2523,43 +2542,46 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
     async def show_product_details_from_search(self, update, product):
         """Affiche les détails d'un produit trouvé par recherche"""
-        stars = "⭐" * int(
-            product['rating']) if product['rating'] > 0 else "⭐⭐⭐⭐⭐"
+        from app.core.i18n import t as i18n
+        # Secure dynamic fields for Markdown
+        safe_title = self.escape_markdown(str(product.get('title') or ''))
+        safe_seller = self.escape_markdown(str(product.get('seller_name') or ''))
+        safe_category = self.escape_markdown(str(product.get('category') or ''))
+        desc_raw = product.get('description') or 'Aucune description disponible'
+        safe_desc = self.escape_markdown(str(desc_raw))
 
-        product_text = f"""📦 **{product['title']}**
+        product_text = (
+            f"📦 **{safe_title}**\n\n"
+            f"👤 **Vendeur :** {safe_seller} ({product['seller_rating']:.1f}/5)\n"
+            f"📂 **Catégorie :** {safe_category}\n"
+            f"💰 **Prix :** {product['price_eur']}€\n\n"
+            f"📖 **Description :**\n{safe_desc}\n\n"
+            f"📊 **Statistiques :**\n"
+            f"• 👁️ {product['views_count']} vues\n"
+            f"• 🛒 {product['sales_count']} ventes\n\n"
+            f"📁 **Fichier :** {product['file_size_mb']:.1f} MB"
+        )
 
-👤 **Vendeur :** {product['seller_name']} ({product['seller_rating']:.1f}/5)
-📂 **Catégorie :** {product['category']}
-💰 **Prix :** {product['price_eur']}€
-
-📖 **Description :**
-{product['description'] or 'Aucune description disponible'}
-
-📊 **Statistiques :**
-• {stars} ({product['reviews_count']} avis)
-• 👁️ {product['views_count']} vues
-• 🛒 {product['sales_count']} ventes
-
-📁 **Fichier :** {product['file_size_mb']:.1f} MB"""
-
+        lang = (self.get_user(update.effective_user.id) or {}).get('language_code', 'fr')
         keyboard = [[
-            InlineKeyboardButton(
-                "🛒 Acheter maintenant",
-                callback_data=f'buy_product_{product["product_id"]}')
+            InlineKeyboardButton(i18n(lang, 'btn_buy'), callback_data=f'buy_product_{product["product_id"]}')
         ],
                     [
-                        InlineKeyboardButton("📂 Autres produits",
-                                             callback_data='browse_categories')
+                        InlineKeyboardButton(i18n(lang, 'btn_other_products'), callback_data='browse_categories')
                     ],
                     [
-                        InlineKeyboardButton("🔙 Menu achat",
-                                             callback_data='buy_menu')
+                        InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='buy_menu')
                     ]]
 
-        await update.message.reply_text(
-            product_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
+        try:
+            await update.message.reply_text(
+                product_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown')
+        except Exception:
+            await update.message.reply_text(
+                product_text.replace('*',''),
+                reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def process_seller_creation(self, update, message_text):
         """Flow création vendeur : nom → bio → email → adresse solana"""
