@@ -1978,31 +1978,23 @@ Choisissez un code pour continuer votre achat :
 
         keyboard = sell_menu_keyboard(lang)
 
-        sell_text = """📚 **VENDRE VOS FORMATIONS**
+        sell_text = i18n(lang, 'sell_menu_text')
 
-🎯 **Valorisez votre expertise**
-
-💰 **Avantages vendeur :**
-• 95% des revenus pour vous (5% commission plateforme)
-• Paiements automatiques en crypto
-• Wallet intégré sécurisé
-• Gestion complète de vos produits
-• Support marketing inclus
-
-🔐 **Sécurité**
-• Récupération via email + code
-• Adresse Solana de paiement à votre nom
-• Contrôle total de vos fonds
-
-Prêt à commencer ?"""
-
-        await query.edit_message_text(
-            sell_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
+        try:
+            await query.edit_message_text(
+                sell_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown')
+        except Exception:
+            await query.message.reply_text(
+                sell_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown')
 
     async def create_seller_prompt(self, query, lang):
         """Demande les informations pour créer un compte vendeur"""
+        # Clear other flows to avoid ID validator collision
+        self.reset_conflicting_states(query.from_user.id, keep={'creating_seller'})
         self.update_user_state(query.from_user.id, creating_seller=True, step='name', lang=lang)
         from app.core.i18n import t as i18n
         await query.edit_message_text(
@@ -2385,17 +2377,17 @@ Commencez dès maintenant à monétiser votre expertise !"""
 
         user_state = self.get_user_state(user_id)
 
-        # === RECHERCHE PRODUIT ===
-        if user_state.get('waiting_for_product_id'):
-            await self.process_product_search(update, message_text)
-
-        # === CRÉATION VENDEUR ===
-        elif user_state.get('creating_seller'):
+        # === CRÉATION VENDEUR (prioritaire pour éviter la collision avec recherche) ===
+        if user_state.get('creating_seller'):
             await self.process_seller_creation(update, message_text)
 
         # === CONNEXION VENDEUR ===
         elif user_state.get('seller_login'):
             await self.process_seller_login(update, message_text)
+
+        # === RECHERCHE PRODUIT ===
+        elif user_state.get('waiting_for_product_id'):
+            await self.process_product_search(update, message_text)
 
         # === AJOUT PRODUIT ===
         elif user_state.get('adding_product'):
