@@ -942,22 +942,26 @@ class MarketplaceBot:
             elif query.data.startswith('contact_seller_'):
                 from app.integrations.telegram.handlers import support_handlers as sh
                 product_id = query.data.split('contact_seller_')[-1]
-                sh.contact_seller_start(self, query, product_id, lang)
+                await sh.contact_seller_start(self, query, product_id, lang)
             elif query.data.startswith('view_ticket_'):
                 from app.integrations.telegram.handlers import support_handlers as sh
                 ticket_id = query.data.split('view_ticket_')[-1]
-                sh.view_ticket(self, query, ticket_id)
+                await sh.view_ticket(self, query, ticket_id)
             elif query.data.startswith('reply_ticket_'):
                 from app.integrations.telegram.handlers import support_handlers as sh
                 ticket_id = query.data.split('reply_ticket_')[-1]
-                sh.reply_ticket_prepare(self, query, ticket_id)
+                await sh.reply_ticket_prepare(self, query, ticket_id)
             elif query.data.startswith('escalate_ticket_'):
                 from app.integrations.telegram.handlers import support_handlers as sh
                 ticket_id = query.data.split('escalate_ticket_')[-1]
-                sh.escalate_ticket(self, query, ticket_id)
+                await sh.escalate_ticket(self, query, ticket_id)
             elif query.data == 'admin_tickets':
                 from app.integrations.telegram.handlers import support_handlers as sh
-                sh.admin_tickets(self, query)
+                await sh.admin_tickets(self, query)
+            elif query.data.startswith('admin_reply_ticket_'):
+                from app.integrations.telegram.handlers import support_handlers as sh
+                ticket_id = query.data.split('admin_reply_ticket_')[-1]
+                await sh.admin_reply_prepare(self, query, ticket_id)
             elif query.data == 'my_library':
                 await self.show_my_library(query, lang)
 
