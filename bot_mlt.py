@@ -838,7 +838,7 @@ class MarketplaceBot:
 
         await update.message.reply_text(
             welcome_text,
-            reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown')
 
     async def button_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1141,7 +1141,7 @@ class MarketplaceBot:
 
         await query.edit_message_text(
             buy_text,
-            reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown')
 
     async def search_product_prompt(self, query, lang):
@@ -1199,7 +1199,7 @@ class MarketplaceBot:
 
         await query.edit_message_text(
             categories_text,
-            reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown')
 
     async def show_category_products(self, query, category_key, lang):
@@ -1307,7 +1307,7 @@ class MarketplaceBot:
         try:
             await query.edit_message_text(
                 products_text,
-                reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
+                reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown')
         except Exception as e:
             logger.warning(f"Markdown render failed in category list, falling back: {e}")
@@ -1386,7 +1386,7 @@ class MarketplaceBot:
         try:
             await query.edit_message_text(
                 product_text,
-                reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
+                reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown')
         except Exception as e:
             logger.warning(f"Markdown render failed in product details, falling back: {e}")
@@ -3098,12 +3098,12 @@ Enter your Solana address to receive your payouts:
         try:
             await query.edit_message_text(
                 welcome_text,
-                reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
+                reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown')
         except Exception:
             await query.message.reply_text(
                 welcome_text,
-                reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
+                reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown')
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3324,8 +3324,10 @@ Saisissez l'email de votre compte vendeur :
         """Étape 1 du login: saisir l'email enregistré lors de la création vendeur."""
         user_id = update.effective_user.id
         email = message_text.strip().lower()
+        from app.core.i18n import t as i18n
+        lang = (self.get_user(user_id) or {}).get('language_code', 'fr')
         if not validate_email(email):
-            await update.message.reply_text("❌ Email invalide. Recommencez.")
+            await update.message.reply_text(i18n(lang, 'err_invalid_email'))
             return
         try:
             conn = self.get_db_connection()
@@ -3335,7 +3337,6 @@ Saisissez l'email de votre compte vendeur :
             row = cursor.fetchone()
             conn.close()
             if not row:
-                from app.core.i18n import t as i18n
                 await update.message.reply_text(i18n(lang, 'err_invalid_email'))
                 return
             # Passer proprement à l'étape mot de passe et désactiver la saisie email
