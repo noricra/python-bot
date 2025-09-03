@@ -812,7 +812,7 @@ class MarketplaceBot:
         keyboard = [
             [InlineKeyboardButton(self.get_text('buy_menu', lang), callback_data='buy_menu')]
         ]
-        if is_seller:
+        if is_seller and self.is_seller_logged_in(user.id):
             keyboard.append([InlineKeyboardButton(self.get_text('seller_dashboard', lang), callback_data='seller_dashboard')])
         else:
             keyboard.append([InlineKeyboardButton(self.get_text('sell_menu', lang), callback_data='sell_menu')])
@@ -842,7 +842,11 @@ class MarketplaceBot:
             if query.data == 'buy_menu':
                 await self.buy_menu(query, lang)
             elif query.data == 'sell_menu':
-                await self.sell_menu(query, lang)
+                # If seller and logged in, go to dashboard; otherwise show login menu first
+                if user_data and user_data.get('is_seller') and self.is_seller_logged_in(user_id):
+                    await self.seller_dashboard(query, lang)
+                else:
+                    await self.seller_login_menu(query, lang)
             elif query.data == 'seller_dashboard':
                 await self.seller_dashboard(query, lang)
             # marketplace_stats déplacé dans l'admin uniquement
@@ -3064,7 +3068,7 @@ Enter your Solana address to receive your payouts:
         is_seller = user_data and user_data['is_seller']
 
         keyboard = [[InlineKeyboardButton(self.get_text('buy_menu', lang), callback_data='buy_menu')]]
-        if is_seller:
+        if is_seller and self.is_seller_logged_in(user_id):
             keyboard.append([InlineKeyboardButton(self.get_text('seller_dashboard', lang), callback_data='seller_dashboard')])
         else:
             keyboard.append([InlineKeyboardButton(self.get_text('sell_menu', lang), callback_data='sell_menu')])
