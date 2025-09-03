@@ -181,6 +181,19 @@ class MarketplaceBot:
         state.update(kwargs)
         self.memory_cache[user_id] = state
 
+    def columnize(self, keyboard):
+        try:
+            new_kb = []
+            for row in keyboard or []:
+                if isinstance(row, list):
+                    for btn in row:
+                        new_kb.append([btn])
+                else:
+                    new_kb.append([row])
+            return new_kb or keyboard
+        except Exception:
+            return keyboard
+
     def reset_conflicting_states(self, user_id: int, keep: set = None) -> None:
         """Nettoie les états de flux concurrents pour éviter les collisions de prompts.
         Conserve uniquement les clés présentes dans keep.
@@ -825,7 +838,7 @@ class MarketplaceBot:
 
         await update.message.reply_text(
             welcome_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
             parse_mode='Markdown')
 
     async def button_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1128,7 +1141,7 @@ class MarketplaceBot:
 
         await query.edit_message_text(
             buy_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
             parse_mode='Markdown')
 
     async def search_product_prompt(self, query, lang):
@@ -1186,7 +1199,7 @@ class MarketplaceBot:
 
         await query.edit_message_text(
             categories_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
             parse_mode='Markdown')
 
     async def show_category_products(self, query, category_key, lang):
@@ -1294,7 +1307,7 @@ class MarketplaceBot:
         try:
             await query.edit_message_text(
                 products_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
+                reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
                 parse_mode='Markdown')
         except Exception as e:
             logger.warning(f"Markdown render failed in category list, falling back: {e}")
@@ -1373,7 +1386,7 @@ class MarketplaceBot:
         try:
             await query.edit_message_text(
                 product_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
+                reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
                 parse_mode='Markdown')
         except Exception as e:
             logger.warning(f"Markdown render failed in product details, falling back: {e}")
@@ -3085,12 +3098,12 @@ Enter your Solana address to receive your payouts:
         try:
             await query.edit_message_text(
                 welcome_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
+                reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
                 parse_mode='Markdown')
         except Exception:
             await query.message.reply_text(
                 welcome_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
+                reply_markup=InlineKeyboardMarkup(self.columnize(keyboard)),
                 parse_mode='Markdown')
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
