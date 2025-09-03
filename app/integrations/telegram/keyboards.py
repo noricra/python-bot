@@ -1,39 +1,22 @@
 from telegram import InlineKeyboardButton
+from app.core.i18n import t as i18n
 
 
 def main_menu_keyboard(lang: str):
-    if lang == 'en':
-        return [
-            [InlineKeyboardButton("🛒 Buy a course", callback_data='buy_menu')],
-            [InlineKeyboardButton("📚 Sell your courses", callback_data='sell_menu')],
-            [InlineKeyboardButton("📊 Marketplace stats", callback_data='marketplace_stats')],
-            [InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')],
-        ]
     return [
-        [InlineKeyboardButton("🛒 Acheter une formation", callback_data='buy_menu')],
-        [InlineKeyboardButton("📚 Vendre vos formations", callback_data='sell_menu')],
-        [InlineKeyboardButton("📊 Stats marketplace", callback_data='marketplace_stats')],
+        [InlineKeyboardButton(i18n(lang, 'cta_buy'), callback_data='buy_menu')],
+        [InlineKeyboardButton(i18n(lang, 'cta_sell'), callback_data='sell_menu')],
         [InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')],
     ]
 
 
 def buy_menu_keyboard(lang: str):
-    if lang == 'en':
-        return [
-            [InlineKeyboardButton("🔍 Search by product ID", callback_data='search_product')],
-            [InlineKeyboardButton("📂 Browse categories", callback_data='browse_categories')],
-            [InlineKeyboardButton("🔥 Bestsellers", callback_data='category_bestsellers')],
-            [InlineKeyboardButton("🆕 New", callback_data='category_new')],
-            [InlineKeyboardButton("💸 Payouts / Withdrawal address", callback_data='my_wallet')],
-            [InlineKeyboardButton("🏠 Home", callback_data='back_main')],
-        ]
     return [
-        [InlineKeyboardButton("🔍 Rechercher par ID produit", callback_data='search_product')],
-        [InlineKeyboardButton("📂 Parcourir catégories", callback_data='browse_categories')],
-        [InlineKeyboardButton("🔥 Meilleures ventes", callback_data='category_bestsellers')],
-        [InlineKeyboardButton("🆕 Nouveautés", callback_data='category_new')],
-        [InlineKeyboardButton("💸 Payouts / Adresse de retrait", callback_data='my_wallet')],
-        [InlineKeyboardButton("🏠 Accueil", callback_data='back_main')],
+        [InlineKeyboardButton(i18n(lang, 'btn_search_product'), callback_data='search_product')],
+        [InlineKeyboardButton(i18n(lang, 'btn_browse_categories'), callback_data='browse_categories')],
+        [InlineKeyboardButton(i18n(lang, 'btn_bestsellers'), callback_data='category_bestsellers')],
+        [InlineKeyboardButton(i18n(lang, 'btn_new'), callback_data='category_new')],
+        [InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')],
     ]
 
 
