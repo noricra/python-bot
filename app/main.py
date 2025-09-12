@@ -27,7 +27,17 @@ def main() -> None:
     threading.Thread(target=run_ipn_server, daemon=True).start()
     bot = MarketplaceBot()
     app = build_application(bot)
-    app.run_polling(drop_pending_updates=True)
+    if getattr(core_settings, "TELEGRAM_USE_WEBHOOK", False) and core_settings.TELEGRAM_WEBHOOK_URL:
+        # Webhook mode for better scalability
+        app.run_webhook(
+            listen=core_settings.TELEGRAM_WEBHOOK_LISTEN,
+            port=core_settings.TELEGRAM_WEBHOOK_PORT,
+            url_path=core_settings.TELEGRAM_WEBHOOK_PATH.strip("/"),
+            webhook_url=core_settings.TELEGRAM_WEBHOOK_URL.rstrip("/") + "/" + core_settings.TELEGRAM_WEBHOOK_PATH.strip("/"),
+            drop_pending_updates=True,
+        )
+    else:
+        app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":

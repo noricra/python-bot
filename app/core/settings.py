@@ -20,6 +20,17 @@ class Settings:
         )
         self.ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "admin@votre-domaine.com")
 
+        # Telegram networking & scaling
+        self.TELEGRAM_POOL_SIZE: int = int(os.getenv("TELEGRAM_POOL_SIZE", "50"))
+        self.TELEGRAM_CONNECT_TIMEOUT: float = float(os.getenv("TELEGRAM_CONNECT_TIMEOUT", "5.0"))
+        self.TELEGRAM_READ_TIMEOUT: float = float(os.getenv("TELEGRAM_READ_TIMEOUT", "30.0"))
+        self.TELEGRAM_WRITE_TIMEOUT: float = float(os.getenv("TELEGRAM_WRITE_TIMEOUT", "30.0"))
+        self.TELEGRAM_POOL_TIMEOUT: float = float(os.getenv("TELEGRAM_POOL_TIMEOUT", "5.0"))
+        self.TELEGRAM_PROXY_URL: Optional[str] = os.getenv("TELEGRAM_PROXY_URL")
+        self.TELEGRAM_BASE_URL: Optional[str] = os.getenv("TELEGRAM_BASE_URL")
+        self.TELEGRAM_CONCURRENT_UPDATES: bool = os.getenv("TELEGRAM_CONCURRENT_UPDATES", "true").lower() == "true"
+        self.TELEGRAM_RATE_LIMITER: bool = os.getenv("TELEGRAM_RATE_LIMITER", "true").lower() == "true"
+
         # SMTP
         self.SMTP_SERVER: str = os.getenv("SMTP_SERVER", "smtp.gmail.com")
         self.SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
@@ -37,6 +48,13 @@ class Settings:
         # IPN server settings
         self.IPN_HOST: str = os.getenv("IPN_HOST", "0.0.0.0")
         self.IPN_PORT: int = int(os.getenv("IPN_PORT", "8000"))
+
+        # Webhook mode (optional)
+        self.TELEGRAM_USE_WEBHOOK: bool = os.getenv("TELEGRAM_USE_WEBHOOK", "false").lower() == "true"
+        self.TELEGRAM_WEBHOOK_URL: Optional[str] = os.getenv("TELEGRAM_WEBHOOK_URL")
+        self.TELEGRAM_WEBHOOK_PORT: int = int(os.getenv("TELEGRAM_WEBHOOK_PORT", "8443"))
+        self.TELEGRAM_WEBHOOK_LISTEN: str = os.getenv("TELEGRAM_WEBHOOK_LISTEN", "0.0.0.0")
+        self.TELEGRAM_WEBHOOK_PATH: str = os.getenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook")
 
         # Storage and paths
         self.LOG_DIR: str = os.getenv("LOG_DIR", "logs")
