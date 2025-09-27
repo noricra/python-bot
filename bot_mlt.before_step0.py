@@ -1477,7 +1477,145 @@ class MarketplaceBot:
 
         await self.show_crypto_options(query, lang)
 
-    # Referral-related functions removed as the referral program is disabled
+    async def enter_referral_manual(self, query, lang):
+        """Demander la saisie manuelle du code"""
+        self.update_user_state(query.from_user.id, waiting_for_referral=True, lang=lang)
+
+        await query.edit_message_text(
+            "✍️ **Veuillez saisir votre code de parrainage :**\n\nTapez le code exactement comme vous l'avez reçu.",
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🔙 Retour",
+                                       callback_data='buy_menu')]]))
+
+    
+
+    async def choose_random_referral(self, query, lang):
+        """Choisir un code de parrainage aléatoire"""
+        from app.services.referral_service import ReferralService
+        available_codes = ReferralService(self.db_path).list_all_codes()
+
+        if not available_codes:
+            await query.edit_message_text(
+                "❌ Aucun code disponible actuellement.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
+                ]]))
+            return
+
+        # Prendre 3 codes aléatoires
+        random_codes = random.sample(available_codes,
+                                     min(3, len(available_codes)))
+
+        keyboard = []
+        for code in random_codes:
+            keyboard.append([
+                InlineKeyboardButton(f"🎯 Utiliser {code}",
+                                     callback_data=f'use_referral_{code}')
+            ])
+
+        keyboard.extend([[
+            InlineKeyboardButton("🔄 Autres codes",
+                                 callback_data='choose_random_referral')
+        ], [InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')]])
+
+        codes_text = """🎲 **CODES DE PARRAINAGE DISPONIBLES**
+
+Choisissez un code pour continuer votre achat :
+
+💡 **Tous les codes sont équivalents**
+🎁 **Votre parrain recevra sa commission**"""
+
+        await query.edit_message_text(
+            codes_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown')
+
+    async def validate_and_proceed(self, query, referral_code, lang):
+        """Valider le code et procéder à l'achat"""
+        if not self.validate_referral_code(referral_code):
+            await query.edit_message_text(
+                f"❌ **Code invalide :** `{referral_code}`\n\nVeuillez réessayer avec un code valide.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
+                ]]),
+                parse_mode='Markdown')
+            return
+
+        # Stocker le code validé
+        self.update_user_state(query.from_user.id, validated_referral=referral_code, lang=lang)
+
+        await query.edit_message_text(
+            f"✅ **Code validé :** `{referral_code}`\n\nProcédons au paiement !",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("💳 Continuer vers le paiement",
+                                     callback_data='proceed_to_payment'),
+                InlineKeyboardButton("🔙 Retour", callback_data='buy_menu')
+            ]]),
+            parse_mode='Markdown')
+
+    async def become_partner(self, query, lang):
+        """Inscription partenaire"""
+        user_id = query.from_user.id
+        user_data = self.get_user(user_id)
+
+        if user_data and user_data['is_partner']:
+            await query.edit_message_text(
+                ("✅ You are already a partner!" if lang == 'en' else "✅ Vous êtes déjà partenaire !"),
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📊 My dashboard" if lang == 'en' else "📊 Mon dashboard",
+                                         callback_data='seller_dashboard')
+                ]]))
+            return
+
+        partner_code = self.create_partner_code(user_id)
+
+        if partner_code:
+            # Valider automatiquement son propre code
+            self.update_user_state(user_id, validated_referral=partner_code, lang=lang, self_referral=True)
+
+            welcome_text = (
+                f"""🎊 **WELCOME TO THE TEAM!**
+
+✅ Your partner account is activated!
+
+🎯 **YOUR UNIQUE CODE:** `{partner_code}`
+
+💰 **Partner benefits:**
+• Earn 10% on each sale
+• Use YOUR code for your own purchases
+• Full seller dashboard
+• Priority support""" if lang == 'en' else f"""🎊 **BIENVENUE DANS L'ÉQUIPE !**
+
+✅ Votre compte partenaire est activé !
+
+🎯 **VOTRE CODE UNIQUE :** `{partner_code}`
+
+💰 **Avantages partenaire :**
+• Gagnez 10% sur chaque vente
+• Utilisez VOTRE code pour vos achats
+• Dashboard vendeur complet
+• Support prioritaire""")
+
+            keyboard = [[
+                InlineKeyboardButton("💳 Continue purchase" if lang == 'en' else "💳 Continuer l'achat",
+                                     callback_data='proceed_to_payment')
+            ],
+                        [
+                            InlineKeyboardButton(
+                                "📊 My dashboard" if lang == 'en' else "📊 Mon dashboard",
+                                callback_data='seller_dashboard')
+                        ]]
+
+            await query.edit_message_text(
+                welcome_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown')
+        else:
+            await query.edit_message_text(
+                ("❌ Error while creating the partner account." if lang == 'en' else "❌ Erreur lors de la création du compte partenaire."),
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour", callback_data='buy_menu')
+                ]]))
 
     async def show_crypto_options(self, query, lang):
         """Affiche les options de crypto pour le paiement (sans parrainage)"""
