@@ -20,7 +20,9 @@ class MessagingRepository:
             row = cursor.fetchone()
             if row:
                 return row[0]
-            ticket_id = f"TKT-{buyer_user_id}-{order_id}"
+            from app.core.utils import generate_ticket_id
+            from app.core import settings as core_settings
+            ticket_id = generate_ticket_id(core_settings.DATABASE_PATH)
             cursor.execute(
                 'INSERT INTO support_tickets (user_id, ticket_id, subject, message, status, order_id, seller_user_id) VALUES (?, ?, ?, ?, "open", ?, ?)',
                 (buyer_user_id, ticket_id, subject[:100], '', order_id, seller_user_id)

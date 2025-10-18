@@ -7,18 +7,48 @@ logger = logging.getLogger(__name__)
 
 
 class NowPaymentsClient:
-    """Thin HTTP client for NOWPayments endpoints used by the bot."""
+    """Comprehensive HTTP client for NOWPayments API integration."""
 
     BASE_URL = "https://api.nowpayments.io/v1"
 
     def __init__(self, api_key: Optional[str]) -> None:
         self.api_key = api_key
+        if not api_key:
+            logger.warning("NOWPayments API key not provided")
 
     def _headers(self) -> Dict[str, str]:
         return {
             "x-api-key": self.api_key or "",
             "Content-Type": "application/json",
         }
+
+    def get_estimate(self, amount: float, currency_from: str, currency_to: str) -> Optional[Dict]:
+        """Get exact crypto amount estimation"""
+        if not self.api_key:
+            logger.error("API key required for estimate")
+            return None
+
+        try:
+            response = requests.get(
+                f"{self.BASE_URL}/estimate",
+                headers=self._headers(),
+                params={
+                    "amount": amount,
+                    "currency_from": currency_from.lower(),
+                    "currency_to": currency_to.lower()
+                },
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                return response.json()
+
+            logger.error(f"Get estimate failed: {response.status_code} - {response.text}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Get estimate exception: {e}")
+            return None
 
     def create_payment(self, amount_usd: float, pay_currency: str, order_id: str,
                        description: str, ipn_callback_url: Optional[str] = None) -> Optional[Dict]:

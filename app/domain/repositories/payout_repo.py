@@ -67,3 +67,48 @@ class PayoutRepository:
         finally:
             conn.close()
 
+    def get_pending_payouts(self, limit: int = 20) -> List[dict]:
+        """Get pending payouts for admin"""
+        conn = get_sqlite_connection(self.database_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                '''
+                SELECT seller_user_id as user_id, total_amount_sol as amount, payout_status
+                FROM seller_payouts
+                WHERE payout_status = 'pending'
+                ORDER BY created_at DESC
+                LIMIT ?
+                ''',
+                (limit,)
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        except sqlite3.Error:
+            return []
+        finally:
+            conn.close()
+
+    def get_all_payouts(self, limit: int = 50) -> List[dict]:
+        """Get all payouts for export"""
+        conn = get_sqlite_connection(self.database_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                '''
+                SELECT seller_user_id as user_id, total_amount_sol as amount, payout_status as status
+                FROM seller_payouts
+                ORDER BY created_at DESC
+                LIMIT ?
+                ''',
+                (limit,)
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        except sqlite3.Error:
+            return []
+        finally:
+            conn.close()
+

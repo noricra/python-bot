@@ -1,6 +1,10 @@
 import logging
 import time
+import qrcode
+import io
+import base64
 from typing import Dict, Optional, List
+import requests
 
 from app.core import settings as core_settings
 from app.integrations.nowpayments_client import NowPaymentsClient
@@ -10,26 +14,64 @@ logger = logging.getLogger(__name__)
 
 
 class PaymentService:
+    BASE_URL = "https://api.nowpayments.io/v1"
+
     def __init__(self) -> None:
+        self.api_key = core_settings.NOWPAYMENTS_API_KEY
         self.client = NowPaymentsClient(core_settings.NOWPAYMENTS_API_KEY)
         self._fx_cache = {}
         self._currencies_cache = {}
 
-    def create_payment(self, amount_usd: float, currency: str, order_id: str) -> Optional[Dict]:
-        try:
-            resp = self.client.create_payment(
-                amount_usd=amount_usd,
-                pay_currency=currency,
-                order_id=order_id,
-                description="Formation TechBot Marketplace",
-                ipn_callback_url=core_settings.IPN_CALLBACK_URL,
-            )
-            if not resp:
-                logger.error(f"PaymentService.create_payment returned None order_id={order_id} currency={currency} amount_usd={amount_usd}")
-            return resp
-        except Exception as e:
-            logger.error(f"PaymentService.create_payment exception order_id={order_id} currency={currency} error={e}")
+    def _headers(self) -> Dict[str, str]:
+        """Get headers for NOWPayments API requests"""
+        return {
+            "x-api-key": self.api_key,
+            "Content-Type": "application/json"
+        }
+
+    def create_payment(self, amount_usd: float, pay_currency: str, order_id: str,
+                       description: str, ipn_callback_url: Optional[str] = None) -> Optional[Dict]:
+        """Create a comprehensive payment with QR code, exact amount, and address"""
+        if not self.api_key:
+            logger.error("NOWPAYMENTS_API_KEY manquant!")
             return None
+
+        if not self.client:
+            logger.error("NOWPayments client not initialized")
+            return None
+
+        try:
+            # Step 1: Get exact crypto amount using client
+            exact_crypto_amount = self._get_exact_crypto_amount(amount_usd, pay_currency)
+            if not exact_crypto_amount:
+                logger.error(f"Failed to get exact crypto amount for {pay_currency}")
+                return None
+
+            # Step 2: Create payment using client
+            logger.info(f"Creating payment: order_id={order_id}, currency={pay_currency}, amount_usd={amount_usd}")
+
+            payment_data = self.client.create_payment(
+                amount_usd=amount_usd,
+                pay_currency=pay_currency,
+                order_id=order_id,
+                description=description,
+                ipn_callback_url=ipn_callback_url
+            )
+
+            if not payment_data:
+                logger.error(f"Payment creation failed for order {order_id}")
+                return None
+
+            # Step 3: Enhance payment data with QR code and details
+            enhanced_payment = self._enhance_payment_data(payment_data, exact_crypto_amount)
+
+            logger.info(f"Payment created successfully: order_id={order_id}, payment_id={enhanced_payment.get('payment_id')}")
+            return enhanced_payment
+
+        except Exception as exc:
+            logger.error(f"Payment creation exception: order_id={order_id}, error={exc}")
+            return None
+
 
     def check_payment_status(self, payment_id: str) -> Optional[Dict]:
         try:
@@ -57,6 +99,123 @@ class PaymentService:
             return 1.10
         except Exception:
             return self._fx_cache.get('eur_usd', {}).get('value', 1.10)
+
+    def _get_exact_crypto_amount(self, amount_usd: float, pay_currency: str) -> Optional[float]:
+        """Get exact crypto amount using NOWPayments estimate"""
+        try:
+            # For stablecoins pegged to USD, use 1:1 ratio
+            if pay_currency.lower() in ['usdt', 'usdc', 'usdttrc20', 'usdterc20']:
+                logger.info(f"Using 1:1 ratio for {pay_currency}: {amount_usd}")
+                return amount_usd
+
+            if self.client:
+                estimate_data = self.client.get_estimate(amount_usd, "usd", pay_currency)
+                if estimate_data:
+                    return float(estimate_data.get('estimated_amount', 0))
+
+            # Fallback to direct API call if client fails
+            response = requests.get(
+                f"{self.BASE_URL}/estimate",
+                headers=self._headers(),
+                params={
+                    "amount": amount_usd,
+                    "currency_from": "usd",
+                    "currency_to": pay_currency.lower()
+                },
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return float(data.get('estimated_amount', 0))
+
+            logger.error(f"Estimate API failed: {response.status_code} - {response.text}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting crypto estimate: {e}")
+            return None
+
+    def _enhance_payment_data(self, payment_data: Dict, exact_crypto_amount: float) -> Dict:
+        """Enhance payment data with QR code, exact amount, and professional details"""
+        try:
+            # Add exact crypto amount
+            payment_data['exact_crypto_amount'] = exact_crypto_amount
+            payment_data['formatted_amount'] = f"{exact_crypto_amount:.8f}"
+
+            # Generate QR code for payment address
+            payment_address = payment_data.get('pay_address', '')
+            if payment_address:
+                qr_code_base64 = self._generate_qr_code(payment_address, exact_crypto_amount, payment_data.get('pay_currency', ''))
+                payment_data['qr_code'] = qr_code_base64
+
+            # Add professional payment details
+            payment_data['payment_details'] = {
+                'address': payment_address,
+                'amount': exact_crypto_amount,
+                'currency': payment_data.get('pay_currency', '').upper(),
+                'network': self._get_network_info(payment_data.get('pay_currency', '')),
+                'expires_at': payment_data.get('created_at', ''),  # Add expiration logic if needed
+                'payment_id': payment_data.get('payment_id', ''),
+                'order_id': payment_data.get('order_id', '')
+            }
+
+            return payment_data
+
+        except Exception as e:
+            logger.error(f"Error enhancing payment data: {e}")
+            return payment_data
+
+    def _generate_qr_code(self, address: str, amount: float, currency: str) -> str:
+        """Generate QR code for payment address with amount"""
+        try:
+            # Create payment URI for better UX
+            if currency.lower() == 'btc':
+                qr_data = f"bitcoin:{address}?amount={amount}"
+            elif currency.lower() == 'eth':
+                qr_data = f"ethereum:{address}?value={amount}"
+            else:
+                qr_data = f"{address}?amount={amount}"
+
+            # Generate QR code
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=4,
+            )
+            qr.add_data(qr_data)
+            qr.make(fit=True)
+
+            # Create image
+            img = qr.make_image(fill_color="black", back_color="white")
+
+            # Convert to base64
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            img_str = base64.b64encode(buffer.getvalue()).decode()
+
+            return img_str
+
+        except Exception as e:
+            logger.error(f"Error generating QR code: {e}")
+            return ""
+
+    def _get_network_info(self, currency: str) -> str:
+        """Get network information for cryptocurrency"""
+        network_map = {
+            'btc': 'Bitcoin',
+            'eth': 'Ethereum',
+            'usdt': 'Ethereum (ERC-20)',
+            'usdc': 'Ethereum (ERC-20)',
+            'ltc': 'Litecoin',
+            'bch': 'Bitcoin Cash',
+            'xrp': 'Ripple',
+            'ada': 'Cardano',
+            'dot': 'Polkadot',
+            'sol': 'Solana'
+        }
+        return network_map.get(currency.lower(), currency.upper())
 
     def get_available_currencies(self) -> List[str]:
         try:
