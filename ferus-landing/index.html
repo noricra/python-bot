@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ferus - Marketplace de produits numériques sur Telegram</title>
+    <meta name="description" content="Vendez vos produits numériques sur Telegram avec paiements crypto automatisés (BTC, ETH, USDT, USDC). Dashboard analytics, livraison automatique. 0% frais vendeur. Version beta.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header id="header">
+        <div class="header-inner">
+            <div class="logo">
+                <span class="logo-text">FERUS</span>
+            </div>
+            <nav class="nav-links">
+                <a href="#features" data-translate="nav-features">Fonctionnalités</a>
+                <a href="#platform" data-translate="nav-platform">Plateforme</a>
+                <a href="#pricing" data-translate="nav-pricing">Tarifs</a>
+                <div class="language-switcher-header">
+                    <button class="lang-btn active" data-lang="fr">FR</button>
+                    <button class="lang-btn" data-lang="en">EN</button>
+                </div>
+                <a href="https://t.me/FerusBot" class="btn btn-primary btn-nav" data-translate="nav-cta">
+                    <span data-translate="nav-cta-text">Accéder au bot</span>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </a>
+            </nav>
+            <button class="mobile-menu-btn" aria-label="Menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-menu">
+        <a href="#features" data-translate="nav-features">Fonctionnalités</a>
+        <a href="#platform" data-translate="nav-platform">Plateforme</a>
+        <a href="#pricing" data-translate="nav-pricing">Tarifs</a>
+        <a href="https://t.me/FerusBot" class="btn btn-primary" data-translate="nav-cta-text">Démarrer maintenant</a>
+    </div>
+
+    <!-- Hero Section -->
+    <section class="hero" id="home">
+        <div class="hero-background">
+            <div class="gradient-orb orb-1"></div>
+            <div class="gradient-orb orb-2"></div>
+            <div class="grid-pattern"></div>
+        </div>
+
+        <div class="container">
+            <div class="hero-content">
+                <div class="hero-badge" data-translate="hero-badge">
+                    <span class="badge-dot"></span>
+                    <span>Version Beta — Gratuit à vie</span>
+                </div>
+
+                <h1 data-translate="hero-title">
+                    La marketplace crypto<br>
+                    <span class="gradient-text">qu'attendaient les créateurs</span>
+                </h1>
+
+                <p class="hero-subtitle" data-translate="hero-subtitle">
+                    Transformez votre audience Telegram en revenus crypto. Dashboard professionnel,
+                    paiements automatiques en BTC/ETH/USDT, livraison instantanée.
+                    <strong>Sans frais vendeur. Sans KYC. Sans limites.</strong>
+                </p>
+
+                <div class="hero-stats-inline">
+                    <div class="stat-inline">
+                        <span class="stat-text" data-translate="stat-inline-1">0% frais vendeur</span>
+                    </div>
+                    <div class="stat-inline">
+                        <span class="stat-text" data-translate="stat-inline-2">Livraison automatique</span>
+                    </div>
+                    <div class="stat-inline">
+                        <span class="stat-text" data-translate="stat-inline-3">8 cryptomonnaies</span>
+                    </div>
+                </div>
+
+                <div class="hero-cta">
+                    <a href="https://t.me/FerusBot" class="btn btn-primary btn-hero">
+                        <span data-translate="hero-cta-primary">Créer mon compte gratuitement</span>
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </a>
+                    <a href="#platform" class="btn btn-secondary btn-hero">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="2"/>
+                            <path d="M10 6V10L13 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        <span data-translate="hero-cta-secondary">Voir la démo (2 min)</span>
+                    </a>
+                </div>
+
+                <div class="hero-trust">
+                    <p class="crypto-list" data-translate="hero-trust">
+                        BTC · ETH · USDT · USDC · LTC · XRP · SOL · BNB
+                    </p>
+                </div>
+            </div>
+
+            <!-- Phone Mockup Section -->
+            <div class="hero-visual">
+                <div class="phone-mockup">
+                    <div class="phone-frame">
+                        <div class="phone-notch"></div>
+                        <div class="phone-screen">
+                            <!-- Placeholder pour screenshot -->
+                            <div class="screen-content">
+                                <div class="screen-header">
+                                    <div class="screen-time">9:41</div>
+                                    <div class="screen-icons">
+                                        <div class="signal"></div>
+                                        <div class="wifi"></div>
+                                        <div class="battery"></div>
+                                    </div>
+                                </div>
+                                <div class="telegram-chat">
+                                    <div class="chat-header">
+                                        <div class="chat-avatar">F</div>
+                                        <div class="chat-info">
+                                            <div class="chat-name">Ferus Bot</div>
+                                            <div class="chat-status">en ligne</div>
+                                        </div>
+                                    </div>
+                                    <div class="chat-messages">
+                                        <div class="message bot">
+                                            <div class="message-bubble">
+                                                Nouveau paiement reçu<br>
+                                                <strong>+0.0043 BTC</strong> (~180€)
+                                            </div>
+                                        </div>
+                                        <div class="message bot">
+                                            <div class="message-bubble">
+                                                Produit livré automatiquement<br>
+                                                Dashboard mis à jour
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="phone-glow"></div>
+                </div>
+
+                <!-- Floating Stats Cards -->
+                <div class="floating-stats">
+                    <div class="stat-card card-1">
+                        <div class="card-icon success">+</div>
+                        <div class="card-label">Ventes aujourd'hui</div>
+                        <div class="card-value">+12</div>
+                        <div class="card-change">+23%</div>
+                    </div>
+                    <div class="stat-card card-2">
+                        <div class="card-icon crypto">BTC</div>
+                        <div class="card-label">Revenus</div>
+                        <div class="card-value">0.12 BTC</div>
+                        <div class="card-change">~4,850€</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Social Proof Section -->
+    <section class="social-proof">
+        <div class="container">
+            <div class="proof-grid">
+                <div class="proof-item">
+                    <div class="proof-number gradient-text">800M+</div>
+                    <div class="proof-label" data-translate="proof-1">Utilisateurs Telegram</div>
+                </div>
+                <div class="proof-item">
+                    <div class="proof-number gradient-text">0%</div>
+                    <div class="proof-label" data-translate="proof-2">Frais vendeur</div>
+                </div>
+                <div class="proof-item">
+                    <div class="proof-number gradient-text">2min</div>
+                    <div class="proof-label" data-translate="proof-3">Pour être en ligne</div>
+                </div>
+                <div class="proof-item">
+                    <div class="proof-number gradient-text">24/7</div>
+                    <div class="proof-label" data-translate="proof-4">Automatisé</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Carousel Section -->
+    <section class="features-carousel" id="features">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-badge" data-translate="features-badge">Fonctionnalités</div>
+                <h2 data-translate="features-title">
+                    Tout ce qu'il faut pour vendre<br>
+                    <span class="gradient-text">comme un professionnel</span>
+                </h2>
+                <p data-translate="features-subtitle">
+                    Dashboard complet, analytics en temps réel, paiements crypto automatiques.
+                    Tout ce que vous attendez d'une plateforme SaaS moderne.
+                </p>
+            </div>
+
+            <!-- Horizontal Scroll Features -->
+            <div class="features-scroll-container">
+                <div class="features-scroll">
+                    <div class="feature-card-large">
+                        <div class="feature-visual crypto-visual">
+                            <!-- Placeholder pour image -->
+                            <div class="visual-placeholder">
+                                <div class="crypto-icons-stack">
+                                    <div class="crypto-badge btc">BTC</div>
+                                    <div class="crypto-badge eth">ETH</div>
+                                    <div class="crypto-badge usdt">USDT</div>
+                                    <div class="crypto-badge usdc">USDC</div>
+                                    <div class="crypto-badge ltc">LTC</div>
+                                    <div class="crypto-badge xrp">XRP</div>
+                                    <div class="crypto-badge sol">SOL</div>
+                                    <div class="crypto-badge bnb">BNB</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="feature-content">
+                            <div class="feature-badge premium" data-translate="feature-badge-1">Essentiel</div>
+                            <h3 data-translate="feature-1-title">Paiements crypto natifs</h3>
+                            <p data-translate="feature-1-text">
+                                Intégration NowPayments pour accepter Bitcoin, Ethereum, USDT et USDC.
+                                Confirmations rapides, sécurisées et irréversibles. Vos clients paient en crypto,
+                                vous recevez en crypto.
+                            </p>
+                            <ul class="feature-checklist">
+                                <li><span data-translate="feature-1-li-1">Bitcoin (BTC)</span></li>
+                                <li><span data-translate="feature-1-li-2">Ethereum (ETH)</span></li>
+                                <li><span data-translate="feature-1-li-3">Tether USDT</span></li>
+                                <li><span data-translate="feature-1-li-4">USD Coin (USDC)</span></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="feature-card-large">
+                        <div class="feature-visual dashboard-visual">
+                            <div class="visual-placeholder">
+                                <div class="dashboard-preview">
+                                    <div class="dashboard-stat">
+                                        <div class="stat-label">Ventes ce mois</div>
+                                        <div class="stat-value">147</div>
+                                    </div>
+                                    <div class="dashboard-chart">
+                                        <div class="chart-bar" style="height: 40%"></div>
+                                        <div class="chart-bar" style="height: 65%"></div>
+                                        <div class="chart-bar" style="height: 45%"></div>
+                                        <div class="chart-bar" style="height: 80%"></div>
+                                        <div class="chart-bar" style="height: 95%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="feature-content">
+                            <div class="feature-badge purple" data-translate="feature-badge-2">Analytics</div>
+                            <h3 data-translate="feature-2-title">Dashboard vendeur professionnel</h3>
+                            <p data-translate="feature-2-text">
+                                Suivez vos ventes, revenus et performances en temps réel. Analytics détaillés par
+                                produit, période et source. Exportez vos données. Tout directement dans Telegram.
+                            </p>
+                            <ul class="feature-checklist">
+                                <li><span data-translate="feature-2-li-1">Analytics en temps réel</span></li>
+                                <li><span data-translate="feature-2-li-2">Export de données</span></li>
+                                <li><span data-translate="feature-2-li-3">Graphiques détaillés</span></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="feature-card-large">
+                        <div class="feature-visual automation-visual">
+                            <div class="visual-placeholder">
+                                <div class="automation-flow">
+                                    <div class="flow-step">Paiement</div>
+                                    <div class="flow-arrow">→</div>
+                                    <div class="flow-step">Confirmation</div>
+                                    <div class="flow-arrow">→</div>
+                                    <div class="flow-step">Livraison</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="feature-content">
+                            <div class="feature-badge blue" data-translate="feature-badge-3">Automatisation</div>
+                            <h3 data-translate="feature-3-title">Livraison automatique instantanée</h3>
+                            <p data-translate="feature-3-text">
+                                Dès la confirmation du paiement crypto, vos fichiers sont automatiquement livrés
+                                à l'acheteur. Aucune intervention manuelle. Le bot gère tout, 24/7.
+                            </p>
+                            <ul class="feature-checklist">
+                                <li><span data-translate="feature-3-li-1">100% automatisé</span></li>
+                                <li><span data-translate="feature-3-li-2">Livraison en secondes</span></li>
+                                <li><span data-translate="feature-3-li-3">Disponible 24/7</span></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="feature-card-large">
+                        <div class="feature-visual security-visual">
+                            <div class="visual-placeholder">
+                                <div class="security-badge">
+                                    <div class="shield-icon"></div>
+                                    <div class="security-text">Sans KYC</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="feature-content">
+                            <div class="feature-badge green" data-translate="feature-badge-4">Sécurité</div>
+                            <h3 data-translate="feature-4-title">Anonymat et vie privée préservés</h3>
+                            <p data-translate="feature-4-text">
+                                Pas de KYC, pas de documents, pas de vérification bancaire. Votre vie privée et
+                                celle de vos clients est totalement préservée. Seules vos adresses crypto sont nécessaires.
+                            </p>
+                            <ul class="feature-checklist">
+                                <li><span data-translate="feature-4-li-1">Aucun KYC requis</span></li>
+                                <li><span data-translate="feature-4-li-2">Données minimales</span></li>
+                                <li><span data-translate="feature-4-li-3">Anonymat garanti</span></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scroll Indicators -->
+            <div class="scroll-indicators">
+                <button class="scroll-btn prev" aria-label="Précédent">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                <div class="scroll-dots">
+                    <span class="dot active"></span>
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                </div>
+                <button class="scroll-btn next" aria-label="Suivant">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Platform Section (Visual with Image Placeholder) -->
+    <section class="platform-section" id="platform">
+        <div class="container">
+            <div class="platform-grid">
+                <div class="platform-content">
+                    <div class="section-badge" data-translate="platform-badge">Plateforme</div>
+                    <h2 data-translate="platform-title">
+                        Vendez là où votre<br>
+                        <span class="gradient-text">audience se trouve déjà</span>
+                    </h2>
+                    <p data-translate="platform-text">
+                        Plus de 800 millions d'utilisateurs actifs sur Telegram. Pourquoi les rediriger vers
+                        un site externe quand vous pouvez vendre directement dans leur messagerie préférée ?
+                    </p>
+
+                    <div class="platform-features">
+                        <div class="platform-feature">
+                            <div class="platform-feature-content">
+                                <h4 data-translate="platform-feat-1-title">Intégration native</h4>
+                                <p data-translate="platform-feat-1-text">Interface utilisateur entièrement dans Telegram. Aucun site externe requis pour vos clients.</p>
+                            </div>
+                        </div>
+                        <div class="platform-feature">
+                            <div class="platform-feature-content">
+                                <h4 data-translate="platform-feat-2-title">Processus d'achat simplifié</h4>
+                                <p data-translate="platform-feat-2-text">Navigation par catégories ou recherche par ID. Paiement crypto et livraison automatique.</p>
+                            </div>
+                        </div>
+                        <div class="platform-feature">
+                            <div class="platform-feature-content">
+                                <h4 data-translate="platform-feat-3-title">Notifications en temps réel</h4>
+                                <p data-translate="platform-feat-3-text">Alertes instantanées pour chaque vente et confirmation de paiement via messages Telegram.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="platform-visual">
+                    <!-- Large image placeholder -->
+                    <div class="platform-image-container">
+                        <div class="platform-image">
+                            <div class="image-placeholder">
+                                <div class="telegram-interface">
+                                    <div class="interface-header">Telegram</div>
+                                    <div class="interface-body">
+                                        <div class="product-card-demo">
+                                            <div class="demo-image"></div>
+                                            <div class="demo-title">Guide Complet Trading 2025</div>
+                                            <div class="demo-price">49.99€</div>
+                                            <div class="demo-button">Acheter maintenant</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="platform-gradient"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section class="pricing-section" id="pricing">
+        <div class="container">
+            <div class="section-header centered">
+                <div class="section-badge" data-translate="pricing-badge">Tarification</div>
+                <h2 data-translate="pricing-title">
+                    Transparent. Simple.<br>
+                    <span class="gradient-text">Gratuitement. Pour toujours.</span>
+                </h2>
+                <p data-translate="pricing-subtitle">
+                    Pas de frais cachés, pas de surprise. Vous gardez 100% de ce que vos clients payent.
+                </p>
+            </div>
+
+            <div class="pricing-card-premium">
+                <div class="pricing-glow"></div>
+                <div class="pricing-content">
+                    <div class="pricing-header">
+                        <div class="pricing-badge-top" data-translate="pricing-plan-badge">Beta gratuite</div>
+                        <h3 data-translate="pricing-plan-name">Compte Vendeur Ferus</h3>
+                        <div class="pricing-amount">
+                            <div class="price-main">
+                                <span class="currency">€</span>
+                                <span class="value" data-translate="pricing-value">0</span>
+                            </div>
+                            <div class="price-period" data-translate="pricing-period">/ à vie</div>
+                        </div>
+                        <p class="pricing-description" data-translate="pricing-desc">
+                            Créez votre compte, ajoutez vos produits, commencez à vendre.
+                            <strong>Sans frais vendeur.</strong> Jamais.
+                        </p>
+                    </div>
+
+                    <div class="pricing-features-list">
+                        <div class="feature-group">
+                            <div class="group-title" data-translate="pricing-group-1">✨ Fonctionnalités incluses</div>
+                            <div class="pricing-feature">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M16.6 7L8.5 15L4 10.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span data-translate="pricing-feat-1">Produits numériques illimités</span>
+                            </div>
+                            <div class="pricing-feature">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M16.6 7L8.5 15L4 10.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span data-translate="pricing-feat-2">Paiements BTC, ETH, USDT, USDC</span>
+                            </div>
+                            <div class="pricing-feature">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M16.6 7L8.5 15L4 10.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span data-translate="pricing-feat-3">Dashboard analytics complet</span>
+                            </div>
+                            <div class="pricing-feature">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M16.6 7L8.5 15L4 10.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span data-translate="pricing-feat-4">Livraison automatique 24/7</span>
+                            </div>
+                            <div class="pricing-feature">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M16.6 7L8.5 15L4 10.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span data-translate="pricing-feat-5">Système de notation et avis</span>
+                            </div>
+                            <div class="pricing-feature">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M16.6 7L8.5 15L4 10.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span data-translate="pricing-feat-6">Support client intégré</span>
+                            </div>
+                            <div class="pricing-feature">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M16.6 7L8.5 15L4 10.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span data-translate="pricing-feat-7">Multi-comptes vendeur</span>
+                            </div>
+                            <div class="pricing-feature">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M16.6 7L8.5 15L4 10.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span data-translate="pricing-feat-8">Récupération de compte par email</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pricing-cta-container">
+                        <a href="https://t.me/FerusBot" class="btn btn-primary btn-pricing">
+                            <span data-translate="pricing-cta">Créer mon compte gratuitement</span>
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </a>
+                        <p class="pricing-note" data-translate="pricing-note">
+                            Aucune carte bancaire · Aucun engagement · Gratuit pour toujours
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pricing-faq">
+                <div class="faq-item">
+                    <strong data-translate="faq-1-q">Comment Ferus gagne de l'argent ?</strong>
+                    <p data-translate="faq-1-a">Les acheteurs payent 2.78% de frais. Vous, en tant que vendeur, ne payez rien.</p>
+                </div>
+                <div class="faq-item">
+                    <strong data-translate="faq-2-q">Quand vais-je recevoir mes paiements ?</strong>
+                    <p data-translate="faq-2-a">Immédiatement après confirmation blockchain (quelques minutes). Directement sur votre wallet crypto.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Final CTA Section -->
+    <section class="cta-final">
+        <div class="cta-background">
+            <div class="cta-orb"></div>
+        </div>
+        <div class="container">
+            <div class="cta-content-centered">
+                <h2 data-translate="cta-title">
+                    Prêt à transformer votre audience<br>
+                    <span class="gradient-text">en revenus crypto ?</span>
+                </h2>
+                <p data-translate="cta-text">
+                    Rejoignez les créateurs qui ont choisi la liberté. Inscription en 2 minutes,
+                    premiers revenus possibles dès aujourd'hui.
+                </p>
+                <a href="https://t.me/FerusBot" class="btn btn-primary btn-cta-final">
+                    <span data-translate="cta-button">Démarrer maintenant — C'est gratuit</span>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </a>
+                <div class="cta-reassurance">
+                    <div class="reassurance-item">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <path d="M13.3 5L6.5 12L3 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span data-translate="cta-check-1">Sans carte bancaire</span>
+                    </div>
+                    <div class="reassurance-item">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <path d="M13.3 5L6.5 12L3 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span data-translate="cta-check-2">Sans engagement</span>
+                    </div>
+                    <div class="reassurance-item">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <path d="M13.3 5L6.5 12L3 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span data-translate="cta-check-3">0% frais vendeur</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <span class="logo-text">FERUS</span>
+                    </div>
+                    <p class="footer-tagline" data-translate="footer-tagline">
+                        La marketplace crypto native qui respecte les créateurs.
+                    </p>
+                    <div class="footer-social">
+                        <a href="https://t.me/FerusBot" aria-label="Telegram" class="social-link">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18 1.897-.962 6.502-1.359 8.627-.168.9-.5 1.201-.82 1.23-.697.064-1.226-.461-1.901-.903-1.056-.692-1.653-1.123-2.678-1.799-1.185-.781-.417-1.21.258-1.911.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.139-5.062 3.345-.479.329-.913.489-1.302.481-.428-.009-1.252-.241-1.865-.44-.752-.244-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.831-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635.099-.002.321.023.465.14.121.099.155.232.171.326.016.094.036.307.02.473z"/>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="footer-links-group">
+                    <h4 data-translate="footer-product">Produit</h4>
+                    <ul>
+                        <li><a href="#features" data-translate="footer-features">Fonctionnalités</a></li>
+                        <li><a href="#platform" data-translate="footer-platform">Plateforme</a></li>
+                        <li><a href="#pricing" data-translate="footer-pricing">Tarifs</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer-links-group">
+                    <h4 data-translate="footer-support">Support</h4>
+                    <ul>
+                        <li><a href="https://t.me/FerusBot" data-translate="footer-contact">Contacter</a></li>
+                        <li><a href="https://t.me/FerusBot" data-translate="footer-help">Aide</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="footer-bottom">
+                <p class="footer-copyright" data-translate="footer-copyright">
+                    © 2025 Ferus. Tous droits réservés.
+                </p>
+                <p class="footer-disclaimer" data-translate="footer-disclaimer">
+                    Ferus est une plateforme technique en version beta. Les vendeurs sont seuls responsables
+                    de leurs produits et du respect des lois applicables. La plateforme agit uniquement comme
+                    infrastructure de paiement et de livraison.
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/script.js"></script>
+</body>
+</html>

@@ -29,9 +29,12 @@ class SupportTicketRepository:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         try:
+            # Include tickets where user is creator OR seller (recipient)
             cursor.execute(
-                'SELECT * FROM support_tickets WHERE user_id = ? ORDER BY created_at DESC LIMIT ?',
-                (user_id, limit),
+                '''SELECT * FROM support_tickets
+                   WHERE user_id = ? OR seller_user_id = ?
+                   ORDER BY created_at DESC LIMIT ?''',
+                (user_id, user_id, limit),
             )
             return [dict(r) for r in cursor.fetchall()]
         except sqlite3.Error:

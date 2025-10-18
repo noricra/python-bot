@@ -16,3 +16,20 @@ class PayoutService:
     def mark_all_pending_as_completed(self) -> bool:
         return self.repo.mark_all_pending_as_completed()
 
+    def get_pending_payouts(self, limit: int = None) -> List:
+        """Get pending payouts"""
+        return self.repo.get_pending_payouts(limit)
+
+    def get_all_payouts(self) -> List:
+        """Get all payouts"""
+        return self.repo.get_all_payouts()
+
+    def mark_all_payouts_paid(self) -> int:
+        """Mark all pending payouts as paid and return count"""
+        # Get count first
+        pending = self.repo.get_pending_payouts()
+        count = len(pending)
+        # Mark as completed
+        self.repo.mark_all_pending_as_completed()
+        return count
+

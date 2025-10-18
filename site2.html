@@ -1,0 +1,1781 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitrefill Pro - The Future of Crypto Gift Card Technology</title>
+    <meta name="description" content="Révolutionnez votre approche des cartes cadeaux crypto avec notre formation exclusive et programme d'affiliation automatisé.">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --neon-green: #00ff88;
+            --bright-green: #00ff00;
+            --lime-green: #32ff7e;
+            --dark-green: #00cc6a;
+            --bg-dark: #0a0f1b;
+            --bg-darker: #050810;
+            --bg-card: #0d1520;
+            --bg-card-hover: #111928;
+            --text-white: #ffffff;
+            --text-gray: #94a3b8;
+            --text-light: #cbd5e1;
+            --border-color: #1e293b;
+            --gradient-green: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+            --gradient-neon: linear-gradient(135deg, #00ff88 0%, #32ff7e 50%, #00cc6a 100%);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-darker);
+            color: var(--text-white);
+            line-height: 1.6;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Typography */
+        h1, h2, h3, h4 {
+            line-height: 1.2;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        h1 {
+            font-size: clamp(3rem, 7vw, 5rem);
+            margin-bottom: 1.5rem;
+        }
+
+        h2 {
+            font-size: clamp(2.5rem, 5vw, 4rem);
+            margin-bottom: 1.5rem;
+        }
+
+        h3 {
+            font-size: clamp(1.5rem, 3vw, 2rem);
+            margin-bottom: 1rem;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-gray);
+            line-height: 1.8;
+            font-size: 1.1rem;
+        }
+
+        /* Layout */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 40px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 20px;
+            }
+        }
+
+        /* Header */
+        header {
+            background: rgba(5, 8, 16, 0.95);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(0, 255, 136, 0.1);
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .header-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+    padding-right: 150px;
+}
+
+header nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 0;
+}
+
+        header.scrolled {
+            background: rgba(5, 8, 16, 0.98);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 0;
+        }
+
+        .logo {
+            font-size: 2rem;
+            font-weight: 900;
+            background: var(--gradient-neon);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-transform: uppercase;
+            letter-spacing: -0.03em;
+            margin-left: -100px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 3rem;
+            list-style: none;
+            align-items: center;
+            margin-top: 5px;
+        
+        }
+
+        .nav-links a {
+            color: var(--text-gray);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+            position: relative;
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .nav-links a:hover {
+            color: var(--neon-green);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            padding: 16px 40px;
+            border-radius: 50px;
+            font-weight: 700;
+            text-decoration: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            border: none;
+            font-size: 1rem;
+            position: relative;
+            overflow: hidden;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .btn-primary {
+            background: var(--neon-green);
+            color: var(--bg-dark);
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 50px rgba(0, 255, 136, 0.7);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--neon-green);
+            border: 2px solid var(--neon-green);
+            box-shadow: inset 0 0 0 0 var(--neon-green);
+        }
+
+        .btn-secondary:hover {
+            box-shadow: inset 0 0 0 2px var(--neon-green);
+            background: rgba(0, 255, 136, 0.1);
+        }
+
+        /* Language Switcher */
+        .language-switcher {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+            display: flex;
+            background: rgba(13, 21, 32, 0.9);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            border-radius: 50px;
+            padding: 4px;
+            backdrop-filter: blur(10px);
+        }
+
+        .language-switcher button {
+            background: transparent;
+            border: none;
+            color: var(--text-gray);
+            padding: 8px 16px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .language-switcher button.active {
+            background: var(--neon-green);
+            color: var(--bg-dark);
+        }
+
+        .language-switcher button:hover:not(.active) {
+            color: var(--neon-green);
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            background: radial-gradient(ellipse at center, rgba(0, 255, 136, 0.1) 0%, transparent 70%),
+                        linear-gradient(180deg, var(--bg-darker) 0%, var(--bg-dark) 100%);
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(0, 255, 136, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 136, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: grid-move 20s linear infinite;
+        }
+
+        @keyframes grid-move {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 900px;
+            padding-top: 100px;
+        }
+
+        .hero h1 {
+            font-weight: 900;
+            margin-bottom: 2rem;
+            animation: fadeInUp 0.8s ease;
+        }
+
+        .hero-subtitle {
+            font-size: 1.5rem;
+            color: var(--text-gray);
+            margin-bottom: 3rem;
+            animation: fadeInUp 0.8s ease 0.2s both;
+            max-width: 700px;
+        }
+
+        .hero-cta {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+            animation: fadeInUp 0.8s ease 0.4s both;
+        }
+
+        .hero-visual {
+            position: absolute;
+            right: -10%;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 700px;
+            height: 700px;
+            z-index: 1;
+        }
+
+        /* Animated Particles */
+        .particles-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: var(--neon-green);
+            border-radius: 50%;
+            opacity: 0;
+            animation: float-particle 15s infinite;
+        }
+
+        .particle:nth-child(1) { left: 10%; animation-delay: 0s; }
+        .particle:nth-child(2) { left: 20%; animation-delay: 1s; }
+        .particle:nth-child(3) { left: 30%; animation-delay: 2s; }
+        .particle:nth-child(4) { left: 40%; animation-delay: 3s; }
+        .particle:nth-child(5) { left: 50%; animation-delay: 4s; }
+        .particle:nth-child(6) { left: 60%; animation-delay: 5s; }
+        .particle:nth-child(7) { left: 70%; animation-delay: 6s; }
+        .particle:nth-child(8) { left: 80%; animation-delay: 7s; }
+        .particle:nth-child(9) { left: 90%; animation-delay: 8s; }
+        .particle:nth-child(10) { left: 95%; animation-delay: 9s; }
+
+        @keyframes float-particle {
+            0% {
+                bottom: -10%;
+                opacity: 0;
+                transform: translateX(0) scale(0);
+            }
+            10% {
+                opacity: 1;
+                transform: translateX(10px) scale(1);
+            }
+            20% {
+                transform: translateX(-10px) scale(1.2);
+            }
+            30% {
+                transform: translateX(15px) scale(0.8);
+            }
+            40% {
+                transform: translateX(-5px) scale(1.1);
+            }
+            50% {
+                transform: translateX(10px) scale(0.9);
+            }
+            60% {
+                transform: translateX(-15px) scale(1.2);
+            }
+            70% {
+                transform: translateX(5px) scale(0.7);
+            }
+            80% {
+                transform: translateX(-10px) scale(1);
+            }
+            90% {
+                opacity: 0.5;
+                transform: translateX(0) scale(0.5);
+            }
+            100% {
+                bottom: 110%;
+                opacity: 0;
+                transform: translateX(0) scale(0);
+            }
+        }
+
+        /* Floating Cards Animation */
+        .floating-cards {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transform-style: preserve-3d;
+            animation: rotate-cards 20s linear infinite;
+        }
+
+        .floating-card {
+            position: absolute;
+            width: 200px;
+            height: 120px;
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.1) 0%, rgba(0, 255, 136, 0.05) 100%);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            border-radius: 16px;
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: var(--neon-green);
+            opacity: 0.7;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
+        }
+
+        .floating-card:nth-child(1) {
+            top: 20%;
+            left: 10%;
+            animation: float-card-1 8s ease-in-out infinite;
+        }
+
+        .floating-card:nth-child(2) {
+            top: 60%;
+            left: 30%;
+            animation: float-card-2 10s ease-in-out infinite;
+        }
+
+        .floating-card:nth-child(3) {
+            top: 40%;
+            left: 60%;
+            animation: float-card-3 12s ease-in-out infinite;
+        }
+
+        @keyframes float-card-1 {
+            0%, 100% { transform: translate(0, 0) rotate(5deg); }
+            50% { transform: translate(30px, -30px) rotate(-5deg); }
+        }
+
+        @keyframes float-card-2 {
+            0%, 100% { transform: translate(0, 0) rotate(-5deg); }
+            50% { transform: translate(-40px, 20px) rotate(5deg); }
+        }
+
+        @keyframes float-card-3 {
+            0%, 100% { transform: translate(0, 0) rotate(3deg); }
+            50% { transform: translate(20px, 40px) rotate(-3deg); }
+        }
+
+        @keyframes rotate-cards {
+            from { transform: rotateY(0deg); }
+            to { transform: rotateY(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.3; }
+            50% { transform: scale(1.1); opacity: 0.5; }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Core Functionality Section */
+        .core-section {
+            padding: 120px 0;
+            background: var(--bg-dark);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .core-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -50%;
+            width: 200%;
+            height: 100%;
+            background: radial-gradient(circle at center, rgba(0, 255, 136, 0.05) 0%, transparent 50%);
+            animation: rotate-slow 30s linear infinite;
+        }
+
+        @keyframes rotate-slow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 5rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .section-header h2 {
+            font-weight: 900;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-header p {
+            font-size: 1.25rem;
+            color: var(--text-light);
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .core-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .core-card {
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.1) 0%, rgba(0, 255, 136, 0.05) 100%);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 24px;
+            padding: 3rem;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .core-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at top left, rgba(0, 255, 136, 0.1) 0%, transparent 50%);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .core-card:hover {
+            transform: translateY(-10px) scale(1.02);
+            border-color: var(--neon-green);
+            box-shadow: 0 20px 60px rgba(0, 255, 136, 0.2);
+        }
+
+        .core-card:hover::before {
+            opacity: 1;
+        }
+
+        .core-card h3 {
+            color: var(--text-white);
+            margin-bottom: 1.5rem;
+            font-size: 1.75rem;
+        }
+
+        .core-card p {
+            font-size: 1.1rem;
+            line-height: 1.8;
+        }
+
+        /* Features Section */
+        .features {
+            padding: 120px 0;
+            background: linear-gradient(180deg, var(--bg-dark) 0%, var(--bg-darker) 100%);
+            position: relative;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 3rem;
+            margin-top: 5rem;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 2.5rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: var(--gradient-neon);
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+            transform-origin: left;
+        }
+
+        .feature-card:hover {
+            background: var(--bg-card-hover);
+            transform: translateY(-5px);
+            border-color: rgba(0, 255, 136, 0.3);
+        }
+
+        .feature-card:hover::after {
+            transform: scaleX(1);
+        }
+
+        .feature-icon {
+            width: 70px;
+            height: 70px;
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            color: var(--neon-green);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-icon::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(0, 255, 136, 0.2) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .feature-card:hover .feature-icon::before {
+            opacity: 1;
+        }
+
+        /* Icon placeholders */
+        .icon-placeholder {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--neon-green) 0%, var(--dark-green) 100%);
+            mask-size: contain;
+            mask-repeat: no-repeat;
+            mask-position: center;
+            -webkit-mask-size: contain;
+            -webkit-mask-repeat: no-repeat;
+            -webkit-mask-position: center;
+        }
+
+        .icon-book {
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M4 19.5A2.5 2.5 0 0 1 6.5 17H20'%3E%3C/path%3E%3Cpath d='M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z'%3E%3C/path%3E%3C/svg%3E");
+            -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M4 19.5A2.5 2.5 0 0 1 6.5 17H20'%3E%3C/path%3E%3Cpath d='M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z'%3E%3C/path%3E%3C/svg%3E");
+        }
+
+        .icon-bot {
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Crect x='3' y='11' width='18' height='10' rx='2' ry='2'%3E%3C/rect%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'%3E%3C/path%3E%3C/svg%3E");
+            -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Crect x='3' y='11' width='18' height='10' rx='2' ry='2'%3E%3C/rect%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'%3E%3C/path%3E%3C/svg%3E");
+        }
+
+        .icon-support {
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z'%3E%3C/path%3E%3Cpath d='M12 16v-4m0-4h.01'%3E%3C/path%3E%3C/svg%3E");
+            -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z'%3E%3C/path%3E%3Cpath d='M12 16v-4m0-4h.01'%3E%3C/path%3E%3C/svg%3E");
+        }
+
+        .icon-money {
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'%3E%3C/path%3E%3C/svg%3E");
+            -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'%3E%3C/path%3E%3C/svg%3E");
+        }
+
+        .icon-update {
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16'%3E%3C/path%3E%3C/svg%3E");
+            -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16'%3E%3C/path%3E%3C/svg%3E");
+        }
+
+        .icon-lightning {
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpolygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'%3E%3C/polygon%3E%3C/svg%3E");
+            -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpolygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'%3E%3C/polygon%3E%3C/svg%3E");
+        }
+
+        /* Features Grid with background patterns */
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 2.5rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(0, 255, 136, 0.05) 0%, transparent 50%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .feature-card:hover::before {
+            opacity: 1;
+        }
+
+        /* Visual Sections */
+        .visual-section {
+            padding: 120px 0;
+            background: var(--bg-darker);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .visual-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5rem;
+            align-items: center;
+        }
+
+        .visual-text h2 {
+            margin-bottom: 2rem;
+        }
+
+        .visual-text p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+        }
+
+        .visual-image {
+            position: relative;
+            height: 600px;
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.1) 0%, transparent 100%);
+            border-radius: 24px;
+            overflow: hidden;
+        }
+
+        .visual-image::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            height: 80%;
+            background: radial-gradient(circle, rgba(0, 255, 136, 0.2) 0%, transparent 70%);
+            filter: blur(60px);
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        /* Benefits Grid */
+        .benefits-section {
+            padding: 120px 0;
+            background: var(--bg-dark);
+            position: relative;
+        }
+
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 3rem;
+            margin-top: 5rem;
+        }
+
+        .benefit-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 3rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .benefit-card:hover {
+            transform: translateX(10px);
+            border-color: rgba(0, 255, 136, 0.3);
+            background: var(--bg-card-hover);
+        }
+
+        .benefit-icon {
+            width: 60px;
+            height: 60px;
+            background: rgba(0, 255, 136, 0.1);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--neon-green);
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .benefit-content h3 {
+            color: var(--text-white);
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        /* Partner Section */
+        .partner-section {
+            padding: 120px 0;
+            background: linear-gradient(180deg, var(--bg-darker) 0%, var(--bg-dark) 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .partner-hero {
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.1) 0%, rgba(0, 255, 136, 0.05) 100%);
+            border: 2px solid rgba(0, 255, 136, 0.3);
+            border-radius: 32px;
+            padding: 5rem;
+            text-align: center;
+            margin: 4rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .partner-hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(0, 255, 136, 0.1) 0%, transparent 50%);
+            animation: rotate-slow 20s linear infinite;
+        }
+
+        .partner-hero h3 {
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+            background: var(--gradient-neon);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            position: relative;
+            z-index: 1;
+        }
+
+        .commission-showcase {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 2rem;
+            margin: 5rem 0;
+        }
+
+        .commission-card {
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 20px;
+            padding: 2.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .commission-card::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(0, 255, 136, 0.2) 0%, transparent 70%);
+            filter: blur(40px);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .commission-card:hover {
+            transform: translateY(-10px);
+            border-color: var(--neon-green);
+        }
+
+        .commission-card:hover::before {
+            opacity: 1;
+        }
+
+        .commission-amount {
+            font-size: 3rem;
+            font-weight: 900;
+            color: var(--neon-green);
+            margin-bottom: 0.5rem;
+        }
+
+        /* Pricing Section */
+        .pricing {
+            padding: 120px 0;
+            background: var(--bg-dark);
+            position: relative;
+        }
+
+        .pricing-wrapper {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .pricing-card {
+            background: linear-gradient(135deg, var(--bg-card) 0%, rgba(13, 21, 32, 0.8) 100%);
+            border: 2px solid var(--neon-green);
+            border-radius: 32px;
+            padding: 4rem;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 100px rgba(0, 255, 136, 0.2);
+        }
+
+        .pricing-card::before {
+            content: '';
+            position: absolute;
+            top: -100px;
+            right: -100px;
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(0, 255, 136, 0.1) 0%, transparent 70%);
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(-30px, 30px); }
+        }
+
+        .price-header {
+            text-align: center;
+            margin-bottom: 3rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .price-tag {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .price-current {
+            font-size: 5rem;
+            font-weight: 900;
+            background: var(--gradient-neon);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .price-original {
+            font-size: 2.5rem;
+            color: var(--text-gray);
+            text-decoration: line-through;
+            opacity: 0.5;
+        }
+
+        .price-features {
+            list-style: none;
+            margin: 3rem 0;
+            position: relative;
+            z-index: 1;
+        }
+
+        .price-features li {
+            padding: 1.25rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-size: 1.1rem;
+            color: var(--text-light);
+        }
+
+        .price-features li::before {
+            content: '✓';
+            color: var(--neon-green);
+            font-weight: bold;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            background: rgba(0, 255, 136, 0.1);
+            border-radius: 50%;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            padding: 120px 0;
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.05) 0%, transparent 100%);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta-section::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(0, 255, 136, 0.1) 0%, transparent 70%);
+            filter: blur(100px);
+        }
+
+        .cta-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .cta-section h2 {
+            margin-bottom: 2rem;
+            font-size: clamp(2rem, 4vw, 3.5rem);
+        }
+
+        .cta-section p {
+            font-size: 1.5rem;
+            margin-bottom: 3rem;
+            color: var(--text-light);
+        }
+
+        /* Footer */
+        footer {
+            background: var(--bg-darker);
+            padding: 80px 0 40px;
+            border-top: 1px solid rgba(0, 255, 136, 0.1);
+        }
+
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 4rem;
+            margin-bottom: 4rem;
+        }
+
+        .footer-section h4 {
+            color: var(--neon-green);
+            margin-bottom: 1.5rem;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .footer-links {
+            list-style: none;
+        }
+
+        .footer-links a {
+            color: var(--text-gray);
+            text-decoration: none;
+            display: block;
+            padding: 0.5rem 0;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .footer-links a:hover {
+            color: var(--neon-green);
+            transform: translateX(5px);
+        }
+
+        .footer-bottom {
+            text-align: center;
+            padding-top: 3rem;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-gray);
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 1024px) {
+            .visual-content {
+                grid-template-columns: 1fr;
+                gap: 3rem;
+            }
+
+            .visual-image {
+                height: 400px;
+            }
+
+            .benefits-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .commission-showcase {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+            
+            h1 {
+                font-size: 3rem;
+            }
+            
+            h2 {
+                font-size: 2.5rem;
+            }
+            
+            .hero-cta {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .core-grid,
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .pricing-card {
+                padding: 3rem 2rem;
+            }
+            
+            .price-current {
+                font-size: 4rem;
+            }
+
+            .partner-hero {
+                padding: 3rem 2rem;
+            }
+
+            .commission-showcase {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Animations and Effects */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .glow {
+            position: relative;
+        }
+
+        .glow::after {
+            content: '';
+            position: absolute;
+            top: -3px;
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
+            background: var(--gradient-neon);
+            border-radius: inherit;
+            filter: blur(15px);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: -1;
+        }
+
+        .glow:hover::after {
+            opacity: 0.6;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-darker);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 136, 0.3);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 255, 136, 0.5);
+        }
+
+        /* Loading Animation */
+        .loading-dots {
+            display: inline-flex;
+            gap: 0.3rem;
+        }
+
+        .loading-dots span {
+            width: 8px;
+            height: 8px;
+            background: var(--neon-green);
+            border-radius: 50%;
+            animation: loading 1.4s ease-in-out infinite;
+        }
+
+        .loading-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .loading-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes loading {
+            0%, 80%, 100% {
+                transform: scale(0);
+                opacity: 0.5;
+            }
+            40% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Language Switcher -->
+    <div class="language-switcher">
+        <button class="lang-btn active" data-lang="fr">FR</button>
+        <button class="lang-btn" data-lang="en">EN</button>
+    </div>
+
+    <!-- Header -->
+    <header id="header">
+        <nav class="header-inner">
+            <div class="logo">FERUS TECH</div>
+            <ul class="nav-links">
+                <li><a href="#home" data-translate="nav-home">Accueil</a></li>
+                <li><a href="#core" data-translate="nav-training">Formation</a></li>
+                <li><a href="#partner" data-translate="nav-partner">Partenariat</a></li>
+                <li><a href="#pricing" data-translate="nav-pricing">Tarifs</a></li>
+                <li><a href="https://t.me/VotreBotTelegram" class="btn btn-primary" data-translate="nav-bot">Accéder au Bot</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero" id="home">
+        <div class="container">
+            <div class="hero-content">
+                <h1 data-translate="hero-title">The Future of<br>Crypto Gift Card<br>Technology</h1>
+                <p class="hero-subtitle" data-translate="hero-subtitle">
+                    Marketplace décentralisée. Paiements crypto instantanés, 0% frais vendeur, intégration Telegram native.
+                <div class="hero-cta">
+                    <a href="https://t.me/VotreBotTelegram" class="btn btn-primary btn-large glow" data-translate="hero-cta-start">Commencer Maintenant</a>
+                    <a href="#partner" class="btn btn-secondary btn-large" data-translate="hero-cta-partner">Devenir Partenaire</a>
+                </div>
+            </div>
+        </div>
+        <div class="hero-visual">
+            <div class="particles-container">
+                <div class="particle"></div>
+                <div class="particle"></div>
+                <div class="particle"></div>
+                <div class="particle"></div>
+                <div class="particle"></div>
+                <div class="particle"></div>
+                <div class="particle"></div>
+                <div class="particle"></div>
+                <div class="particle"></div>
+                <div class="particle"></div>
+            </div>
+            <div class="floating-cards">
+                <div class="floating-card">$</div>
+                <div class="floating-card">€</div>
+                <div class="floating-card">₿</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Core Functionality -->
+    <section class="core-section fade-in" id="core">
+        <div class="container">
+            <div class="section-header">
+                <h2 data-translate="core-title">Core Functionality</h2>
+                <p data-translate="core-subtitle">Une formation complète qui révolutionne votre approche des cartes cadeaux crypto</p>
+            </div>
+            <div class="core-grid">
+               <div class="core-card">
+                    <h3 data-translate="core-card1-title">Créez votre boutique</h3>
+                    <p data-translate="core-card1-text">Uploadez vos fichiers (PDF, ZIP, MP4). Définissez prix et descriptions. Votre catalogue est en ligne en 5 minutes.</p>
+                </div>
+                <div class="core-card">
+                    <h3 data-translate="core-card2-title">Recevez vos paiements</h3>
+                    <p data-translate="core-card2-text">Les acheteurs paient en crypto (BTC, ETH, USDT, USDC, LTC, XRP, SOL, BNB). Vous recevez 100% directement sur votre wallet Solana.</p>
+                </div>
+                <div class="core-card">
+                    <h3 data-translate="core-card3-title">Livraison automatique</h3>
+                    <p data-translate="core-card3-text">Pas de gestion manuelle. Le bot envoie les fichiers automatiquement après chaque achat confirmé.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Visual Section -->
+    <section class="visual-section fade-in">
+        <div class="container">
+            <div class="visual-content">
+                <div class="visual-text">
+                    <h2 data-translate="visual-title">Advanced Technology<br>Capabilities</h2>
+                    <p data-translate="visual-text">Notre système utilise les dernières technologies pour automatiser complètement le processus de gestion des cartes cadeaux et du programme d'affiliation.</p>
+                    <a href="#features" class="btn btn-primary" data-translate="visual-cta">Découvrir les Features</a>
+                </div>
+                <div class="visual-image"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Grid -->
+    <section class="features fade-in" id="features">
+        <div class="container">
+            <div class="section-header">
+                <h2 data-translate="features-title">Tout Ce Dont Vous Avez Besoin</h2>
+                <p data-translate="features-subtitle">Un écosystème complet pour maîtriser les cartes cadeaux crypto</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <div class="icon-placeholder icon-book"></div>
+                    </div>
+                    <h3 data-translate="feature1-title">Documentation Complète</h3>
+                    <p data-translate="feature1-text">15 pages de contenu exclusif avec méthodes détaillées et cas pratiques.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <div class="icon-placeholder icon-bot"></div>
+                    </div>
+                    <h3 data-translate="feature2-title">Automatisation Totale</h3>
+                    <p data-translate="feature2-text">Bot Telegram qui gère tout : ventes, commissions, statistiques en temps réel.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <div class="icon-placeholder icon-support"></div>
+                    </div>
+                    <h3 data-translate="feature3-title">Support VIP</h3>
+                    <p data-translate="feature3-text">Assistance prioritaire par email pendant 30 jours pour votre succès.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <div class="icon-placeholder icon-money"></div>
+                    </div>
+                    <h3 data-translate="feature4-title">Commission 42%</h3>
+                    <p data-translate="feature4-text">Le taux de commission le plus élevé du marché, payé automatiquement.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <div class="icon-placeholder icon-update"></div>
+                    </div>
+                    <h3 data-translate="feature5-title">Updates à Vie</h3>
+                    <p data-translate="feature5-text">Restez à jour avec toutes les évolutions de la plateforme Bitrefill.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <div class="icon-placeholder icon-lightning"></div>
+                    </div>
+                    <h3 data-translate="feature6-title">Accès Instantané</h3>
+                    <p data-translate="feature6-text">Formation disponible immédiatement après paiement via le bot.</p>
+                </div>
+            </div>
+        </div>
+    </section></a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Partner Section -->
+    <section class="partner-section fade-in" id="partner">
+        <div class="container">
+            <div class="section-header">
+                <h2>Programme Partenaire<br>Révolutionnaire</h2>
+                <p>Transformez cette formation en source de revenus récurrents automatisés</p>
+            </div>
+            
+            <div class="partner-hero">
+                <h3>42% de Commission</h3>
+                <p style="font-size: 1.5rem; color: var(--text-light); position: relative; z-index: 1;">
+                    24€ par vente • Paiements automatiques • Dashboard en temps réel
+                </p>
+            </div>
+
+            <div class="commission-showcase">
+                <div class="commission-card">
+                    <div class="commission-amount">240€</div>
+                    <p class="commission-label">10 ventes/mois</p>
+                </div>
+                <div class="commission-card">
+                    <div class="commission-amount">600€</div>
+                    <p class="commission-label">25 ventes/mois</p>
+                </div>
+                <div class="commission-card">
+                    <div class="commission-amount">1,200€</div>
+                    <p class="commission-label">50 ventes/mois</p>
+                </div>
+                <div class="commission-card">
+                    <div class="commission-amount">2,400€</div>
+                    <p class="commission-label">100 ventes/mois</p>
+                </div>
+            </div>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🚀</div>
+                    <h3>Automatisation Complète</h3>
+                    <p>Le bot gère tout automatiquement : tracking des ventes, calcul et versement des commissions.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>Analytics en Temps Réel</h3>
+                    <p>Dashboard complet dans Telegram pour suivre vos performances et optimiser vos ventes.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon"> <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="4.5" y="6" width="15" height="12" rx="2" ry="2"/>
+                        <line x1="4" y1="10.5" x2="19" y2="10.5"/>
+                    </svg></div>
+                    <h3>Outils Marketing Pro</h3>
+                    <p>Code unique, textes de vente optimisés et stratégies éprouvées pour maximiser vos conversions.</p>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 4rem;">
+                <a href="https://t.me/VotreBotTelegram" class="btn btn-primary btn-large glow">Activer Mon Compte Partenaire</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section class="pricing fade-in" id="pricing">
+        <div class="container">
+            <div class="section-header">
+                <h2>Investissement Unique<br>Revenus à Vie</h2>
+            </div>
+            <div class="pricing-wrapper">
+                <div class="pricing-card">
+                    <div class="price-header">
+                        <h3>Formation Bitrefill Pro</h3>
+                        <div class="price-tag">
+                            <span class="price-current">57€</span>
+                            <span class="price-original">97€</span>
+                        </div>
+                        <p style="color: var(--neon-green); font-size: 1.2rem;">Économisez 40€ - Offre Limitée</p>
+                    </div>
+                    <ul class="price-features">
+                        <li>Guide PDF complet de 15 pages</li>
+                        <li>Accès au bot Telegram automatisé</li>
+                        <li>Support technique premium 30 jours</li>
+                        <li>Programme d'affiliation 42% intégré</li>
+                        <li>Mises à jour gratuites à vie</li>
+                        <li>Communauté privée d'entraide</li>
+                        <li>Garantie satisfait ou remboursé 14 jours</li>
+                    </ul>
+                    <div style="text-align: center;">
+                        <a href="https://t.me/VotreBotTelegram" class="btn btn-primary btn-large glow">Obtenir la Formation</a>
+                        <p style="margin-top: 1.5rem; color: var(--text-gray); font-size: 0.9rem;">
+                            Paiement sécurisé : Bitcoin, Ethereum, USDT, USDC
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section fade-in">
+        <div class="container">
+            <div class="cta-content">
+                <h2>Ready to Transform<br>Your Crypto Journey?</h2>
+                <p>Rejoignez des centaines d'utilisateurs qui génèrent déjà des revenus automatiques</p>
+                <a href="https://t.me/VotreBotTelegram" class="btn btn-primary btn-large glow">Get Started Today</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>Formation</h4>
+                    <ul class="footer-links">
+                        <li><a href="#core">Contenu inclus</a></li>
+                        <li><a href="#features">Fonctionnalités</a></li>
+                        <li><a href="#pricing">Tarification</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Programme Partenaire</h4>
+                    <ul class="footer-links">
+                        <li><a href="#partner">Commission 42%</a></li>
+                        <li><a href="#partner">Outils marketing</a></li>
+                        <li><a href="#partner">Dashboard stats</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Support</h4>
+                    <ul class="footer-links">
+                        <li><a href="mailto:support@bitrefillpro.com">Email support</a></li>
+                        <li><a href="https://t.me/VotreBotTelegram">Bot Telegram</a></li>
+                        <li><a href="#">Documentation</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Légal</h4>
+                    <ul class="footer-links">
+                        <li><a href="#">Conditions d'utilisation</a></li>
+                        <li><a href="#">Politique de confidentialité</a></li>
+                        <li><a href="#">Mentions légales</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2025 Bitrefill Pro - The Future of Crypto Gift Card Technology</p>
+                <p style="margin-top: 1rem; font-size: 0.875rem; max-width: 800px; margin-left: auto; margin-right: auto;">
+                    Cette formation est indépendante et n'est pas affiliée à Bitrefill.com. 
+                    Le partage non autorisé est interdit et sera poursuivi. 
+                    La promotion avec votre code partenaire est encouragée et rémunérée à 42%.
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+
+const translations = {
+    fr: {
+        "nav-home": "Accueil",
+        "nav-features": "Fonctionnalités",
+        "nav-sellers": "Vendre",
+        "nav-pricing": "Tarifs",
+        "nav-bot": "Ouvrir le bot",
+        "hero-title": "Vendez vos formations,<br>PDF, vidéos, ebooks",
+        "hero-subtitle": "Marketplace Telegram pour créateurs. Recevez 100% du prix en crypto. Aucune commission, aucun KYC.",
+        "hero-cta-start": "Créer ma boutique",
+        "hero-cta-buy": "Voir le catalogue",
+        "core-title": "Comment ça marche",
+        "core-subtitle": "Créez votre boutique et commencez à vendre en quelques minutes",
+        "core-card1-title": "Créez votre boutique",
+        "core-card1-text": "Uploadez vos fichiers (PDF, ZIP, MP4). Définissez prix et descriptions. Votre catalogue est en ligne en 5 minutes.",
+        "core-card2-title": "Recevez vos paiements",
+        "core-card2-text": "Les acheteurs paient en crypto (BTC, ETH, USDT, USDC, LTC, XRP, SOL, BNB). Vous recevez 100% directement sur votre wallet Solana.",
+        "core-card3-title": "Livraison automatique",
+        "core-card3-text": "Pas de gestion manuelle. Le bot envoie les fichiers automatiquement après chaque achat confirmé.",
+        "visual-title": "Système<br>automatisé",
+        "visual-text": "Infrastructure complète pour vendeurs : gestion des produits, analytics détaillées, paiements automatiques en Solana.",
+        "visual-cta": "Voir les fonctionnalités",
+        "features-title": "Pourquoi vendre sur Ferus",
+        "features-subtitle": "Marketplace conçue pour les créateurs de contenu numérique",
+        "feature1-title": "Vendez vos connaissances",
+        "feature1-text": "Formations, tutoriels, templates, ebooks. Tout format numérique est accepté. Fixez vos prix librement.",
+        "feature2-title": "Aucune vérification d'identité",
+        "feature2-text": "Créez votre compte avec juste un email. Pas de documents, pas de KYC, pas de compte bancaire requis.",
+        "feature3-title": "Paiements crypto instantanés",
+        "feature3-text": "Acceptez BTC, ETH, USDT, USDC, LTC, XRP, SOL, BNB. Conversion automatique en Solana sur votre wallet.",
+        "feature4-title": "Zéro frais de plateforme",
+        "feature4-text": "Pas de commission sur les ventes. Pas d'abonnement mensuel. Vous gardez 100% de chaque transaction.",
+        "feature5-title": "Analytics en temps réel",
+        "feature5-text": "Suivez vos ventes, revenus, produits les plus vendus. Graphiques détaillés accessibles dans Telegram.",
+        "feature6-title": "Support client intégré",
+        "feature6-text": "Système de tickets pour vos acheteurs. Gérez les demandes directement depuis le bot Telegram.",
+        "sellers-title": "Qui peut vendre sur Ferus",
+        "sellers-subtitle": "Créateurs, formateurs, développeurs. Si vous avez du contenu numérique à vendre.",
+        "sellers-card1-title": "Formateurs & Coachs",
+        "sellers-card1-text": "Vendez vos PDF de formation, vidéos de cours, templates professionnels. Parfait pour monétiser votre expertise.",
+        "sellers-card2-title": "Développeurs & Designers",
+        "sellers-card2-text": "Scripts, plugins, UI kits, mockups. Marketplace internationale avec paiements crypto immédiats.",
+        "sellers-card3-title": "Créateurs de contenu",
+        "sellers-card3-text": "Ebooks, guides, presets, ressources. Créez votre boutique en 5 min, recevez 100% de vos ventes sans commission.",
+        "sellers-cta": "Créer ma boutique",
+        "stat1-number": "500+",
+        "stat1-label": "Produits vendus",
+        "stat2-number": "50+",
+        "stat2-label": "Vendeurs actifs",
+        "stat3-number": "8",
+        "stat3-label": "Cryptomonnaies",
+        "stat4-number": "0%",
+        "stat4-label": "Commission",
+        "preview-sales": "Ventes ce mois",
+        "preview-revenue": "Revenus totaux",
+        "pricing-title": "Utilisation gratuite",
+        "pricing-subtitle": "Aucun abonnement. Aucune commission. Version beta.",
+        "pricing-buyer-title": "Acheter",
+        "pricing-seller-title": "Vendre",
+        "pricing-price": "Gratuit",
+        "pricing-badge": "Recommandé",
+        "pricing-commission": "de commission",
+        "pricing-buy1": "Catalogue de formations numériques",
+        "pricing-buy2": "Paiement en 8 cryptomonnaies",
+        "pricing-buy3": "Livraison automatique instantanée",
+        "pricing-buy4": "Support par tickets",
+        "pricing-sell1": "Boutique gratuite",
+        "pricing-sell2": "100% des revenus",
+        "pricing-sell3": "Dashboard analytics complète",
+        "pricing-sell4": "Paiements directs en crypto",
+        "pricing-buy-cta": "Explorer le catalogue",
+        "pricing-sell-cta": "Créer ma boutique",
+        "pricing-footer": "BTC · ETH · USDT · USDC · LTC · XRP · SOL · BNB",
+        "cta-title": "Prêt à démarrer ?",
+        "cta-subtitle": "Choisissez votre parcours",
+        "cta-seller": "Créer ma boutique",
+        "cta-buyer": "Explorer le catalogue",
+        "cta-footer": "Plateforme en beta. Gratuit et sans engagement.",
+        "footer-copyright": "© 2025 Ferus · Marketplace décentralisée pour produits numériques"
+    },
+    en: {
+        "nav-home": "Home",
+        "nav-features": "Features",
+        "nav-sellers": "Sell",
+        "nav-pricing": "Pricing",
+        "nav-bot": "Open bot",
+        "hero-title": "Sell your courses,<br>PDFs, videos, ebooks",
+        "hero-subtitle": "Telegram marketplace for creators. Receive 100% of the price in crypto. No commission, no KYC.",
+        "hero-cta-start": "Create my shop",
+        "hero-cta-buy": "View catalog",
+        "core-title": "How it works",
+        "core-subtitle": "Create your shop and start selling in minutes",
+        "core-card1-title": "Create your shop",
+        "core-card1-text": "Upload your files (PDF, ZIP, MP4). Set prices and descriptions. Your catalog is online in 5 minutes.",
+        "core-card2-title": "Receive your payments",
+        "core-card2-text": "Buyers pay in crypto (BTC, ETH, USDT, USDC, LTC, XRP, SOL, BNB). You receive 100% directly to your Solana wallet.",
+        "core-card3-title": "Automatic delivery",
+        "core-card3-text": "No manual management. The bot sends files automatically after each confirmed purchase.",
+        "visual-title": "Automated<br>system",
+        "visual-text": "Complete infrastructure for sellers: product management, detailed analytics, automatic Solana payments.",
+        "visual-cta": "View features",
+        "features-title": "Why sell on Ferus",
+        "features-subtitle": "Marketplace designed for digital content creators",
+        "feature1-title": "Sell your knowledge",
+        "feature1-text": "Courses, tutorials, templates, ebooks. Any digital format accepted. Set your prices freely.",
+        "feature2-title": "No identity verification",
+        "feature2-text": "Create your account with just an email. No documents, no KYC, no bank account required.",
+        "feature3-title": "Instant crypto payments",
+        "feature3-text": "Accept BTC, ETH, USDT, USDC, LTC, XRP, SOL, BNB. Automatic conversion to Solana on your wallet.",
+        "feature4-title": "Zero platform fees",
+        "feature4-text": "No commission on sales. No monthly subscription. You keep 100% of every transaction.",
+        "feature5-title": "Real-time analytics",
+        "feature5-text": "Track your sales, revenue, best-selling products. Detailed charts accessible in Telegram.",
+        "feature6-title": "Integrated customer support",
+        "feature6-text": "Ticket system for your buyers. Manage requests directly from the Telegram bot.",
+        "sellers-title": "Who can sell on Ferus",
+        "sellers-subtitle": "Creators, trainers, developers. If you have digital content to sell.",
+        "sellers-card1-title": "Trainers & Coaches",
+        "sellers-card1-text": "Sell your training PDFs, course videos, professional templates. Perfect for monetizing your expertise.",
+        "sellers-card2-title": "Developers & Designers",
+        "sellers-card2-text": "Scripts, plugins, UI kits, mockups. International marketplace with immediate crypto payments.",
+        "sellers-card3-title": "Content Creators",
+        "sellers-card3-text": "Ebooks, guides, presets, resources. Create your shop in 5 min, receive 100% of your sales without commission.",
+        "sellers-cta": "Create my shop",
+        "stat1-number": "500+",
+        "stat1-label": "Products sold",
+        "stat2-number": "50+",
+        "stat2-label": "Active sellers",
+        "stat3-number": "8",
+        "stat3-label": "Cryptocurrencies",
+        "stat4-number": "0%",
+        "stat4-label": "Commission",
+        "preview-sales": "Sales this month",
+        "preview-revenue": "Total revenue",
+        "pricing-title": "Free to use",
+        "pricing-subtitle": "No subscription. No commission. Beta version.",
+        "pricing-buyer-title": "Buy",
+        "pricing-seller-title": "Sell",
+        "pricing-price": "Free",
+        "pricing-badge": "Recommended",
+        "pricing-commission": "commission",
+        "pricing-buy1": "Digital courses catalog",
+        "pricing-buy2": "Payment in 8 cryptocurrencies",
+        "pricing-buy3": "Instant automatic delivery",
+        "pricing-buy4": "Ticket support",
+        "pricing-sell1": "Free shop",
+        "pricing-sell2": "100% of revenue",
+        "pricing-sell3": "Complete analytics dashboard",
+        "pricing-sell4": "Direct crypto payments",
+        "pricing-buy-cta": "Explore catalog",
+        "pricing-sell-cta": "Create my shop",
+        "pricing-footer": "BTC · ETH · USDT · USDC · LTC · XRP · SOL · BNB",
+        "cta-title": "Ready to start?",
+        "cta-subtitle": "Choose your path",
+        "cta-seller": "Create my shop",
+        "cta-buyer": "Explore catalog",
+        "cta-footer": "Beta platform. Free and no commitment.",
+        "footer-copyright": "© 2025 Ferus · Decentralized marketplace for digital products"
+    }
+};
+
+let currentLang = 'fr';
+
+function translatePage(lang) {
+    currentLang = lang;
+    const elements = document.querySelectorAll('[data-translate]');
+    elements.forEach(element => {
+        const key = element.getAttribute('data-translate');
+        if (translations[lang][key]) {
+            element.innerHTML = translations[lang][key];
+        }
+    });
+
+    document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+    const activeBtn = document.querySelector(`[data-lang="${lang}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    localStorage.setItem('preferredLanguage', lang);
+}
+
+document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const lang = this.getAttribute('data-lang');
+        translatePage(lang);
+    });
+});
+
+const savedLang = localStorage.getItem('preferredLanguage') || 'fr';
+translatePage(savedLang);
+        // Header scroll effect
+        window.addEventListener('scroll', function() {
+            const header = document.getElementById('header');
+            if (window.scrollY > 50) {
+                header.classList.add('scrolled');
+            } else {
+                header.classList.remove('scrolled');
+            }
+        });
+
+        // Smooth scrolling
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    const headerOffset = 100;
+                    const elementPosition = target.getBoundingClientRect().top;
+                    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+                    window.scrollTo({
+                        top: offsetPosition,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+
+        // Fade in animation on scroll
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -100px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.fade-in').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Parallax effect
+        window.addEventListener('scroll', () => {
+            const scrolled = window.pageYOffset;
+            const parallax = document.querySelector('.hero-visual');
+            if (parallax) {
+                parallax.style.transform = `translateY(${scrolled * 0.5}px)`;
+            }
+        });
+
+        // Add loading animation to buttons
+        document.querySelectorAll('.btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                if (this.href && this.href.includes('t.me')) {
+                    const originalText = this.innerHTML;
+                    this.innerHTML = '<span class="loading-dots"><span></span><span></span><span></span></span>';
+                    setTimeout(() => {
+                        this.innerHTML = originalText;
+                    }, 2000);
+                }
+            });
+        });
+
+        
+    </script>
+</body>
+</html>

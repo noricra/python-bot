@@ -12,9 +12,9 @@ def setup_temp_db():
     os.close(fd)
     conn = get_sqlite_connection(path)
     cur = conn.cursor()
-    cur.execute('CREATE TABLE users (user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, language_code TEXT, is_seller BOOLEAN DEFAULT FALSE, seller_name TEXT, seller_bio TEXT, seller_solana_address TEXT, seller_rating REAL DEFAULT 0.0, total_sales INTEGER DEFAULT 0, total_revenue REAL DEFAULT 0.0, recovery_email TEXT, recovery_code_hash TEXT, is_partner BOOLEAN DEFAULT FALSE, partner_code TEXT UNIQUE, referred_by TEXT, total_commission REAL DEFAULT 0.0, email TEXT)')
+    cur.execute('CREATE TABLE users (user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, language_code TEXT, is_seller BOOLEAN DEFAULT FALSE, seller_name TEXT, seller_bio TEXT, seller_rating REAL DEFAULT 0.0, total_sales INTEGER DEFAULT 0, total_revenue REAL DEFAULT 0.0, email TEXT, recovery_code_hash TEXT, password_salt TEXT, password_hash TEXT)')
     cur.execute('CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id TEXT UNIQUE, seller_user_id INTEGER, title TEXT NOT NULL, description TEXT, category TEXT, price_eur REAL NOT NULL, price_usd REAL NOT NULL, main_file_path TEXT, file_size_mb REAL, views_count INTEGER DEFAULT 0, sales_count INTEGER DEFAULT 0, rating REAL DEFAULT 0.0, reviews_count INTEGER DEFAULT 0, status TEXT DEFAULT "active", created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
-    cur.execute('CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id TEXT UNIQUE, buyer_user_id INTEGER, product_id TEXT, seller_user_id INTEGER, product_price_eur REAL, platform_commission REAL, seller_revenue REAL, partner_commission REAL DEFAULT 0.0, crypto_currency TEXT, crypto_amount REAL, payment_status TEXT DEFAULT "pending", nowpayments_id TEXT, payment_address TEXT, partner_code TEXT, commission_paid BOOLEAN DEFAULT FALSE, file_delivered BOOLEAN DEFAULT FALSE, download_count INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, completed_at TIMESTAMP)')
+    cur.execute('CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id TEXT UNIQUE, buyer_user_id INTEGER, product_id TEXT, seller_user_id INTEGER, product_price_eur REAL, seller_revenue REAL, payment_currency TEXT, crypto_amount REAL, payment_status TEXT DEFAULT "pending", nowpayments_id TEXT, payment_address TEXT, file_delivered BOOLEAN DEFAULT FALSE, download_count INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, completed_at TIMESTAMP)')
     conn.commit()
     conn.close()
     return path
@@ -58,7 +58,7 @@ def test_order_repo_insert_and_get():
     UserRepository(db).add_user(20, 'seller', 'Seller', 'fr')
     ProductRepository(db).insert_product({'product_id': 'TBF-2501-ZZZ999','seller_user_id': 20,'title': 'Cours', 'description': 'X', 'category': 'Dev', 'price_eur': 20.0, 'price_usd': 22.0, 'main_file_path': '/tmp/f.pdf', 'file_size_mb': 1.0, 'status': 'active'})
     orepo = OrderRepository(db)
-    ok = orepo.insert_order({'order_id': 'ORD1','buyer_user_id': 10,'product_id': 'TBF-2501-ZZZ999','seller_user_id': 20,'product_price_eur': 20.0,'platform_commission': 1.0,'seller_revenue': 18.0,'partner_commission': 1.0,'crypto_currency': 'usdc','crypto_amount': 5.0,'payment_status': 'pending','nowpayments_id': 'NP1','payment_address': '0xabc','partner_code': None})
+    ok = orepo.insert_order({'order_id': 'ORD1','buyer_user_id': 10,'product_id': 'TBF-2501-ZZZ999','seller_user_id': 20,'product_title': 'Cours','product_price_eur': 20.0,'seller_revenue': 19.0,'crypto_currency': 'usdc','crypto_amount': 5.0,'payment_status': 'pending','nowpayments_id': 'NP1','payment_address': '0xabc'})
     assert ok
     fetched = orepo.get_order_by_id('ORD1')
     assert fetched is not None
