@@ -76,6 +76,12 @@ class BuyHandlers:
     # V2 WORKFLOW: HELPER FUNCTIONS (Refactored to eliminate code duplication)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    def _format_number(self, num: int) -> str:
+        """Format numbers: 1234 → 1.2k, 12345 → 12.3k"""
+        if num >= 1000:
+            return f"{num/1000:.1f}k"
+        return str(num)
+
     def _build_product_caption(self, product: Dict, mode: str = 'short', lang: str = 'fr') -> str:
         """
         Build product caption with smart truncation
@@ -91,107 +97,98 @@ class BuyHandlers:
         caption = ""
 
         if mode == 'short':
-            # V2 SPEC ÉTAPE 1: Card Courte (Carousel) - Structure complète avec STATS
+            # V2 REDESIGN: Card Courte (Carousel) - Design épuré et moderne
 
             category = product.get('category', 'Produits')
             title = product['title']
             price = product['price_eur']
             seller = product.get('seller_name', 'Vendeur')
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 1. TITRE (CENTRÉ, GROS, GRAS)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # Utiliser espaces pour centrage visuel approximatif
-            caption += f"<b>{title}</b>\n"
-            caption += f"<i>Vendu par </i><b>{seller} </b>\n" if lang == 'fr' else f"<i>Sold by </i><b>{seller}</b> \n"
-
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 3. SÉPARATEUR VISUEL
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += "────────────────\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 2. PRIX + VENDEUR (prix en gras)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += f"💶 <b>{price:.2f} €</b>\n\n" 
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 4. STATS
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
             rating = product.get('rating', 0)
             reviews_count = product.get('reviews_count', 0)
             sales = product.get('sales_count', 0)
             views = product.get('views_count', 0)
-            caption += f"⭐ {rating:.1f}/5 ({reviews_count} avis)  •  {sales} 🛒  •   {views} 👁️\n\n"
-
- 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 6. MÉTADONNÉES (catégorie + taille)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             file_size = product.get('file_size_mb', 0)
-            caption += f"📂 {category}  •  📁 {file_size:.1f} MB\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 7. SÉPARATEUR + RECHERCHE PAR ID
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            search_hint = f"────────────────\n🔍 <i>Vous avez un ID ? Entrez-le  </i>" if lang == 'fr' else f"────────────────\n🔍 <i>Have an ID ? Enter it directly </i>"
+            # Format numbers (1234 → 1.2k)
+            sales_formatted = self._format_number(sales) if sales >= 1000 else str(sales)
+            views_formatted = self._format_number(views)
+
+            # Titre (BOLD uniquement)
+            caption += f"<b>{title}</b>\n"
+
+            # Vendeur (texte normal, pas de bold ni italique)
+            caption += f"par {seller}\n\n" if lang == 'fr' else f"by {seller}\n\n"
+
+            # Prix (BOLD uniquement, pas d'emoji)
+            caption += f"<b>{price:.2f} €</b>\n"
+
+            # Séparateur #1
+            caption += "────────────────\n"
+
+            # Stats avec labels texte complets
+            stats_text = f"⭐ {rating:.1f}/5 ({reviews_count})" if lang == 'fr' else f"⭐ {rating:.1f}/5 ({reviews_count})"
+            stats_text += f" • {sales_formatted} ventes" if lang == 'fr' else f" • {sales_formatted} sales"
+            stats_text += f" • {views_formatted} vues\n\n" if lang == 'fr' else f" • {views_formatted} views\n\n"
+            caption += stats_text
+
+            # Métadonnées (catégorie + taille)
+            caption += f"📂 {category} • 📁 {file_size:.1f} MB\n"
+
+            # Séparateur #2
+            caption += "────────────────\n"
+
+            # Message recherche ID (gardé pour visibilité)
+            search_hint = "🔍 Vous avez un ID ? Entrez-le directement" if lang == 'fr' else "🔍 Have an ID? Enter it directly"
             caption += search_hint
 
         elif mode == 'full':
-            # FULL caption for details page - HTML
+            # V2 REDESIGN: Card Complète (Détails) - Design épuré avec description
 
             category = product.get('category', 'Produits')
             title = product['title']
             price = product['price_eur']
             seller = product.get('seller_name', 'Vendeur')
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 1. TITRE (CENTRÉ, GROS, GRAS)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # Utiliser espaces pour centrage visuel approximatif
-            title_centered = f"{title}"
-            caption += f"<b>{title_centered}</b> • Vendu par <b>{seller} </b>\n" if lang == 'fr' else f"<b>{title_centered}</b> • Sold by par <b>{seller}</b> \n"
-
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 3. SÉPARATEUR VISUEL
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += "────────────────\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 2. PRIX + VENDEUR (prix en gras)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += f"💶 <b>{price:.2f} €</b>\n\n" 
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 4. STATS
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
             rating = product.get('rating', 0)
             reviews_count = product.get('reviews_count', 0)
             sales = product.get('sales_count', 0)
             views = product.get('views_count', 0)
-            caption += f"⭐ {rating:.1f}/5 ({reviews_count} avis)  •  {sales} 🛒  •   {views} 👁️\n\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 5. DESCRIPTION
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-            if product.get('description'):
-                caption += f" <b>DESCRIPTION</b> : \n    {product['description']}\n\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 6. MÉTADONNÉES (catégorie + taille)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             file_size = product.get('file_size_mb', 0)
-            caption += f"📂 {category}  •  📁 {file_size:.1f} MB\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 7. SÉPARATEUR + RECHERCHE PAR ID
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            search_hint = f"────────────────\n🔍 <i>Vous avez un ID ? Entrez-le  </i>" if lang == 'fr' else f"────────────────\n🔍 <i>Have an ID ? Enter it directly </i>"
+            # Format numbers (1234 → 1.2k)
+            sales_formatted = self._format_number(sales) if sales >= 1000 else str(sales)
+            views_formatted = self._format_number(views)
+
+            # Titre (BOLD uniquement)
+            caption += f"<b>{title}</b>\n"
+
+            # Vendeur (texte normal, pas de bold ni italique)
+            caption += f"par {seller}\n\n" if lang == 'fr' else f"by {seller}\n\n"
+
+            # Prix (BOLD uniquement, pas d'emoji)
+            caption += f"<b>{price:.2f} €</b>\n"
+
+            # Séparateur #1
+            caption += "────────────────\n"
+
+            # Stats avec labels texte complets
+            stats_text = f"⭐ {rating:.1f}/5 ({reviews_count})" if lang == 'fr' else f"⭐ {rating:.1f}/5 ({reviews_count})"
+            stats_text += f" • {sales_formatted} ventes" if lang == 'fr' else f" • {sales_formatted} sales"
+            stats_text += f" • {views_formatted} vues\n\n" if lang == 'fr' else f" • {views_formatted} views\n\n"
+            caption += stats_text
+
+            # Description avec label italique discret (MODE FULL uniquement)
+            if product.get('description'):
+                about_label = "<i>À propos :</i>\n" if lang == 'fr' else "<i>About:</i>\n"
+                caption += f"{about_label}{product['description']}\n\n"
+
+            # Métadonnées (catégorie + taille)
+            caption += f"📂 {category} • 📁 {file_size:.1f} MB\n"
+
+            # Séparateur #2
+            caption += "────────────────\n"
+
+            # Message recherche ID (gardé pour visibilité)
+            search_hint = "🔍 Vous avez un ID ? Entrez-le directement" if lang == 'fr' else "🔍 Have an ID? Enter it directly"
             caption += search_hint
 
 
@@ -247,79 +244,71 @@ class BuyHandlers:
         keyboard = []
         product_id = product['product_id']
 
-        # Row 1: 🛒 BIG BUY BUTTON (main CTA - present in ALL contexts)
-        # V2: Include context (category + index) for proper "Précédent" navigation
+        # Row 1: BIG BUY BUTTON EN VALEUR (CTA principal ultra-visible)
         if context == 'carousel' and category_key is not None and index is not None:
             buy_callback = f'buy_product_{product_id}_{category_key}_{index}'
         else:
             buy_callback = f'buy_product_{product_id}'
 
+        # Format avec emojis autour pour mettre EN VALEUR
+        buy_label = f"💳 ACHETER - {product['price_eur']}€ 💳" if lang == 'fr' else f"💳 BUY - {product['price_eur']}€ 💳"
+
         keyboard.append([
-            InlineKeyboardButton(
-                f"🛒 ACHETER - {product['price_eur']}€" if lang == 'fr' else f"🛒 BUY - {product['price_eur']}€",
-                callback_data=buy_callback
-            )
+            InlineKeyboardButton(buy_label, callback_data=buy_callback)
         ])
 
         if context == 'carousel':
-            # Row 2: Product navigation (⬅️ 1/5 ➡️)
+            # Row 2: Product navigation (⬅️ 1/5 ➡️) - Asymétrique sans boutons vides
             nav_row = []
+
+            # Ajouter flèche gauche SI pas au début
             if index > 0:
                 nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'carousel_{category_key}_{index-1}'))
-            else:
-                nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
 
+            # Toujours afficher compteur au centre
             nav_row.append(InlineKeyboardButton(
                 f"{index+1}/{total_products}",
                 callback_data='noop'
             ))
 
+            # Ajouter flèche droite SI pas à la fin
             if index < total_products - 1:
                 nav_row.append(InlineKeyboardButton("➡️", callback_data=f'carousel_{category_key}_{index+1}'))
-            else:
-                nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
 
             keyboard.append(nav_row)
 
-            # Row 3: Détails (full width)
+            # Row 3: Détails (sans emoji superflu)
             keyboard.append([
-                InlineKeyboardButton("ℹ️ Détails" if lang == 'fr' else "ℹ️ Details",
+                InlineKeyboardButton("Détails" if lang == 'fr' else "Details",
                                    callback_data=f'product_details_{product_id}_{category_key}_{index}')
             ])
 
-            # Row 4: Category navigation (V2 NEW FEATURE)
+            # Row 4: Category navigation - Asymétrique sans boutons vides
             if all_categories and len(all_categories) > 1:
                 cat_nav_row = []
                 current_cat_index = next((i for i, cat in enumerate(all_categories) if cat == category_key), 0)
 
-                # Previous category (emoji flèche comme navigation produits)
+                # Flèche gauche SI pas première catégorie
                 if current_cat_index > 0:
                     prev_cat = all_categories[current_cat_index - 1]
                     cat_nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'navcat_{prev_cat}'))
-                else:
-                    cat_nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
 
-                # Category name (truncated)
+                # Nom catégorie (tronqué si nécessaire)
                 cat_display = category_key
                 if len(cat_display) > 20:
                     cat_display = cat_display[:18] + "…"
-                cat_nav_row.append(InlineKeyboardButton(
-                    cat_display,
-                    callback_data='noop'
-                ))
+                cat_nav_row.append(InlineKeyboardButton(cat_display, callback_data='noop'))
 
-                # Next category (emoji flèche comme navigation produits)
+                # Flèche droite SI pas dernière catégorie
                 if current_cat_index < len(all_categories) - 1:
                     next_cat = all_categories[current_cat_index + 1]
                     cat_nav_row.append(InlineKeyboardButton("➡️", callback_data=f'navcat_{next_cat}'))
-                else:
-                    cat_nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
 
                 keyboard.append(cat_nav_row)
 
-            # Row 5: HOME (V2: back to main menu, not categories screen)
+            # Row 5: Accueil (sans emoji superflu)
             keyboard.append([
-                InlineKeyboardButton("🏠 HOME" if lang == 'en' else "🏠 ACCUEIL",
+                InlineKeyboardButton("Accueil" if lang == 'fr' else "Home",
                                    callback_data='back_main')
             ])
 
@@ -334,47 +323,47 @@ class BuyHandlers:
                 reviews_callback = f'reviews_{product_id}_0'
 
             keyboard.append([
-                InlineKeyboardButton("⭐ Avis" if lang == 'fr' else "⭐ Reviews",
+                InlineKeyboardButton("Avis" if lang == 'fr' else "Reviews",
                                    callback_data=reviews_callback),
-                InlineKeyboardButton("👁️ Preview" if lang == 'fr' else "👁️ Preview",
+                InlineKeyboardButton("Aperçu" if lang == 'fr' else "Preview",
                                    callback_data=preview_callback)
             ])
 
             # Row 3: Réduire (back to carousel - V2 NEW FEATURE)
             if category_key is not None and index is not None:
                 keyboard.append([
-                    InlineKeyboardButton("📋 Réduire" if lang == 'fr' else "📋 Collapse",
+                    InlineKeyboardButton("Résumé" if lang == 'fr' else "Summary",
                                        callback_data=f'collapse_{product_id}_{category_key}_{index}')
                 ])
                 # Row 4: Précédent (back to carousel with context)
                 keyboard.append([
-                    InlineKeyboardButton("🔙 Précédent" if lang == 'fr' else "🔙 Back",
+                    InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                        callback_data=f'carousel_{category_key}_{index}')
                 ])
             else:
                 # No context: back to main menu
                 keyboard.append([
-                    InlineKeyboardButton("🔙 Précédent" if lang == 'fr' else "🔙 Back",
+                    InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                        callback_data='back_main')
                 ])
 
         elif context == 'reviews':
             # Row 2: Précédent (back to details)
             keyboard.append([
-                InlineKeyboardButton("🔙 Précédent" if lang == 'fr' else "🔙 Back",
+                InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                    callback_data=f'product_details_{product_id}')
             ])
 
         elif context == 'search':
             # Simple layout for search results
             keyboard.append([
-                InlineKeyboardButton("ℹ️ Détails" if lang == 'fr' else "ℹ️ Details",
+                InlineKeyboardButton("Détails" if lang == 'fr' else "Details",
                                    callback_data=f'product_details_{product_id}'),
-                InlineKeyboardButton("👁️ Preview" if lang == 'fr' else "👁️ Preview",
+                InlineKeyboardButton("Aperçu" if lang == 'fr' else "Preview",
                                    callback_data=f'product_preview_{product_id}')
             ])
             keyboard.append([
-                InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back",
+                InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                    callback_data='back_main')
             ])
 
@@ -427,7 +416,7 @@ class BuyHandlers:
                         callback_data='sell_menu'
                     )],
                     [InlineKeyboardButton(
-                        "🔙 Retour" if lang == 'fr' else "🔙 Back",
+                        "Retour" if lang == 'fr' else "Back",
                         callback_data='back_main'
                     )]
                 ])
@@ -455,14 +444,14 @@ class BuyHandlers:
             await query.edit_message_text(
                 prompt_text,
                 reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour",
+                    [[InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                            callback_data='buy_menu')]]),
                 parse_mode='Markdown')
         except Exception:
             await query.message.reply_text(
                 prompt_text,
                 reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour",
+                    [[InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                            callback_data='buy_menu')]]),
                 parse_mode='Markdown')
 
@@ -523,7 +512,7 @@ class BuyHandlers:
                     query,
                     "❌ Service d'avis temporairement indisponible" if lang == 'fr' else "❌ Reviews service temporarily unavailable",
                     InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back",
+                        InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                            callback_data=f'product_details_{product_id}')
                     ]])
                 )
@@ -621,12 +610,12 @@ class BuyHandlers:
 
             keyboard.append([
                 InlineKeyboardButton(
-                    f"🛒 ACHETER - {product['price_eur']}€" if lang == 'fr' else f"🛒 BUY - {product['price_eur']}€",
+                    f"💳 ACHETER - {product['price_eur']}€ 💳" if lang == 'fr' else f"💳 BUY - {product['price_eur']}€ 💳",
                     callback_data=buy_callback
                 )
             ])
 
-            # Row 2: Pagination (if needed)
+            # Row 2: Pagination (if needed) - Asymétrique sans boutons vides
             if total_reviews > reviews_per_page:
                 nav_row = []
                 total_pages = (total_reviews + reviews_per_page - 1) // reviews_per_page
@@ -639,20 +628,19 @@ class BuyHandlers:
                     prev_callback = f'reviews_{product_id}_{page-1}'
                     next_callback = f'reviews_{product_id}_{page+1}'
 
+                # Ajouter flèche gauche SI pas première page
                 if page > 0:
                     nav_row.append(InlineKeyboardButton("⬅️", callback_data=prev_callback))
-                else:
-                    nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
 
+                # Toujours afficher compteur au centre
                 nav_row.append(InlineKeyboardButton(
                     f"{page+1}/{total_pages}",
                     callback_data='noop'
                 ))
 
+                # Ajouter flèche droite SI pas dernière page
                 if page < total_pages - 1:
                     nav_row.append(InlineKeyboardButton("➡️", callback_data=next_callback))
-                else:
-                    nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
 
                 keyboard.append(nav_row)
 
@@ -663,7 +651,7 @@ class BuyHandlers:
                 back_callback = f'product_details_{product_id}'
 
             keyboard.append([
-                InlineKeyboardButton("🔙 Précédent" if lang == 'fr' else "🔙 Back",
+                InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                    callback_data=back_callback)
             ])
 
@@ -678,7 +666,7 @@ class BuyHandlers:
                 query,
                 "❌ Erreur lors du chargement des avis" if lang == 'fr' else "❌ Error loading reviews",
                 InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back",
+                    InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                        callback_data=f'product_details_{product_id}')
                 ]])
             )
@@ -727,7 +715,7 @@ class BuyHandlers:
                 query,
                 "❌ Erreur" if lang == 'fr' else "❌ Error",
                 InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back",
+                    InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                        callback_data='back_main')
                 ]])
             )
@@ -752,7 +740,7 @@ class BuyHandlers:
                 query,
                 "❌ Erreur de navigation" if lang == 'fr' else "❌ Navigation error",
                 InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back",
+                    InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                        callback_data='back_main')
                 ]])
             )
@@ -1014,11 +1002,11 @@ class BuyHandlers:
                 f"❌ **Produit introuvable :** `{product_id}`\n\nVérifiez l'ID ou explorez les catégories.",
                 reply_markup=InlineKeyboardMarkup(
                     [[
-                        InlineKeyboardButton("📂 Parcourir catégories",
+                        InlineKeyboardButton("Parcourir catégories" if lang == 'fr' else "Browse categories",
                                              callback_data='back_main')
                     ],
                      [
-                         InlineKeyboardButton("🔙 Menu achat",
+                         InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                               callback_data='buy_menu')
                      ]]),
                 parse_mode='Markdown')
@@ -1396,7 +1384,7 @@ class BuyHandlers:
                         callback_data=f'download_product_{product_id}'
                     )],
                     [InlineKeyboardButton(
-                        "🔙 Back" if lang == 'en' else "🔙 Retour",
+                        "Retour" if lang == 'fr' else "Back",
                         callback_data=f'product_{product_id}'
                     )]
                 ])
@@ -1469,7 +1457,7 @@ class BuyHandlers:
                 back_callback = f'product_{product_id}'
 
             keyboard.append([InlineKeyboardButton(
-                "🔙 Précédent" if lang == 'fr' else "🔙 Back",
+                "Retour" if lang == 'fr' else "Back",
                 callback_data=back_callback
             )])
 
@@ -1888,7 +1876,7 @@ class BuyHandlers:
             await query.edit_message_text(
                 "❌ Erreur lors de la confirmation du paiement." if lang == 'fr' else "❌ Payment confirmation error.",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='back_main')
+                    InlineKeyboardButton("Retour" if lang == 'fr' else "Back", callback_data='back_main')
                 ]])
             )
 
@@ -1921,9 +1909,9 @@ class BuyHandlers:
             text += "🔔 You will receive automatic notification when payment is confirmed"
 
             keyboard = [
-                [InlineKeyboardButton(f"🔄 Refresh Status / Actualiser", callback_data=f'refresh_payment_{order_id}')],
-                [InlineKeyboardButton(f"👁️ Preview / Aperçu", callback_data=f'preview_product_{product_id}')],
-                [InlineKeyboardButton("🔙 Back / Retour", callback_data=f'buy_product_{product_id}')]
+                [InlineKeyboardButton(f"Actualiser / Refresh Status", callback_data=f'refresh_payment_{order_id}')],
+                [InlineKeyboardButton(f"Aperçu / Preview", callback_data=f'preview_product_{product_id}')],
+                [InlineKeyboardButton("Retour / Back", callback_data=f'buy_product_{product_id}')]
             ]
 
             # Try to send QR code image if available
@@ -1975,7 +1963,7 @@ class BuyHandlers:
                 f"💳 Payment created for order `{order_id}`\n\nAddress: `{payment_address}`",
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Back", callback_data=f'buy_product_{product_id}')
+                    InlineKeyboardButton("Retour / Back", callback_data=f'buy_product_{product_id}')
                 ]])
             )
 
