@@ -205,3 +205,30 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PROJECT-SPECIFIC IGNORES (Ferus Marketplace)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+marketplace_database.db
+
+# Uploads and user data
+uploads/
+data/product_images/
+
+# Logs
+logs/
+*.log
+
+# Backups
+*.bak
+*BACKUP*
+*OLD*
+*.pyc
+
+# Landing pages (stored in ferus-landing/)
+site*.html
