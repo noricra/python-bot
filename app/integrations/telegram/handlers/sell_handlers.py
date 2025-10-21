@@ -579,8 +579,8 @@ Entrez l'adresse email de votre compte vendeur :""")
         step = user_state.get('step')
 
         if step == 'name':
-            if len(message_text) < 2 or len(message_text) > 50:
-                await update.message.reply_text("❌ Le nom doit contenir entre 2 et 50 caractères.")
+            if len(message_text) < 2 or len(message_text) > 20:
+                await update.message.reply_text("❌ Le nom doit contenir entre 2 et 30 caractères.")
                 return
             user_state['seller_name'] = message_text
             user_state['step'] = 'bio'

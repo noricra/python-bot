@@ -82,7 +82,7 @@ class BuyHandlers:
 
         Args:
             product: Product dict
-            mode: 'short' (MINIMAL - fits iPhone screen) or 'full' (complete description)
+            mode: 'short' (2-3 lines) or 'full' (complete description)
             lang: Language code
 
         Returns:
@@ -90,110 +90,54 @@ class BuyHandlers:
         """
         caption = ""
 
-        if mode == 'short':
-            # V2 SPEC ÉTAPE 1: Card Courte (Carousel) - Structure complète avec STATS
+        # Breadcrumb (category)
+        category = product.get('category', 'Produits')
+        caption += f"📂 _{category}_\n\n"
 
-            category = product.get('category', 'Produits')
-            title = product['title']
-            price = product['price_eur']
-            seller = product.get('seller_name', 'Vendeur')
+        # Badges (if any)
+        badges = self.get_product_badges(product)
+        if badges:
+            caption += "  ".join(badges) + "\n\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 1. TITRE (CENTRÉ, GROS, GRAS)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # Utiliser espaces pour centrage visuel approximatif
-            caption += f"<b>{title}</b>\n"
-            caption += f"<i>Vendu par </i><b>{seller} </b>\n" if lang == 'fr' else f"<i>Sold by </i><b>{seller}</b> \n"
+        # Title (BOLD for visibility)
+        caption += f"**{product['title']}**\n\n"
 
+        # Price (CRITICAL element - very visible)
+        caption += f"💰 **{product['price_eur']:.2f} €**\n"
+        caption += "─────────────────────\n\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 3. SÉPARATEUR VISUEL
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += "────────────────\n"
+        # Social proof (rating + seller)
+        if product.get('rating', 0) > 0:
+            rating_stars = "⭐" * int(product.get('rating', 0))
+            caption += f"{rating_stars} **{product.get('rating', 0):.1f}**/5"
+            if product.get('reviews_count', 0) > 0:
+                caption += f" _({product.get('reviews_count', 0)} avis)_"
+            caption += "\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 2. PRIX + VENDEUR (prix en gras)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += f"💶 <b>{price:.2f} €</b>\n\n" 
+        # Seller + sales stats
+        caption += f"🏪 {product.get('seller_name', 'Vendeur')}"
+        if product.get('sales_count', 0) > 0:
+            caption += f" • **{product['sales_count']}** ventes"
+        caption += "\n\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 4. STATS
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Description (smart truncation based on mode)
+        if product.get('description'):
+            desc = product['description']
 
-            rating = product.get('rating', 0)
-            reviews_count = product.get('reviews_count', 0)
-            sales = product.get('sales_count', 0)
-            views = product.get('views_count', 0)
-            caption += f"⭐ {rating:.1f}/5 ({reviews_count} avis)  •  {sales} 🛒  •   {views} 👁️\n\n"
+            if mode == 'short':
+                # V2 SPEC: Truncate intelligently to 2-3 lines (~180 chars)
+                # Cut at last space before limit to avoid cutting words
+                if len(desc) > 180:
+                    desc = desc[:180].rsplit(' ', 1)[0] + "..."
+                caption += f"{desc}\n\n"
+            elif mode == 'full':
+                # Full description for details page
+                caption += f"{desc}\n\n"
 
- 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 6. MÉTADONNÉES (catégorie + taille)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            file_size = product.get('file_size_mb', 0)
-            caption += f"📂 {category}  •  📁 {file_size:.1f} MB\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 7. SÉPARATEUR + RECHERCHE PAR ID
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            search_hint = f"────────────────\n🔍 <i>Vous avez un ID ? Entrez-le  </i>" if lang == 'fr' else f"────────────────\n🔍 <i>Have an ID ? Enter it directly </i>"
-            caption += search_hint
-
-        elif mode == 'full':
-            # FULL caption for details page - HTML
-
-            category = product.get('category', 'Produits')
-            title = product['title']
-            price = product['price_eur']
-            seller = product.get('seller_name', 'Vendeur')
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 1. TITRE (CENTRÉ, GROS, GRAS)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # Utiliser espaces pour centrage visuel approximatif
-            title_centered = f"{title}"
-            caption += f"<b>{title_centered}</b> • Vendu par <b>{seller} </b>\n" if lang == 'fr' else f"<b>{title_centered}</b> • Sold by par <b>{seller}</b> \n"
-
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 3. SÉPARATEUR VISUEL
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += "────────────────\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 2. PRIX + VENDEUR (prix en gras)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += f"💶 <b>{price:.2f} €</b>\n\n" 
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 4. STATS
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-            rating = product.get('rating', 0)
-            reviews_count = product.get('reviews_count', 0)
-            sales = product.get('sales_count', 0)
-            views = product.get('views_count', 0)
-            caption += f"⭐ {rating:.1f}/5 ({reviews_count} avis)  •  {sales} 🛒  •   {views} 👁️\n\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 5. DESCRIPTION
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-            if product.get('description'):
-                caption += f" <b>DESCRIPTION</b> : \n    {product['description']}\n\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 6. MÉTADONNÉES (catégorie + taille)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            file_size = product.get('file_size_mb', 0)
-            caption += f"📂 {category}  •  📁 {file_size:.1f} MB\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 7. SÉPARATEUR + RECHERCHE PAR ID
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            search_hint = f"────────────────\n🔍 <i>Vous avez un ID ? Entrez-le  </i>" if lang == 'fr' else f"────────────────\n🔍 <i>Have an ID ? Enter it directly </i>"
-            caption += search_hint
-
+        # Metadata (category, file size)
+        caption += f"📂 _{product.get('category', 'N/A')}_"
+        if product.get('file_size_mb'):
+            caption += f" • 📁 {product.get('file_size_mb', 0):.1f} MB"
 
         return caption
 
@@ -248,16 +192,10 @@ class BuyHandlers:
         product_id = product['product_id']
 
         # Row 1: 🛒 BIG BUY BUTTON (main CTA - present in ALL contexts)
-        # V2: Include context (category + index) for proper "Précédent" navigation
-        if context == 'carousel' and category_key is not None and index is not None:
-            buy_callback = f'buy_product_{product_id}_{category_key}_{index}'
-        else:
-            buy_callback = f'buy_product_{product_id}'
-
         keyboard.append([
             InlineKeyboardButton(
                 f"🛒 ACHETER - {product['price_eur']}€" if lang == 'fr' else f"🛒 BUY - {product['price_eur']}€",
-                callback_data=buy_callback
+                callback_data=f'buy_product_{product_id}'
             )
         ])
 
@@ -292,10 +230,10 @@ class BuyHandlers:
                 cat_nav_row = []
                 current_cat_index = next((i for i, cat in enumerate(all_categories) if cat == category_key), 0)
 
-                # Previous category (emoji flèche comme navigation produits)
+                # Previous category
                 if current_cat_index > 0:
                     prev_cat = all_categories[current_cat_index - 1]
-                    cat_nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'navcat_{prev_cat}'))
+                    cat_nav_row.append(InlineKeyboardButton("←", callback_data=f'navcat_{prev_cat}'))
                 else:
                     cat_nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
 
@@ -308,10 +246,10 @@ class BuyHandlers:
                     callback_data='noop'
                 ))
 
-                # Next category (emoji flèche comme navigation produits)
+                # Next category
                 if current_cat_index < len(all_categories) - 1:
                     next_cat = all_categories[current_cat_index + 1]
-                    cat_nav_row.append(InlineKeyboardButton("➡️", callback_data=f'navcat_{next_cat}'))
+                    cat_nav_row.append(InlineKeyboardButton("→", callback_data=f'navcat_{next_cat}'))
                 else:
                     cat_nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
 
@@ -325,19 +263,11 @@ class BuyHandlers:
 
         elif context == 'details':
             # Row 2: Avis + Preview
-            # V2: Pass context to both buttons for closed circuit navigation
-            if category_key and index is not None:
-                preview_callback = f'product_preview_{product_id}_{category_key}_{index}'
-                reviews_callback = f'reviews_{product_id}_0_{category_key}_{index}'
-            else:
-                preview_callback = f'product_preview_{product_id}'
-                reviews_callback = f'reviews_{product_id}_0'
-
             keyboard.append([
                 InlineKeyboardButton("⭐ Avis" if lang == 'fr' else "⭐ Reviews",
-                                   callback_data=reviews_callback),
+                                   callback_data=f'reviews_{product_id}_0'),
                 InlineKeyboardButton("👁️ Preview" if lang == 'fr' else "👁️ Preview",
-                                   callback_data=preview_callback)
+                                   callback_data=f'product_preview_{product_id}')
             ])
 
             # Row 3: Réduire (back to carousel - V2 NEW FEATURE)
@@ -346,17 +276,12 @@ class BuyHandlers:
                     InlineKeyboardButton("📋 Réduire" if lang == 'fr' else "📋 Collapse",
                                        callback_data=f'collapse_{product_id}_{category_key}_{index}')
                 ])
-                # Row 4: Précédent (back to carousel with context)
-                keyboard.append([
-                    InlineKeyboardButton("🔙 Précédent" if lang == 'fr' else "🔙 Back",
-                                       callback_data=f'carousel_{category_key}_{index}')
-                ])
-            else:
-                # No context: back to main menu
-                keyboard.append([
-                    InlineKeyboardButton("🔙 Précédent" if lang == 'fr' else "🔙 Back",
-                                       callback_data='back_main')
-                ])
+
+            # Row 4: Précédent (V2: back to main, not categories)
+            keyboard.append([
+                InlineKeyboardButton("🔙 Précédent" if lang == 'fr' else "🔙 Back",
+                                   callback_data='back_main')
+            ])
 
         elif context == 'reviews':
             # Row 2: Précédent (back to details)
@@ -444,6 +369,15 @@ class BuyHandlers:
                 parse_mode='Markdown'
             )
 
+        # OLD V1 CODE (commented - was showing intermediate menu):
+        # keyboard = buy_menu_keyboard(lang)
+        # buy_text = i18n(lang, 'buy_menu_text')
+        # await query.edit_message_text(
+        #     buy_text,
+        #     reply_markup=InlineKeyboardMarkup(keyboard),
+        #     parse_mode='Markdown'
+        # )
+
     async def search_product_prompt(self, bot, query, lang: str) -> None:
         """Demande de saisir un ID produit"""
         bot.reset_conflicting_states(query.from_user.id, keep={'waiting_for_product_id'})
@@ -465,6 +399,170 @@ class BuyHandlers:
                     [[InlineKeyboardButton("🔙 Back" if lang == 'en' else "🔙 Retour",
                                            callback_data='buy_menu')]]),
                 parse_mode='Markdown')
+
+    async def browse_categories(self, bot, query, lang: str) -> None:
+        """
+        V2: DEPRECATED - This function should NOT be called in V2 workflow
+        Category navigation happens via carousel arrows, not a separate screen
+        Keeping for backwards compatibility only
+        """
+        # V2: Redirect to main buy flow (direct carousel)
+        await self.buy_menu(bot, query, lang)
+        return
+
+        # OLD V1 CODE (commented - category selection screen removed in V2):
+        """
+        try:
+            conn = bot.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT name, icon, products_count FROM categories ORDER BY products_count DESC'
+            )
+            categories = cursor.fetchall()
+            conn.close()
+
+            if not categories:
+                # Use user-friendly error message system
+                error_data = get_error_message('no_products', lang)
+                await self._safe_transition_to_text(
+                    query,
+                    error_data['text'],
+                    error_data['keyboard']
+                )
+                return
+
+            keyboard = []
+            # Grouper les catégories par 2 avec truncation intelligente adaptative
+            for i in range(0, len(categories), 2):
+                row = []
+                for j in range(i, min(i + 2, len(categories))):
+                    cat_name, cat_icon, products_count = categories[j]
+
+                    # Calcul dynamique de la largeur disponible
+                    # Telegram inline buttons : ~40 chars max par bouton sur 2 colonnes
+                    # Format: "🔧 Category Name (123)"
+                    # Réserver: emoji (2) + espaces (2) + parenthèses+nombre (5) = 9 chars
+                    # Reste: 40 - 9 = 31 chars pour le nom
+
+                    max_name_length = 28  # Conservative pour s'assurer que tout rentre
+                    display_name = cat_name
+
+                    if len(cat_name) > max_name_length:
+                        display_name = cat_name[:max_name_length-1] + "…"
+
+                    row.append(InlineKeyboardButton(
+                        f"{cat_icon} {display_name} ({products_count})",
+                        callback_data=f'category_{cat_name}'
+                    ))
+                keyboard.append(row)
+
+            # V2: Back button goes to main menu (not buy_menu which is now skipped)
+            keyboard.append([InlineKeyboardButton(
+                "🔙 Back" if lang == 'en' else "🔙 Retour", callback_data='back_main'
+            )])
+
+            categories_text = i18n(lang, 'categories_title')
+            await self._safe_transition_to_text(
+                query,
+                categories_text,
+                InlineKeyboardMarkup(keyboard)
+            )
+        except Exception as e:
+            await self._safe_transition_to_text(
+                query,
+                "❌ Error loading categories." if lang == 'en' else "❌ Erreur chargement catégories."
+            )
+        """
+
+    async def send_product_card(self, bot, chat_id: int, product: dict, lang: str = 'fr'):
+        """
+        Send visual product card with image + inline buttons
+
+        Args:
+            bot: Bot instance
+            chat_id: Telegram chat ID
+            product: Product dict with all fields
+            lang: Language code
+        """
+        try:
+            from app.core.image_utils import ImageUtils
+            import os
+
+            # Get thumbnail path (or generate placeholder)
+            thumbnail_path = product.get('thumbnail_path')
+
+            if not thumbnail_path or not os.path.exists(thumbnail_path):
+                # Generate placeholder if no image
+                thumbnail_path = ImageUtils.create_or_get_placeholder(
+                    product_title=product.get('title', 'Product'),
+                    category=product.get('category', 'default'),
+                    product_id=product.get('product_id', 'UNKNOWN')
+                )
+
+            # Format rating stars
+            rating = product.get('rating', 0.0) or 0.0
+            reviews_count = product.get('reviews_count', 0) or 0
+            if reviews_count > 0:
+                stars = "⭐" * int(round(rating))
+                rating_text = f"{stars} {rating:.1f}/5 ({reviews_count} avis)"
+            else:
+                rating_text = "Aucun avis" if lang == 'fr' else "No reviews"
+
+            # Build caption
+            caption = (
+                f"🏷️ **{product['title']}**\n"
+                f"💰 **{product['price_eur']}€**\n"
+                f"{rating_text}\n\n"
+                f"🏪 {product.get('seller_name', 'Vendeur')}\n"
+                f"📊 {product.get('sales_count', 0)} ventes | {product.get('views_count', 0)} vues"
+            )
+
+            # Inline keyboard with actions
+            keyboard = [
+                [InlineKeyboardButton(
+                    "🛒 Acheter" if lang == 'fr' else "🛒 Buy",
+                    callback_data=f'buy_{product["product_id"]}'
+                )],
+                [
+                    InlineKeyboardButton(
+                        "ℹ️ Détails" if lang == 'fr' else "ℹ️ Details",
+                        callback_data=f'product_{product["product_id"]}'
+                    ),
+                    InlineKeyboardButton(
+                        "👁️ Preview",
+                        callback_data=f'preview_{product["product_id"]}'
+                    )
+                ]
+            ]
+
+            # Send photo with caption
+            if thumbnail_path and os.path.exists(thumbnail_path):
+                await bot.application.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=open(thumbnail_path, 'rb'),
+                    caption=caption,
+                    parse_mode='Markdown',
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            else:
+                # Fallback: send text-only if image fails
+                await bot.application.bot.send_message(
+                    chat_id=chat_id,
+                    text=caption + "\n\n_[Image non disponible]_",
+                    parse_mode='Markdown',
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+
+        except Exception as e:
+            logger.error(f"Error sending product card: {e}")
+            # Fallback text message
+            await bot.application.bot.send_message(
+                chat_id=chat_id,
+                text=f"📦 {product.get('title', 'Product')} - {product.get('price_eur', 0)}€",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("ℹ️ Détails", callback_data=f'product_{product["product_id"]}')
+                ]])
+            )
 
     def get_product_badges(self, product: Dict) -> List[str]:
         """Generate badges for product based on stats (Phase 2 - Gamification)"""
@@ -504,7 +602,7 @@ class BuyHandlers:
     # V2 NEW FEATURES (Spec Section 8: Missing Functionality)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    async def show_product_reviews(self, bot, query, product_id: str, page: int = 0, lang: str = 'fr', category_key: str = None, index: int = None) -> None:
+    async def show_product_reviews(self, bot, query, product_id: str, page: int = 0, lang: str = 'fr') -> None:
         """
         V2 SPEC - VARIANTE 1B: Display product reviews page with pagination
 
@@ -514,8 +612,6 @@ class BuyHandlers:
             product_id: Product ID
             page: Page number (0-indexed, 5 reviews per page)
             lang: Language code
-            category_key: Optional category for maintaining closed circuit
-            index: Optional product index for maintaining closed circuit
         """
         try:
             if not self.review_repo:
@@ -613,16 +709,10 @@ class BuyHandlers:
             keyboard = []
 
             # Row 1: BUY BUTTON (always accessible - V2 SPEC)
-            # Pass context to maintain closed circuit
-            if category_key and index is not None:
-                buy_callback = f'buy_product_{product_id}_{category_key}_{index}'
-            else:
-                buy_callback = f'buy_product_{product_id}'
-
             keyboard.append([
                 InlineKeyboardButton(
                     f"🛒 ACHETER - {product['price_eur']}€" if lang == 'fr' else f"🛒 BUY - {product['price_eur']}€",
-                    callback_data=buy_callback
+                    callback_data=f'buy_product_{product_id}'
                 )
             ])
 
@@ -631,16 +721,8 @@ class BuyHandlers:
                 nav_row = []
                 total_pages = (total_reviews + reviews_per_page - 1) // reviews_per_page
 
-                # Build pagination callbacks with context
-                if category_key and index is not None:
-                    prev_callback = f'reviews_{product_id}_{page-1}_{category_key}_{index}'
-                    next_callback = f'reviews_{product_id}_{page+1}_{category_key}_{index}'
-                else:
-                    prev_callback = f'reviews_{product_id}_{page-1}'
-                    next_callback = f'reviews_{product_id}_{page+1}'
-
                 if page > 0:
-                    nav_row.append(InlineKeyboardButton("⬅️", callback_data=prev_callback))
+                    nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'reviews_{product_id}_{page-1}'))
                 else:
                     nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
 
@@ -650,21 +732,16 @@ class BuyHandlers:
                 ))
 
                 if page < total_pages - 1:
-                    nav_row.append(InlineKeyboardButton("➡️", callback_data=next_callback))
+                    nav_row.append(InlineKeyboardButton("➡️", callback_data=f'reviews_{product_id}_{page+1}'))
                 else:
                     nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
 
                 keyboard.append(nav_row)
 
-            # Row 3: Back to details (with context for closed circuit)
-            if category_key and index is not None:
-                back_callback = f'product_details_{product_id}_{category_key}_{index}'
-            else:
-                back_callback = f'product_details_{product_id}'
-
+            # Row 3: Back to details
             keyboard.append([
                 InlineKeyboardButton("🔙 Précédent" if lang == 'fr' else "🔙 Back",
-                                   callback_data=back_callback)
+                                   callback_data=f'product_details_{product_id}')
             ])
 
             # Transition from photo message (details page) to text
@@ -728,7 +805,7 @@ class BuyHandlers:
                 "❌ Erreur" if lang == 'fr' else "❌ Error",
                 InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back",
-                                       callback_data='back_main')
+                                       callback_data='browse_categories')
                 ]])
             )
 
@@ -753,7 +830,7 @@ class BuyHandlers:
                 "❌ Erreur de navigation" if lang == 'fr' else "❌ Navigation error",
                 InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back",
-                                       callback_data='back_main')
+                                       callback_data='browse_categories')
                 ]])
             )
 
@@ -817,7 +894,7 @@ class BuyHandlers:
                             media=InputMediaPhoto(
                                 media=photo_file,
                                 caption=caption,
-                                parse_mode='HTML'
+                                parse_mode='Markdown'
                             ),
                             reply_markup=keyboard_markup
                         )
@@ -826,7 +903,7 @@ class BuyHandlers:
                     await query.edit_message_text(
                         text=caption,
                         reply_markup=keyboard_markup,
-                        parse_mode='HTML'
+                        parse_mode='Markdown'
                     )
             except Exception as e:
                 # If edit fails (message too old, etc), send new message
@@ -840,14 +917,14 @@ class BuyHandlers:
                             photo=photo_file,
                             caption=caption,
                             reply_markup=keyboard_markup,
-                            parse_mode='HTML'
+                            parse_mode='Markdown'
                         )
                 else:
                     await bot.application.bot.send_message(
                         chat_id=query.message.chat_id,
                         text=caption,
                         reply_markup=keyboard_markup,
-                        parse_mode='HTML'
+                        parse_mode='Markdown'
                     )
 
         except Exception as e:
@@ -921,7 +998,7 @@ class BuyHandlers:
                     InlineKeyboardButton(i18n(lang, 'btn_search'),
                                          callback_data='search_product'),
                     InlineKeyboardButton(i18n(lang, 'btn_categories'),
-                                         callback_data='back_main')
+                                         callback_data='browse_categories')
                 ]]),
                 parse_mode='Markdown')
             return
@@ -930,6 +1007,101 @@ class BuyHandlers:
 
         # V2: Display full details with helper functions
         await self._show_product_visual_v2(bot, query, product, lang, category_key, index)
+
+    async def _show_product_visual(self, bot, query, product: dict, lang: str):
+        """Unified visual product display with image (used by carousel, details, preview back)"""
+        from app.core.image_utils import ImageUtils
+        from telegram import InputMediaPhoto
+        import os
+
+        # Get badges
+        badges = self.get_product_badges(product)
+        badge_line = " | ".join(badges) if badges else ""
+
+        # Build caption
+        rating_stars = "⭐" * int(product.get('rating', 0))
+
+        caption = ""
+
+        if badge_line:
+            caption += f"{badge_line}\n\n"
+
+        caption += f"**{product['title']}**\n"
+        caption += f"💰 **{product['price_eur']}€**\n\n"
+
+        if product.get('rating', 0) > 0:
+            caption += f"{rating_stars} {product.get('rating', 0):.1f}/5 · {product.get('reviews_count', 0)} {'avis' if lang == 'fr' else 'reviews'}\n"
+
+        seller_info = f"🏪 {product.get('seller_name', 'Vendeur' if lang == 'fr' else 'Seller')}"
+        if product.get('sales_count', 0) > 0:
+            seller_info += f" · {product['sales_count']} {'ventes' if lang == 'fr' else 'sales'}"
+        caption += f"{seller_info}\n"
+
+        if product.get('description'):
+            caption += f"\n📋 {product['description']}\n"
+
+        caption += f"\n📊 {product.get('views_count', 0)} {'vues' if lang == 'fr' else 'views'} · 📁 {product.get('file_size_mb', 0):.1f} MB"
+
+        # Get image or placeholder
+        thumbnail_path = product.get('thumbnail_path')
+        logger.info(f"🖼️ VISUAL DISPLAY - Product: {product['product_id']}, thumbnail_path from DB: {thumbnail_path}")
+
+        if not thumbnail_path or not os.path.exists(thumbnail_path):
+            logger.info(f"⚠️ Image not found at {thumbnail_path}, generating placeholder")
+            thumbnail_path = ImageUtils.create_or_get_placeholder(
+                product_title=product['title'],
+                category=product.get('category', 'General'),
+                product_id=product['product_id']
+            )
+        else:
+            logger.info(f"✅ Using stored image: {thumbnail_path}")
+
+        # Build keyboard
+        keyboard = []
+
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🛒 {'ACHETER' if lang == 'fr' else 'BUY'} - {product['price_eur']}€",
+                callback_data=f'buy_product_{product["product_id"]}'
+            )
+        ])
+
+        keyboard.append([
+            InlineKeyboardButton(i18n(lang, 'btn_preview'), callback_data=f'product_preview_{product["product_id"]}')
+        ])
+
+        keyboard.append([
+            InlineKeyboardButton(i18n(lang, 'btn_categories'), callback_data='browse_categories'),
+            InlineKeyboardButton("🏠" + (" Accueil" if lang == 'fr' else " Home"), callback_data='back_main')
+        ])
+
+        # Send with image
+        try:
+            if thumbnail_path and os.path.exists(thumbnail_path):
+                with open(thumbnail_path, 'rb') as photo_file:
+                    await query.edit_message_media(
+                        media=InputMediaPhoto(
+                            media=photo_file,
+                            caption=caption,
+                            parse_mode='Markdown'
+                        ),
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+            else:
+                # Fallback to text only if image completely fails
+                await query.edit_message_text(
+                    caption,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+        except Exception as e:
+            logger.error(f"Error displaying product visual: {e}")
+            # Final fallback
+            await query.edit_message_text(
+                caption,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
 
     async def _show_product_visual_v2(self, bot, query, product: dict, lang: str, category_key: str = None, index: int = None):
         """
@@ -970,7 +1142,7 @@ class BuyHandlers:
                         media=InputMediaPhoto(
                             media=photo_file,
                             caption=caption,
-                            parse_mode='HTML'
+                            parse_mode='Markdown'
                         ),
                         reply_markup=keyboard_markup
                     )
@@ -979,7 +1151,7 @@ class BuyHandlers:
                 await query.edit_message_text(
                     caption,
                     reply_markup=keyboard_markup,
-                    parse_mode='HTML'
+                    parse_mode='Markdown'
                 )
         except Exception as e:
             logger.error(f"Error displaying product details V2: {e}")
@@ -987,7 +1159,7 @@ class BuyHandlers:
             await query.edit_message_text(
                 caption,
                 reply_markup=keyboard_markup,
-                parse_mode='HTML'
+                parse_mode='Markdown'
             )
 
     async def process_product_search(self, bot, update, message_text):
@@ -1015,7 +1187,7 @@ class BuyHandlers:
                 reply_markup=InlineKeyboardMarkup(
                     [[
                         InlineKeyboardButton("📂 Parcourir catégories",
-                                             callback_data='back_main')
+                                             callback_data='browse_categories')
                     ],
                      [
                          InlineKeyboardButton("🔙 Menu achat",
@@ -1024,47 +1196,123 @@ class BuyHandlers:
                 parse_mode='Markdown')
 
     async def show_product_details_from_search(self, bot, update, product):
-        """Affiche les détails d'un produit trouvé par recherche - STRUCTURE IDENTIQUE À MODE 'FULL'"""
-        user_id = update.effective_user.id
-        user_data = bot.user_repo.get_user(user_id)
-        lang = user_data['language_code'] if user_data else 'fr'
+        """Affiche les détails d'un produit trouvé par recherche - FORMAT VISUEL UNIFIÉ"""
+        from app.core.image_utils import ImageUtils
+        import os
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # CAPTION : Utiliser la fonction unifiée en mode 'full'
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        caption = self._build_product_caption(product, mode='full', lang=lang)
+        # Get badges
+        badges = self.get_product_badges(product)
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # IMAGE : Utiliser la fonction unifiée
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        thumbnail_path = self._get_product_image_or_placeholder(product)
+        # Build caption - UX OPTIMIZED (identique au carousel)
+        caption = ""
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # KEYBOARD : Utiliser la fonction unifiée avec contexte 'search'
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        keyboard_markup = self._build_product_keyboard(
-            product,
-            context='search',  # Contexte spécifique pour recherche
-            lang=lang
-        )
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 0. BREADCRUMB (Fil d'Ariane)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        category = product.get('category', 'Produits')
+        caption += f"📂 _{category}_ › Recherche\n\n"
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # DISPLAY : Envoyer avec image ou texte
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 1. BADGES
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if badges:
+            caption += "  ".join(badges) + "\n\n"
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 2. TITRE (GRAS pour maximum visibilité)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        caption += f"**{product['title']}**\n\n"
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 3. PRIX
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        caption += f"💰 **{product['price_eur']:.2f} €**\n"
+        caption += "─────────────────────\n\n"
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 4. SOCIAL PROOF
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if product.get('rating', 0) > 0:
+            rating_stars = "⭐" * int(product.get('rating', 0))
+            caption += f"{rating_stars} **{product.get('rating', 0):.1f}**/5"
+            if product.get('reviews_count', 0) > 0:
+                caption += f" _({product.get('reviews_count', 0)} avis)_"
+            caption += "\n"
+
+        caption += f"🏪 {product.get('seller_name', 'Vendeur')}"
+        if product.get('sales_count', 0) > 0:
+            caption += f" • **{product['sales_count']}** ventes"
+        caption += "\n\n"
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 5. DESCRIPTION COMPLÈTE (Texte utilisateur - GARDER LE MARKDOWN)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if product.get('description'):
+            caption += f"{product['description']}\n\n"
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 6. MÉTADONNÉES
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        caption += f"📂 _{product.get('category', 'N/A')}_"
+        if product.get('file_size_mb'):
+            caption += f"  •  📁 {product.get('file_size_mb', 0):.1f} MB"
+        if product.get('views_count', 0) > 0:
+            caption += f"  •  👁 {product.get('views_count', 0)} vues"
+
+        # Get image or placeholder
+        thumbnail_path = product.get('thumbnail_path')
+
+        # DEBUG LOG
+        logger.info(f"🖼️ SEARCH DISPLAY - Product: {product['product_id']}, thumbnail_path from DB: {thumbnail_path}")
+
+        if not thumbnail_path or not os.path.exists(thumbnail_path):
+            # Generate placeholder
+            logger.info(f"⚠️ Image not found at {thumbnail_path}, generating placeholder")
+            thumbnail_path = ImageUtils.create_or_get_placeholder(
+                product_title=product['title'],
+                category=product.get('category', 'General'),
+                product_id=product['product_id']
+            )
+        else:
+            logger.info(f"✅ Using stored image: {thumbnail_path}")
+
+        # Build keyboard - Big CTA button
+        keyboard = []
+
+        # Row 1: Big buy button
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🛒 ACHETER - {product['price_eur']}€",
+                callback_data=f'buy_product_{product["product_id"]}'
+            )
+        ])
+
+        # Row 2: Secondary actions
+        keyboard.append([
+            InlineKeyboardButton("👁️ Aperçu", callback_data=f'product_preview_{product["product_id"]}')
+        ])
+
+        # Row 3: Navigation
+        keyboard.append([
+            InlineKeyboardButton("📂 Catégories", callback_data='browse_categories'),
+            InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
+        ])
+
+        # Send with image
         if thumbnail_path and os.path.exists(thumbnail_path):
             with open(thumbnail_path, 'rb') as photo_file:
                 await update.message.reply_photo(
                     photo=photo_file,
                     caption=caption,
-                    reply_markup=keyboard_markup,
-                    parse_mode='HTML'  # Mode 'full' utilise HTML
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
                 )
         else:
             # Fallback to text only if image completely fails
             await update.message.reply_text(
                 caption,
-                reply_markup=keyboard_markup,
-                parse_mode='HTML'
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
             )
 
     async def check_payment_handler(self, bot, query, order_id, lang):
@@ -1354,20 +1602,14 @@ class BuyHandlers:
                 ]])
             )
 
-    async def buy_product(self, bot, query, product_id: str, lang: str, category_key: str = None, index: int = None):
-        """
-        Show crypto selection for product purchase
-
-        Args:
-            category_key: Optional category for "Précédent" button context
-            index: Optional product index for "Précédent" button context
-        """
+    async def buy_product(self, bot, query, product_id: str, lang: str):
+        """Show crypto selection for product purchase"""
         try:
             # Get product details
             product = bot.get_product_by_id(product_id)
             if not product:
                 keyboard = InlineKeyboardMarkup([[
-                    InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='back_main')
+                    InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='browse_categories')
                 ]])
                 await self._safe_transition_to_text(query, i18n(lang, 'err_product_not_found'), keyboard)
                 return
@@ -1462,15 +1704,9 @@ class BuyHandlers:
                 keyboard.append(row3)
 
             # Row 4: Back button
-            # V2: Return to carousel (short) if context available, otherwise to details
-            if category_key and index is not None:
-                back_callback = f'collapse_{product_id}_{category_key}_{index}'
-            else:
-                back_callback = f'product_{product_id}'
-
             keyboard.append([InlineKeyboardButton(
                 "🔙 Précédent" if lang == 'fr' else "🔙 Back",
-                callback_data=back_callback
+                callback_data=f'product_{product_id}'
             )])
 
             # Gérer transition depuis carousel (message avec photo)
@@ -1479,7 +1715,7 @@ class BuyHandlers:
         except Exception as e:
             logger.error(f"Error buying product: {e}")
             keyboard_error = InlineKeyboardMarkup([[
-                InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='back_main')
+                InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='browse_categories')
             ]])
             await self._safe_transition_to_text(query, i18n(lang, 'err_purchase_error'), keyboard_error)
 
@@ -1490,7 +1726,7 @@ class BuyHandlers:
             product = bot.get_product_by_id(product_id)
             if not product:
                 keyboard = InlineKeyboardMarkup([[
-                    InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='back_main')
+                    InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='browse_categories')
                 ]])
                 await self._safe_transition_to_text(query, i18n(lang, 'err_product_not_found'), keyboard)
                 return
@@ -1583,14 +1819,7 @@ class BuyHandlers:
                 ]])
             )
 
-    async def preview_product(self, query, product_id: str, lang: str, category_key: str = None, index: int = None):
-        """
-        Show product preview (PDF first page, video thumbnail, etc.)
-
-        Args:
-            category_key: Optional category for "Précédent" button context
-            index: Optional product index for "Précédent" button context
-        """
+    async def preview_product(self, query, product_id: str, lang: str):
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         # LOADING STATE (opération potentiellement longue pour PDF)
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1656,14 +1885,11 @@ class BuyHandlers:
                                 bio = BytesIO(pix.tobytes('png'))
                                 bio.seek(0)
 
-                                # Format selon BUYER_WORKFLOW_V2_SPEC.md
                                 caption_text = (
-                                    f"👁️ **PREVIEW**\n\n"
-                                    f"📄 Page 1/{doc.page_count}\n\n"
-                                    f"📦 {safe_title}" if lang=='en'
-                                    else f"👁️ **APERÇU**\n\n"
-                                    f"📄 Page 1/{doc.page_count}\n\n"
-                                    f"📦 {safe_title}"
+                                    f"📄 **Preview — Page 1/{doc.page_count}**\n\n"
+                                    f"_{safe_title}_" if lang=='en'
+                                    else f"📄 **Aperçu — Page 1/{doc.page_count}**\n\n"
+                                    f"_{safe_title}_"
                                 )
 
                                 # Delete original message first
@@ -1809,31 +2035,16 @@ class BuyHandlers:
         # Show text preview if no media preview was sent
         if not media_preview_sent:
             try:
-                # Delete original message (peut être une photo)
-                await query.delete_message()
-            except:
-                pass
-
-            try:
-                # Send new text message
-                await query.message.reply_text(text, parse_mode='Markdown')
+                await query.edit_message_text(text, parse_mode='Markdown')
             except Exception as e:
-                logger.error(f"Error sending preview text: {e}")
+                logger.warning(f"Fallback to reply_text for preview: {e}")
+                await query.message.reply_text(text, parse_mode='Markdown')
 
         # Now send action buttons AFTER the preview content (at the bottom, easy to access)
-        # V2: Include context for closed circuit Preview → Précédent → Details (with context) → Réduire → Carousel
         from app.core.i18n import t as i18n
-
-        if category_key and index is not None:
-            buy_callback = f'buy_product_{product_id}_{category_key}_{index}'
-            back_callback = f'product_details_{product_id}_{category_key}_{index}'
-        else:
-            buy_callback = f'buy_product_{product_id}'
-            back_callback = f'product_{product_id}'
-
         keyboard = [
-            [InlineKeyboardButton(i18n(lang, 'btn_buy'), callback_data=buy_callback)],
-            [InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data=back_callback)]
+            [InlineKeyboardButton(i18n(lang, 'btn_buy'), callback_data=f'buy_product_{product_id}')],
+            [InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data=f'product_{product_id}')]
         ]
 
         action_text = (
@@ -1888,7 +2099,7 @@ class BuyHandlers:
             await query.edit_message_text(
                 "❌ Erreur lors de la confirmation du paiement." if lang == 'fr' else "❌ Payment confirmation error.",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='back_main')
+                    InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='browse_categories')
                 ]])
             )
 

@@ -81,7 +81,8 @@ class CallbackRouter:
         # Routes achat
         buy_routes = {
             'search_product': lambda query, lang: self.bot.buy_handlers.search_product_prompt(self.bot, query, lang),
-            'browse_categories': lambda query, lang: self.bot.buy_handlers.browse_categories(self.bot, query, lang),
+            # V2: browse_categories removed - navigation happens via carousel arrows
+            # 'browse_categories': lambda query, lang: self.bot.buy_handlers.browse_categories(self.bot, query, lang),
         }
         self.routes.update(buy_routes)
 
@@ -169,6 +170,11 @@ class CallbackRouter:
 
     async def _route_patterns(self, query: CallbackQuery, callback_data: str, lang: str) -> bool:
         """Route les callbacks avec patterns spécifiques"""
+
+        # No-op callbacks (disabled buttons - just acknowledge)
+        if callback_data == 'noop':
+            await query.answer()
+            return True
 
         # 🎠 Phase 2: Carousel navigation (carousel_{category}_{index})
         if callback_data.startswith('carousel_'):
@@ -287,22 +293,106 @@ class CallbackRouter:
                 await self.bot.buy_handlers.show_category_products(self.bot, query, category, lang)
             return True
 
-        # Product details (product_details_{product_id})
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # V2 WORKFLOW CALLBACKS (BUYER_WORKFLOW_V2_SPEC.md)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        # Product reviews page (reviews_{product_id}_{page} or reviews_{product_id}_{page}_{category}_{index})
+        if callback_data.startswith('reviews_'):
+            try:
+                parts = callback_data.replace('reviews_', '').split('_')
+
+                # V2: Support extended format with context for closed circuit
+                if len(parts) >= 4:
+                    # Extended format: product_id, page, category_key, index
+                    product_id, page, category_key, index = parts[0], int(parts[1]), parts[2], int(parts[3])
+                    await self.bot.buy_handlers.show_product_reviews(
+                        self.bot, query, product_id, page, lang,
+                        category_key=category_key, index=index
+                    )
+                else:
+                    # Legacy format: product_id, page
+                    product_id = parts[0]
+                    page = int(parts[1]) if len(parts) > 1 else 0
+                    await self.bot.buy_handlers.show_product_reviews(self.bot, query, product_id, page, lang)
+                return True
+            except Exception as e:
+                logger.error(f"Error showing reviews: {e}")
+                await query.answer("Error" if lang == 'en' else "Erreur")
+                return True
+
+        # Collapse details back to carousel (collapse_{product_id}_{category}_{index})
+        if callback_data.startswith('collapse_'):
+            try:
+                parts = callback_data.replace('collapse_', '').split('_')
+                if len(parts) >= 3:
+                    product_id = parts[0]
+                    category_key = parts[1]
+                    index = int(parts[2])
+                    await self.bot.buy_handlers.collapse_product_details(self.bot, query, product_id, category_key, index, lang)
+                    return True
+            except Exception as e:
+                logger.error(f"Error collapsing details: {e}")
+                await query.answer("Error" if lang == 'en' else "Erreur")
+                return True
+
+        # Navigate between categories (navcat_{category_name})
+        if callback_data.startswith('navcat_'):
+            try:
+                category = callback_data.replace('navcat_', '')
+                await self.bot.buy_handlers.navigate_categories(self.bot, query, category, lang)
+                return True
+            except Exception as e:
+                logger.error(f"Error navigating categories: {e}")
+                await query.answer("Error" if lang == 'en' else "Erreur")
+                return True
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # END V2 WORKFLOW CALLBACKS
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        # Product details (product_details_{product_id} or product_details_{product_id}_{category}_{index})
         if callback_data.startswith('product_details_'):
-            product_id = callback_data.replace('product_details_', '')
-            await self.bot.buy_handlers.show_product_details(self.bot, query, product_id, lang)
-            return True
+            try:
+                # V2: Support extended format with category and index for "Réduire" button
+                parts = callback_data.replace('product_details_', '').split('_')
+                if len(parts) >= 3:
+                    # Extended format: product_details_{product_id}_{category}_{index}
+                    product_id = parts[0]
+                    category_key = parts[1]
+                    index = int(parts[2])
+                    # Pass extra parameters for context
+                    await self.bot.buy_handlers.show_product_details(self.bot, query, product_id, lang, category_key=category_key, index=index)
+                else:
+                    # Legacy format: product_details_{product_id}
+                    product_id = callback_data.replace('product_details_', '')
+                    await self.bot.buy_handlers.show_product_details(self.bot, query, product_id, lang)
+                return True
+            except Exception as e:
+                logger.error(f"Error showing product details: {e}")
+                await query.answer("Error" if lang == 'en' else "Erreur")
+                return True
 
-        # Product preview (product_preview_{product_id})
-        if callback_data.startswith('product_preview_'):
-            product_id = callback_data.replace('product_preview_', '')
-            await self.bot.buy_handlers.preview_product(query, product_id, lang)
-            return True
-
-        # Products (legacy route)
-        if callback_data.startswith('product_'):
-            product_id = callback_data.replace('product_', '')
-            await self.bot.buy_handlers.show_product_details(self.bot, query, product_id, lang)
+        # Preview product (MUST BE BEFORE generic 'product_' handler!)
+        if callback_data.startswith('preview_product_') or callback_data.startswith('product_preview_'):
+            # V2: Support extended format with context: product_preview_{id}_{category}_{index}
+            logger.info(f"🔍 PREVIEW BUTTON CLICKED - callback_data: {callback_data}")
+            callback = callback_data.replace('preview_product_', '').replace('product_preview_', '')
+            logger.info(f"🔍 After replace: callback = {callback}")
+            parts = callback.split('_')
+            logger.info(f"🔍 Parts: {parts}, len={len(parts)}")
+            if len(parts) >= 3:
+                # Extended format with context
+                product_id = parts[0]
+                category_key = parts[1]
+                index = int(parts[2])
+                logger.info(f"🔍 Extended format - product_id={product_id}, category={category_key}, index={index}")
+                await self.bot.buy_handlers.preview_product(query, product_id, lang, category_key=category_key, index=index)
+            else:
+                # Legacy format without context
+                product_id = callback
+                logger.info(f"🔍 Legacy format - product_id={product_id}")
+                await self.bot.buy_handlers.preview_product(query, product_id, lang)
             return True
 
         # Downloads - redirect to library handler for purchased products
@@ -313,14 +403,24 @@ class CallbackRouter:
 
         # Buy product
         if callback_data.startswith('buy_product_'):
-            product_id = callback_data.replace('buy_product_', '')
-            await self.bot.buy_handlers.buy_product(self.bot, query, product_id, lang)
+            # V2: Support extended format with context: buy_product_{id}_{category}_{index}
+            parts = callback_data.replace('buy_product_', '').split('_')
+            if len(parts) >= 3:
+                # Extended format with context
+                product_id = parts[0]
+                category_key = parts[1]
+                index = int(parts[2])
+                await self.bot.buy_handlers.buy_product(self.bot, query, product_id, lang, category_key=category_key, index=index)
+            else:
+                # Legacy format without context
+                product_id = callback_data.replace('buy_product_', '')
+                await self.bot.buy_handlers.buy_product(self.bot, query, product_id, lang)
             return True
 
-        # Preview product
-        if callback_data.startswith('preview_product_'):
-            product_id = callback_data.replace('preview_product_', '')
-            await self.bot.buy_handlers.preview_product(query, product_id, lang)
+        # Products (legacy route - MUST BE AFTER specific handlers like preview!)
+        if callback_data.startswith('product_'):
+            product_id = callback_data.replace('product_', '')
+            await self.bot.buy_handlers.show_product_details(self.bot, query, product_id, lang)
             return True
 
         # Mark payment as paid (test feature)

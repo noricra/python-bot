@@ -102,9 +102,13 @@ class BuyHandlers:
             # 1. TITRE (CENTRÉ, GROS, GRAS)
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             # Utiliser espaces pour centrage visuel approximatif
-            caption += f"<b>{title}</b>\n"
-            caption += f"<i>Vendu par </i><b>{seller} </b>\n" if lang == 'fr' else f"<i>Sold by </i><b>{seller}</b> \n"
+            title_centered = f"{title}"
+            caption += f"<b>{title_centered}</b> • Vendu par <b>{seller} </b>\n\n" if lang == 'fr' else f"<b>{title_centered}</b> • Sold by par <b>{seller}</b> \n\n"
 
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # 2. PRIX + VENDEUR (prix en gras)
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            caption += f"💳 <b>{price:.2f} €</b>\n" 
 
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             # 3. SÉPARATEUR VISUEL
@@ -112,21 +116,42 @@ class BuyHandlers:
             caption += "────────────────\n"
 
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 2. PRIX + VENDEUR (prix en gras)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += f"💶 <b>{price:.2f} €</b>\n\n" 
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             # 4. STATS
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            caption += "📊 <b>STATS : </b>"
 
+            # Ventes
+            sales = product.get('sales_count', 0)
+            if sales > 0:
+                caption += f"• <b>{sales}</b> ventes\n"
+
+            # Vues
+            views = product.get('views_count', 0)
+            if views > 0:
+                caption += f"• {views} vues\n"
+
+            # Rating (si disponible)
             rating = product.get('rating', 0)
             reviews_count = product.get('reviews_count', 0)
-            sales = product.get('sales_count', 0)
-            views = product.get('views_count', 0)
-            caption += f"⭐ {rating:.1f}/5 ({reviews_count} avis)  •  {sales} 🛒  •   {views} 👁️\n\n"
+            if rating > 0:
+                rating_stars = "⭐" * int(rating)
+                caption += f"• {rating_stars} <b>{rating:.1f}</b>/5"
+                if reviews_count > 0:
+                    caption += f" <i>({reviews_count} avis)</i>"
+                caption += "\n"
 
- 
+            
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # 5. DESCRIPTION (MAX 160 chars pour cohérence)
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            if product.get('description'):
+                desc = product['description']
+                # Troncature intelligente à 160 chars
+                if len(desc) > 160:
+                    desc = desc[:160].rsplit(' ', 1)[0] + "..."
+                caption += f"{desc}\n\n"
+
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             # 6. MÉTADONNÉES (catégorie + taille)
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -142,58 +167,47 @@ class BuyHandlers:
         elif mode == 'full':
             # FULL caption for details page - HTML
 
+            # Breadcrumb (category)
             category = product.get('category', 'Produits')
-            title = product['title']
-            price = product['price_eur']
-            seller = product.get('seller_name', 'Vendeur')
+            caption += f"📂 <i>{category}</i>\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 1. TITRE (CENTRÉ, GROS, GRAS)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # Utiliser espaces pour centrage visuel approximatif
-            title_centered = f"{title}"
-            caption += f"<b>{title_centered}</b> • Vendu par <b>{seller} </b>\n" if lang == 'fr' else f"<b>{title_centered}</b> • Sold by par <b>{seller}</b> \n"
+            # Badges (if any)
+            badges = self.get_product_badges(product)
+            if badges:
+                caption += "  ".join(badges) + "\n"
 
+            # Title (BOLD for visibility)
+            caption += f"<b>{product['title']}</b>\n\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 3. SÉPARATEUR VISUEL
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += "────────────────\n"
+            # Price (CRITICAL element - very visible)
+            caption += f"💰 <b>{product['price_eur']:.2f} €</b>\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 2. PRIX + VENDEUR (prix en gras)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += f"💶 <b>{price:.2f} €</b>\n\n" 
+            # Social proof (rating + seller)
+            if product.get('rating', 0) > 0:
+                rating_stars = "⭐" * int(product.get('rating', 0))
+                caption += f"{rating_stars} <b>{product.get('rating', 0):.1f}</b>/5"
+                if product.get('reviews_count', 0) > 0:
+                    caption += f" <i>({product.get('reviews_count', 0)} avis)</i>"
+                caption += "\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 4. STATS
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Seller + sales stats
+            caption += f"🏪 {product.get('seller_name', 'Vendeur')}"
+            if product.get('sales_count', 0) > 0:
+                caption += f" • <b>{product['sales_count']}</b> ventes"
+            caption += "\n"
 
-            rating = product.get('rating', 0)
-            reviews_count = product.get('reviews_count', 0)
-            sales = product.get('sales_count', 0)
-            views = product.get('views_count', 0)
-            caption += f"⭐ {rating:.1f}/5 ({reviews_count} avis)  •  {sales} 🛒  •   {views} 👁️\n\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 5. DESCRIPTION
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
+            # Full description
             if product.get('description'):
-                caption += f" <b>DESCRIPTION</b> : \n    {product['description']}\n\n"
+                caption += f"\n{product['description']}\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 6. MÉTADONNÉES (catégorie + taille)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            file_size = product.get('file_size_mb', 0)
-            caption += f"📂 {category}  •  📁 {file_size:.1f} MB\n"
+            # Metadata (category, file size)
+            caption += f"\n📂 <i>{product.get('category', 'N/A')}</i>"
+            if product.get('file_size_mb'):
+                caption += f" • 📁 {product.get('file_size_mb', 0):.1f} MB"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 7. SÉPARATEUR + RECHERCHE PAR ID
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            search_hint = f"────────────────\n🔍 <i>Vous avez un ID ? Entrez-le  </i>" if lang == 'fr' else f"────────────────\n🔍 <i>Have an ID ? Enter it directly </i>"
+            # Recherche par ID
+            search_hint = "\n\n─────────────────────\n🔍 <i>Vous avez un ID ? Entrez-le directement</i>" if lang == 'fr' else "\n\n─────────────────────\n🔍 <i>Have an ID? Enter it directly</i>"
             caption += search_hint
-
 
         return caption
 
@@ -1024,47 +1038,123 @@ class BuyHandlers:
                 parse_mode='Markdown')
 
     async def show_product_details_from_search(self, bot, update, product):
-        """Affiche les détails d'un produit trouvé par recherche - STRUCTURE IDENTIQUE À MODE 'FULL'"""
-        user_id = update.effective_user.id
-        user_data = bot.user_repo.get_user(user_id)
-        lang = user_data['language_code'] if user_data else 'fr'
+        """Affiche les détails d'un produit trouvé par recherche - FORMAT VISUEL UNIFIÉ"""
+        from app.core.image_utils import ImageUtils
+        import os
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # CAPTION : Utiliser la fonction unifiée en mode 'full'
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        caption = self._build_product_caption(product, mode='full', lang=lang)
+        # Get badges
+        badges = self.get_product_badges(product)
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # IMAGE : Utiliser la fonction unifiée
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        thumbnail_path = self._get_product_image_or_placeholder(product)
+        # Build caption - UX OPTIMIZED (identique au carousel)
+        caption = ""
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # KEYBOARD : Utiliser la fonction unifiée avec contexte 'search'
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        keyboard_markup = self._build_product_keyboard(
-            product,
-            context='search',  # Contexte spécifique pour recherche
-            lang=lang
-        )
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 0. BREADCRUMB (Fil d'Ariane)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        category = product.get('category', 'Produits')
+        caption += f"📂 _{category}_ › Recherche\n\n"
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # DISPLAY : Envoyer avec image ou texte
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 1. BADGES
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if badges:
+            caption += "  ".join(badges) + "\n\n"
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 2. TITRE (GRAS pour maximum visibilité)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        caption += f"**{product['title']}**\n\n"
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 3. PRIX
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        caption += f"💰 **{product['price_eur']:.2f} €**\n"
+        caption += "─────────────────────\n\n"
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 4. SOCIAL PROOF
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if product.get('rating', 0) > 0:
+            rating_stars = "⭐" * int(product.get('rating', 0))
+            caption += f"{rating_stars} **{product.get('rating', 0):.1f}**/5"
+            if product.get('reviews_count', 0) > 0:
+                caption += f" _({product.get('reviews_count', 0)} avis)_"
+            caption += "\n"
+
+        caption += f"🏪 {product.get('seller_name', 'Vendeur')}"
+        if product.get('sales_count', 0) > 0:
+            caption += f" • **{product['sales_count']}** ventes"
+        caption += "\n\n"
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 5. DESCRIPTION COMPLÈTE (Texte utilisateur - GARDER LE MARKDOWN)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if product.get('description'):
+            caption += f"{product['description']}\n\n"
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 6. MÉTADONNÉES
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        caption += f"📂 _{product.get('category', 'N/A')}_"
+        if product.get('file_size_mb'):
+            caption += f"  •  📁 {product.get('file_size_mb', 0):.1f} MB"
+        if product.get('views_count', 0) > 0:
+            caption += f"  •  👁 {product.get('views_count', 0)} vues"
+
+        # Get image or placeholder
+        thumbnail_path = product.get('thumbnail_path')
+
+        # DEBUG LOG
+        logger.info(f"🖼️ SEARCH DISPLAY - Product: {product['product_id']}, thumbnail_path from DB: {thumbnail_path}")
+
+        if not thumbnail_path or not os.path.exists(thumbnail_path):
+            # Generate placeholder
+            logger.info(f"⚠️ Image not found at {thumbnail_path}, generating placeholder")
+            thumbnail_path = ImageUtils.create_or_get_placeholder(
+                product_title=product['title'],
+                category=product.get('category', 'General'),
+                product_id=product['product_id']
+            )
+        else:
+            logger.info(f"✅ Using stored image: {thumbnail_path}")
+
+        # Build keyboard - Big CTA button
+        keyboard = []
+
+        # Row 1: Big buy button
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🛒 ACHETER - {product['price_eur']}€",
+                callback_data=f'buy_product_{product["product_id"]}'
+            )
+        ])
+
+        # Row 2: Secondary actions
+        keyboard.append([
+            InlineKeyboardButton("👁️ Aperçu", callback_data=f'product_preview_{product["product_id"]}')
+        ])
+
+        # Row 3: Navigation
+        keyboard.append([
+            InlineKeyboardButton("📂 Catégories", callback_data='back_main'),
+            InlineKeyboardButton("🏠 Accueil", callback_data='back_main')
+        ])
+
+        # Send with image
         if thumbnail_path and os.path.exists(thumbnail_path):
             with open(thumbnail_path, 'rb') as photo_file:
                 await update.message.reply_photo(
                     photo=photo_file,
                     caption=caption,
-                    reply_markup=keyboard_markup,
-                    parse_mode='HTML'  # Mode 'full' utilise HTML
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
                 )
         else:
             # Fallback to text only if image completely fails
             await update.message.reply_text(
                 caption,
-                reply_markup=keyboard_markup,
-                parse_mode='HTML'
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
             )
 
     async def check_payment_handler(self, bot, query, order_id, lang):

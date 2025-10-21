@@ -66,15 +66,27 @@ class CoreHandlers:
         lang = user_data['language_code'] if user_data and user_data.get('language_code') else (user.language_code or 'fr')
 
         welcome_text = i18n(lang, 'welcome')
+
+        # Add product ID search hint (BUYER_WORKFLOW_V2_SPEC.md: "À N'IMPORTE QUELLE étape")
+        search_hint = "\n\n────────────────\n🔍 _Vous avez un ID produit ? Entrez-le directement (ex: TBF-12345678)_" if lang == 'fr' else "\n\n────────────────\n🔍 _Have a product ID? Enter it directly (e.g. TBF-12345678)_"
+        welcome_text += search_hint
+
         # Construire dynamiquement le menu principal pour éviter les doublons
         is_seller = user_data and user_data.get('is_seller')
-        keyboard = [
-            [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu')]
-        ]
+
+        # Row 1: Acheter + Vendre (ou Dashboard) sur la même ligne
         if is_seller and marketplace_bot.is_seller_logged_in(user.id):
-            keyboard.append([InlineKeyboardButton(i18n(lang, 'seller_dashboard'), callback_data='seller_dashboard')])
+            keyboard = [
+                [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu'),
+                 InlineKeyboardButton(i18n(lang, 'seller_dashboard'), callback_data='seller_dashboard')]
+            ]
         else:
-            keyboard.append([InlineKeyboardButton(i18n(lang, 'sell_menu'), callback_data='sell_menu')])
+            keyboard = [
+                [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu'),
+                 InlineKeyboardButton(i18n(lang, 'sell_menu'), callback_data='sell_menu')]
+            ]
+
+        # Row 2: Support
         keyboard.append([
             InlineKeyboardButton(i18n(lang, 'support'), callback_data='support_menu')
         ])
@@ -114,12 +126,19 @@ class CoreHandlers:
         # Récupérer l'instance bot depuis le query
         bot = getattr(query, '_bot', None) or getattr(query, 'bot', None)
 
-        keyboard = [[InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu')]]
+        # Row 1: Acheter + Vendre (ou Dashboard) sur la même ligne
         if is_seller and bot and bot.is_seller_logged_in(user_id):
-            keyboard.append([InlineKeyboardButton(i18n(lang, 'seller_dashboard'), callback_data='seller_dashboard')])
+            keyboard = [
+                [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu'),
+                 InlineKeyboardButton(i18n(lang, 'seller_dashboard'), callback_data='seller_dashboard')]
+            ]
         else:
-            keyboard.append([InlineKeyboardButton(i18n(lang, 'sell_menu'), callback_data='sell_menu')])
+            keyboard = [
+                [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu'),
+                 InlineKeyboardButton(i18n(lang, 'sell_menu'), callback_data='sell_menu')]
+            ]
 
+        # Row 2: Support et langues
         keyboard.extend([
             [InlineKeyboardButton(i18n(lang, 'support'), callback_data='support_menu')],
             [
@@ -129,6 +148,11 @@ class CoreHandlers:
         ])
 
         welcome_text = i18n(lang, 'welcome')
+
+        # Add product ID search hint (BUYER_WORKFLOW_V2_SPEC.md: "À N'IMPORTE QUELLE étape")
+        search_hint = "\n\n────────────────\n🔍 _Vous avez un ID produit ? Entrez-le directement (ex: TBF-12345678)_" if lang == 'fr' else "\n\n────────────────\n🔍 _Have a product ID? Enter it directly (e.g. TBF-12345678)_"
+        welcome_text += search_hint
+
         try:
             await query.edit_message_text(
                 welcome_text,
@@ -177,12 +201,19 @@ class CoreHandlers:
         user_data = self.user_repo.get_user(user_id)
         is_seller = user_data and user_data.get('is_seller')
 
-        keyboard = [[InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu')]]
+        # Row 1: Acheter + Vendre (ou Dashboard) sur la même ligne
         if is_seller and marketplace_bot.is_seller_logged_in(user_id):
-            keyboard.append([InlineKeyboardButton(i18n(lang, 'seller_dashboard'), callback_data='seller_dashboard')])
+            keyboard = [
+                [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu'),
+                 InlineKeyboardButton(i18n(lang, 'seller_dashboard'), callback_data='seller_dashboard')]
+            ]
         else:
-            keyboard.append([InlineKeyboardButton(i18n(lang, 'sell_menu'), callback_data='sell_menu')])
+            keyboard = [
+                [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu'),
+                 InlineKeyboardButton(i18n(lang, 'sell_menu'), callback_data='sell_menu')]
+            ]
 
+        # Row 2: Support et langues
         keyboard.extend([
             [InlineKeyboardButton(i18n(lang, 'support'), callback_data='support_menu')],
             [
@@ -192,6 +223,11 @@ class CoreHandlers:
         ])
 
         welcome_text = i18n(lang, 'welcome')
+
+        # Add product ID search hint
+        search_hint = "\n\n────────────────\n🔍 _Vous avez un ID produit ? Entrez-le directement (ex: TBF-12345678)_" if lang == 'fr' else "\n\n────────────────\n🔍 _Have a product ID? Enter it directly (e.g. TBF-12345678)_"
+        welcome_text += search_hint
+
         await self._safe_transition_to_text(
             query,
             welcome_text,

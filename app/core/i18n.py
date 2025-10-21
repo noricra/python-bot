@@ -218,7 +218,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'status_inactive': "❌",
 
         # Missing keys identified by analysis
-        'welcome': "FERUS MARKETPLACE (BETA)\n\nBienvenue dans la première marketplace crypto pour formations !\n\nVersion beta - Signalez tout problème au support.\n\nChoisissez une option pour commencer :",
+        'welcome': "🎓 FERUS MARKETPLACE\n\nMarketplace de formations numériques avec paiement crypto sécurisé.\n\n✅ Acheteurs : Livraison instantanée\n💎 Vendeurs : 0% commission\n\nQue voulez-vous faire ?",
         'buy_menu': "🛒 Acheter",
         'sell_menu': "📚 Vendre",
         'seller_dashboard': "🏪 Dashboard",
@@ -578,7 +578,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'status_inactive': "❌",
 
         # Missing keys identified by analysis
-        'welcome': "FERUS MARKETPLACE (BETA)\n\nWelcome to the first crypto marketplace for courses!\n\nBeta version - Report any issues to support.\n\nChoose an option to get started:",
+        'welcome': "🎓 FERUS MARKETPLACE\n\nDigital courses marketplace with secure crypto payment.\n\n✅ Buyers: Instant delivery\n💎 Sellers: 0% commission\n\nWhat would you like to do?",
         'buy_menu': "🛒 Buy",
         'sell_menu': "📚 Sell",
         'seller_dashboard': "🏪 Dashboard",
