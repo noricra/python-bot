@@ -221,9 +221,11 @@ class ProductRepository:
         try:
             cursor.execute(
                 '''
-                SELECT * FROM products
-                WHERE category = ? AND status = 'active'
-                ORDER BY sales_count DESC, created_at DESC
+                SELECT p.*, u.seller_name, u.seller_rating, u.seller_bio
+                FROM products p
+                LEFT JOIN users u ON p.seller_user_id = u.user_id
+                WHERE p.category = ? AND p.status = 'active'
+                ORDER BY p.created_at DESC
                 LIMIT ? OFFSET ?
                 ''',
                 (category, limit, offset)

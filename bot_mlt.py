@@ -109,6 +109,7 @@ class MarketplaceBot:
         from app.domain.repositories.order_repo import OrderRepository
         from app.domain.repositories.ticket_repo import SupportTicketRepository
         from app.domain.repositories.payout_repo import PayoutRepository
+        from app.domain.repositories.review_repo import ReviewRepository  # V2: Added for reviews
         from app.services.payment_service import PaymentService
         from app.services.payout_service import PayoutService
         from app.services.support_service import SupportService
@@ -118,6 +119,7 @@ class MarketplaceBot:
         self.order_repo = OrderRepository(self.db_path)
         self.ticket_repo = SupportTicketRepository(self.db_path)
         self.payout_repo = PayoutRepository(self.db_path)
+        self.review_repo = ReviewRepository(self.db_path)  # V2: Initialize review repository
         self.payment_service = PaymentService()
         self.payout_service = PayoutService(self.db_path)
         self.support_service = SupportService(self.ticket_repo)
@@ -132,7 +134,7 @@ class MarketplaceBot:
         self.sell_handlers = SellHandlers(self.user_repo, self.product_repo, self.payment_service)
         self.admin_handlers = AdminHandlers(self.user_repo, self.product_repo, self.order_repo, self.payout_service)
         self.auth_handlers = AuthHandlers(self.user_repo, self.email_service)
-        self.buy_handlers = BuyHandlers(self.product_repo, self.order_repo, self.payment_service)
+        self.buy_handlers = BuyHandlers(self.product_repo, self.order_repo, self.payment_service, self.review_repo)  # V2: Pass review_repo
         self.support_handlers = SupportHandlers(self.user_repo, self.product_repo, self.support_service)
 
         # Import and initialize library handlers
@@ -655,7 +657,7 @@ class MarketplaceBot:
             product_id = user_state.get('editing_product_title')
             lang = self.get_user_language(user_id)
             try:
-                new_title = message_text.strip()[:100]
+                new_title = message_text.strip()[:30]
                 if len(new_title) < 3:
                     raise ValueError("Titre trop court")
                 conn = self.get_db_connection()
@@ -694,7 +696,7 @@ class MarketplaceBot:
                 self.state_manager.update_state(user_id, **state)
         elif user_state.get('editing_seller_name'):
             try:
-                new_name = message_text.strip()[:50]
+                new_name = message_text.strip()[:20]
                 if len(new_name) < 2:
                     raise ValueError("Nom trop court")
                 conn = self.get_db_connection()
@@ -727,16 +729,27 @@ class MarketplaceBot:
                 logger.error(f"Erreur maj bio vendeur: {e}")
                 await update.message.reply_text("❌ Biographie invalide (minimum 10 caractères) ou erreur mise à jour.")
 
-        # === DÉFAUT ===
+        # === DÉFAUT : Détection automatique d'ID produit ===
         else:
-            await update.message.reply_text(
-                "💬 Pour nous contacter, utilisez le système de support.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🎫 Créer un ticket",
-                                         callback_data='create_ticket'),
-                    InlineKeyboardButton("🏠 Menu principal",
-                                         callback_data='back_main')
-                ]]))
+            # BUYER_WORKFLOW_V2_SPEC.md : "À N'IMPORTE QUELLE étape"
+            # Détecter si le message ressemble à un ID produit
+            message_clean = message_text.strip().upper()
+
+            # Pattern: TBF-{hex}-{number} ou simplement commence par TBF
+            if message_clean.startswith('TBF') or 'TBF-' in message_clean:
+                # L'utilisateur essaie de chercher un produit directement
+                logger.info(f"🔍 Auto-detection ID produit: {message_clean}")
+                await self.buy_handlers.process_product_search(self, update, message_text)
+            else:
+                # Message non reconnu
+                await update.message.reply_text(
+                    "💬 Pour nous contacter, utilisez le système de support.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🎫 Créer un ticket",
+                                             callback_data='create_ticket'),
+                        InlineKeyboardButton("🏠 Menu principal",
+                                             callback_data='back_main')
+                    ]]))
 
 
 
