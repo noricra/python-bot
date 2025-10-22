@@ -286,25 +286,36 @@ class BuyHandlers:
             # Row 4: Category navigation - Asymétrique sans boutons vides
             if all_categories and len(all_categories) > 1:
                 cat_nav_row = []
-                current_cat_index = next((i for i, cat in enumerate(all_categories) if cat == category_key), 0)
 
-                # Flèche gauche SI pas première catégorie
-                if current_cat_index > 0:
-                    prev_cat = all_categories[current_cat_index - 1]
-                    cat_nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'navcat_{prev_cat}'))
+                # Trouver l'index de la catégorie actuelle (None si non trouvée)
+                try:
+                    current_cat_index = all_categories.index(category_key)
+                except ValueError:
+                    # Catégorie non trouvée dans la liste, on saute la navigation
+                    current_cat_index = None
 
-                # Nom catégorie (tronqué si nécessaire)
-                cat_display = category_key
-                if len(cat_display) > 20:
-                    cat_display = cat_display[:18] + "…"
-                cat_nav_row.append(InlineKeyboardButton(cat_display, callback_data='noop'))
+                if current_cat_index is not None:
+                    # Flèche gauche SI pas première catégorie
+                    if current_cat_index > 0:
+                        prev_cat = all_categories[current_cat_index - 1]
+                        cat_nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'navcat_{prev_cat}'))
 
-                # Flèche droite SI pas dernière catégorie
-                if current_cat_index < len(all_categories) - 1:
-                    next_cat = all_categories[current_cat_index + 1]
-                    cat_nav_row.append(InlineKeyboardButton("➡️", callback_data=f'navcat_{next_cat}'))
+                    # Nom catégorie (tronqué si nécessaire)
+                    cat_display = category_key
+                    if len(cat_display) > 20:
+                        cat_display = cat_display[:18] + "…"
+                    cat_nav_row.append(InlineKeyboardButton(cat_display, callback_data='noop'))
 
-                keyboard.append(cat_nav_row)
+                    # Flèche droite SI pas dernière catégorie ET qu'il y a bien une catégorie suivante
+                    if current_cat_index < len(all_categories) - 1:
+                        next_cat = all_categories[current_cat_index + 1]
+                        # Vérifier que la catégorie suivante existe vraiment
+                        if next_cat and next_cat != category_key:
+                            cat_nav_row.append(InlineKeyboardButton("➡️", callback_data=f'navcat_{next_cat}'))
+
+                    # N'ajouter la row que si elle contient au moins le nom de catégorie
+                    if cat_nav_row:
+                        keyboard.append(cat_nav_row)
 
             # Row 5: Accueil (sans emoji superflu)
             keyboard.append([
