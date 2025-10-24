@@ -117,13 +117,13 @@ class BuyHandlers:
             caption += f"<b>{title}</b>\n"
 
             # Vendeur (texte normal, pas de bold ni italique)
-            caption += f"par {seller}\n\n" if lang == 'fr' else f"by {seller}\n\n"
+            caption += f"<i>par {seller}</i>\n\n" if lang == 'fr' else f"<i>by {seller}</i>\n\n"
 
             # Prix (BOLD uniquement, pas d'emoji)
-            caption += f"<b>{price:.2f} €</b>\n"
+            #caption += f"<b>{price:.2f} €</b>\n"
 
             # Séparateur #1
-            caption += "────────────────\n"
+            #caption += "────────────────\n"
 
             # Stats avec labels texte complets
             stats_text = f"⭐ {rating:.1f}/5 ({reviews_count})" if lang == 'fr' else f"⭐ {rating:.1f}/5 ({reviews_count})"
@@ -138,7 +138,7 @@ class BuyHandlers:
             caption += "────────────────\n"
 
             # Message recherche ID (gardé pour visibilité)
-            search_hint = "🔍 Vous avez un ID ? Entrez-le directement" if lang == 'fr' else "🔍 Have an ID? Enter it directly"
+            search_hint = "🔍 Vous avez un ID ? Entrez-le" if lang == 'fr' else "🔍 Have an ID ? Enter it directly "
             caption += search_hint
 
         elif mode == 'full':
@@ -162,13 +162,13 @@ class BuyHandlers:
             caption += f"<b>{title}</b>\n"
 
             # Vendeur (texte normal, pas de bold ni italique)
-            caption += f"par {seller}\n\n" if lang == 'fr' else f"by {seller}\n\n"
+            caption += f"<i>par {seller}</i>\n\n" if lang == 'fr' else f"<i>by {seller}</i>\n\n"
 
             # Prix (BOLD uniquement, pas d'emoji)
-            caption += f"<b>{price:.2f} €</b>\n"
+            #caption += f"<b>{price:.2f} €</b>\n"
 
             # Séparateur #1
-            caption += "────────────────\n"
+            #caption += "────────────────\n"
 
             # Stats avec labels texte complets
             stats_text = f"⭐ {rating:.1f}/5 ({reviews_count})" if lang == 'fr' else f"⭐ {rating:.1f}/5 ({reviews_count})"
