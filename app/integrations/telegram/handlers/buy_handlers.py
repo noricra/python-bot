@@ -17,7 +17,7 @@ from app.core.i18n import t as i18n
 from app.core import settings as core_settings
 from app.core.error_messages import get_error_message, send_error_message
 from app.core.seller_notifications import SellerNotifications
-from app.integrations.telegram.keyboards import buy_menu_keyboard
+from app.integrations.telegram.keyboards import buy_menu_keyboard, back_to_main_button
 
 
 class BuyHandlers:
@@ -1092,8 +1092,9 @@ class BuyHandlers:
         if not order:
             await query.edit_message_text("❌ Commande introuvable!")
             return
-
-        payment_id = order[12]
+        logger.info(order)
+        print("ICI BRO")
+        payment_id = order[7]
 
         # Check if payment_id exists
         if not payment_id:
@@ -1278,7 +1279,7 @@ class BuyHandlers:
             text = "📚 **MA BIBLIOTHÈQUE**\n\n" if lang == 'fr' else "📚 **MY LIBRARY**\n\n"
             keyboard = []
             for product_id, title, completed_at in purchases:
-                text += f"📖 {title[:30]}...\n"
+                text += f"📖 {title}\n"
                 keyboard.append([
                     InlineKeyboardButton(f"⬇️ Télécharger" if lang == 'fr' else f"⬇️ Download", callback_data=f'download_product_{product_id}'),
                     InlineKeyboardButton(f"📞 Contact" if lang == 'fr' else f"📞 Contact", callback_data=f'contact_seller_{product_id}')
