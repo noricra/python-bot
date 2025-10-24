@@ -218,7 +218,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'status_inactive': "❌",
 
         # Missing keys identified by analysis
-        'welcome': "🎓 FERUS MARKETPLACE\n\nMarketplace de formations numériques avec paiement crypto sécurisé.\n\n✅ Acheteurs : Livraison instantanée\n💎 Vendeurs : 0% commission\n\nQue voulez-vous faire ?",
+        'welcome': "🎓 FERUS MARKETPLACE\n\nMarketplace crypto pour produits numériques\nFormations • eBooks • Templates • Guides\nPaiement crypto uniquement. 0% commission.\n\n────────────────\n\n🛒 ACHETER\nParcourez le catalogue ou entrez un ID produit\nFormat : TBF-12345678\n\n💼 VENDRE\nUploadez vos produits et recevez 100% du prix\nPaiements directs en crypto, aucune commission\n\n📚 BIBLIOTHÈQUE\nTous vos achats et téléchargements en un clic\n\n────────────────\n\n💡 Astuce : Vous avez un ID produit ?\nEntrez-le directement (ex: TBF-87654321)\n\n🔒 Cryptos acceptées : BTC • ETH • SOL • USDC • USDT",
         'buy_menu': "🛒 Acheter",
         'sell_menu': "📚 Vendre",
         'seller_dashboard': "🏪 Dashboard",
@@ -578,7 +578,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'status_inactive': "❌",
 
         # Missing keys identified by analysis
-        'welcome': "🎓 FERUS MARKETPLACE\n\nDigital courses marketplace with secure crypto payment.\n\n✅ Buyers: Instant delivery\n💎 Sellers: 0% commission\n\nWhat would you like to do?",
+        'welcome': "🎓 FERUS MARKETPLACE\n\nCrypto marketplace for digital products\nCourses • eBooks • Templates • Guides\nCrypto payment only. 0% commission.\n\n────────────────\n\n🛒 BUY\nBrowse catalog or enter a product ID\nFormat: TBF-12345678\n\n💼 SELL\nUpload your products and receive 100% of the price\nDirect crypto payments, no commission\n\n📚 LIBRARY\nAll your purchases and downloads in one click\n\n────────────────\n\n💡 Tip: Have a product ID?\nEnter it directly (e.g. TBF-87654321)\n\n🔒 Accepted cryptos: BTC • ETH • SOL • USDC • USDT",
         'buy_menu': "🛒 Buy",
         'sell_menu': "📚 Sell",
         'seller_dashboard': "🏪 Dashboard",

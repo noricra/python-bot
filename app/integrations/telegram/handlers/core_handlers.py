@@ -67,32 +67,9 @@ class CoreHandlers:
 
         welcome_text = i18n(lang, 'welcome')
 
-        # Add product ID search hint (BUYER_WORKFLOW_V2_SPEC.md: "À N'IMPORTE QUELLE étape")
-        search_hint = "\n\n────────────────\n🔍 _Vous avez un ID produit ? Entrez-le directement (ex: TBF-12345678)_" if lang == 'fr' else "\n\n────────────────\n🔍 _Have a product ID? Enter it directly (e.g. TBF-12345678)_"
-        welcome_text += search_hint
-
-        # Construire dynamiquement le menu principal pour éviter les doublons
-        is_seller = user_data and user_data.get('is_seller')
-
-        # Row 1: Acheter + Vendre (ou Dashboard) sur la même ligne
-        if is_seller and marketplace_bot.is_seller_logged_in(user.id):
-            keyboard = [
-                [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu'),
-                 InlineKeyboardButton(i18n(lang, 'seller_dashboard'), callback_data='seller_dashboard')]
-            ]
-        else:
-            keyboard = [
-                [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu'),
-                 InlineKeyboardButton(i18n(lang, 'sell_menu'), callback_data='sell_menu')]
-            ]
-
-        # Row 2: Support
-        keyboard.append([
-            InlineKeyboardButton(i18n(lang, 'support'), callback_data='support_menu')
-        ])
-        keyboard.append([
-            InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')
-        ])
+        # Utiliser le keyboard centralisé depuis keyboards.py
+        from app.integrations.telegram.keyboards import main_menu_keyboard
+        keyboard = main_menu_keyboard(lang)
 
         await update.message.reply_text(
             welcome_text,

@@ -4,10 +4,15 @@ from app.core.i18n import t as i18n
 
 def main_menu_keyboard(lang: str):
     return [
+        # Ligne 1: Acheter | Vendre
         [InlineKeyboardButton(i18n(lang, 'cta_buy'), callback_data='buy_menu'),
-         InlineKeyboardButton("📚 " + ("My Library" if lang == 'en' else "Ma Bibliothèque"), callback_data='library_menu')],
-        [InlineKeyboardButton(i18n(lang, 'cta_sell'), callback_data='sell_menu')],
-        [InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'), InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')],
+         InlineKeyboardButton(i18n(lang, 'cta_sell'), callback_data='sell_menu')],
+        # Ligne 2: Bibliothèque
+        [InlineKeyboardButton("📚 " + ("My Library" if lang == 'en' else "Ma Bibliothèque"), callback_data='library_menu')],
+        # Ligne 3: Support | FR/EN
+        [InlineKeyboardButton("💬 Support", callback_data='support_menu'),
+         InlineKeyboardButton("🇫🇷 FR", callback_data='lang_fr'),
+         InlineKeyboardButton("🇺🇸 EN", callback_data='lang_en')],
     ]
 
 

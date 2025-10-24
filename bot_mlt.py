@@ -657,7 +657,7 @@ class MarketplaceBot:
             product_id = user_state.get('editing_product_title')
             lang = self.get_user_language(user_id)
             try:
-                new_title = message_text.strip()[:30]
+                new_title = message_text.strip()[:100]
                 if len(new_title) < 3:
                     raise ValueError("Titre trop court")
                 conn = self.get_db_connection()
