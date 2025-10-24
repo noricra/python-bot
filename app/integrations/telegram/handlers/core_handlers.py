@@ -96,39 +96,11 @@ class CoreHandlers:
 
     async def back_to_main(self, query, lang):
         """Menu principal avec récupération - Compatible avec CallbackRouter"""
-        user_id = query.from_user.id
-        user_data = self.user_repo.get_user(user_id)
-        is_seller = user_data and user_data['is_seller']
+        # Utiliser la fonction centralisée pour garantir la cohérence
+        from app.integrations.telegram.keyboards import main_menu_keyboard
 
-        # Récupérer l'instance bot depuis le query
-        bot = getattr(query, '_bot', None) or getattr(query, 'bot', None)
-
-        # Row 1: Acheter + Vendre (ou Dashboard) sur la même ligne
-        if is_seller and bot and bot.is_seller_logged_in(user_id):
-            keyboard = [
-                [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu'),
-                 InlineKeyboardButton(i18n(lang, 'seller_dashboard'), callback_data='seller_dashboard')]
-            ]
-        else:
-            keyboard = [
-                [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu'),
-                 InlineKeyboardButton(i18n(lang, 'sell_menu'), callback_data='sell_menu')]
-            ]
-
-        # Row 2: Support et langues
-        keyboard.extend([
-            [InlineKeyboardButton(i18n(lang, 'support'), callback_data='support_menu')],
-            [
-                InlineKeyboardButton("🇫🇷 Français", callback_data='lang_fr'),
-                InlineKeyboardButton("🇺🇸 English", callback_data='lang_en')
-            ]
-        ])
-
+        keyboard = main_menu_keyboard(lang)
         welcome_text = i18n(lang, 'welcome')
-
-        # Add product ID search hint (BUYER_WORKFLOW_V2_SPEC.md: "À N'IMPORTE QUELLE étape")
-        search_hint = "\n\n────────────────\n🔍 _Vous avez un ID produit ? Entrez-le directement (ex: TBF-12345678)_" if lang == 'fr' else "\n\n────────────────\n🔍 _Have a product ID? Enter it directly (e.g. TBF-12345678)_"
-        welcome_text += search_hint
 
         try:
             await query.edit_message_text(
@@ -175,35 +147,11 @@ class CoreHandlers:
         # Clean any conflicting states when returning to main menu
         marketplace_bot.reset_conflicting_states(user_id)
 
-        user_data = self.user_repo.get_user(user_id)
-        is_seller = user_data and user_data.get('is_seller')
+        # Utiliser la fonction centralisée pour garantir la cohérence
+        from app.integrations.telegram.keyboards import main_menu_keyboard
 
-        # Row 1: Acheter + Vendre (ou Dashboard) sur la même ligne
-        if is_seller and marketplace_bot.is_seller_logged_in(user_id):
-            keyboard = [
-                [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu'),
-                 InlineKeyboardButton(i18n(lang, 'seller_dashboard'), callback_data='seller_dashboard')]
-            ]
-        else:
-            keyboard = [
-                [InlineKeyboardButton(i18n(lang, 'buy_menu'), callback_data='buy_menu'),
-                 InlineKeyboardButton(i18n(lang, 'sell_menu'), callback_data='sell_menu')]
-            ]
-
-        # Row 2: Support et langues
-        keyboard.extend([
-            [InlineKeyboardButton(i18n(lang, 'support'), callback_data='support_menu')],
-            [
-                InlineKeyboardButton("🇫🇷 Français", callback_data='lang_fr'),
-                InlineKeyboardButton("🇺🇸 English", callback_data='lang_en')
-            ]
-        ])
-
+        keyboard = main_menu_keyboard(lang)
         welcome_text = i18n(lang, 'welcome')
-
-        # Add product ID search hint
-        search_hint = "\n\n────────────────\n🔍 _Vous avez un ID produit ? Entrez-le directement (ex: TBF-12345678)_" if lang == 'fr' else "\n\n────────────────\n🔍 _Have a product ID? Enter it directly (e.g. TBF-12345678)_"
-        welcome_text += search_hint
 
         await self._safe_transition_to_text(
             query,
