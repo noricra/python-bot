@@ -9,6 +9,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.core.utils import logger, escape_markdown
 from app.core.i18n import t as i18n
+from app.integrations.telegram.keyboards import back_to_main_button
 
 
 class LibraryHandlers:
