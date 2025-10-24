@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 
 from app.services.messaging_service import MessagingService
 from app.core import settings as core_settings
+from app.integrations.telegram.keyboards import back_to_main_button
 
 
 class SupportHandlers:
@@ -250,7 +251,7 @@ A: 24/7 ticket system."""
                 InlineKeyboardButton("🎫 Créer un ticket" if lang == 'fr' else "🎫 Create ticket", callback_data='create_ticket')
             ],
             [
-                InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')
+                back_to_main_button(lang)
             ]
         ]
 
@@ -278,7 +279,7 @@ A: 24/7 ticket system."""
                 "📭 Aucun ticket trouvé." if lang == 'fr' else "📭 No tickets found.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("🎫 Créer un ticket" if lang == 'fr' else "🎫 Create ticket", callback_data='create_ticket'),
-                    InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')
+                    back_to_main_button(lang)
                 ]])
             )
             return
@@ -289,7 +290,7 @@ A: 24/7 ticket system."""
             text += f"\n• {ticket['ticket_id']} - {ticket['status']}"
             keyboard.append([InlineKeyboardButton(f"👁️ {ticket['ticket_id']}", callback_data=f"view_ticket_{ticket['ticket_id']}")])
 
-        keyboard.append([InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')])
+        keyboard.append([back_to_main_button(lang)])
 
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 

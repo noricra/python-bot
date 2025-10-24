@@ -4,7 +4,7 @@ import os
 import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.core.i18n import t as i18n
-from app.integrations.telegram.keyboards import sell_menu_keyboard
+from app.integrations.telegram.keyboards import sell_menu_keyboard, back_to_main_button
 from app.core.validation import validate_email, validate_solana_address
 
 logger = logging.getLogger(__name__)
@@ -1215,7 +1215,7 @@ Entrez votre mot de passe :""")
             await query.edit_message_text(
                 text,
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')
+                    back_to_main_button(lang)
                 ]]),
                 parse_mode='Markdown'
             )
@@ -1225,7 +1225,7 @@ Entrez votre mot de passe :""")
             await query.edit_message_text(
                 "❌ Erreur chargement historique." if lang == 'fr' else "❌ Error loading history.",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')
+                    back_to_main_button(lang)
                 ]])
             )
 
@@ -1238,7 +1238,7 @@ Entrez votre mot de passe :""")
             await query.edit_message_text(
                 "❌ Aucune adresse Solana configurée." if lang == 'fr' else "❌ No Solana address configured.",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')
+                    back_to_main_button(lang)
                 ]])
             )
             return
@@ -1247,7 +1247,7 @@ Entrez votre mot de passe :""")
         await query.edit_message_text(
             f"📋 **Votre adresse Solana:**\n\n`{address}`\n\n💡 Copiez cette adresse pour recevoir vos paiements." if lang == 'fr' else f"📋 **Your Solana address:**\n\n`{address}`\n\n💡 Copy this address to receive payments.",
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')
+                back_to_main_button(lang)
             ]]),
             parse_mode='Markdown'
         )

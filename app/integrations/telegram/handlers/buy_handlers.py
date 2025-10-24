@@ -1270,7 +1270,7 @@ class BuyHandlers:
                     "📚 Aucun achat trouvé." if lang == 'fr' else "📚 No purchases found.",
                     reply_markup=InlineKeyboardMarkup([[
                         InlineKeyboardButton("🛒 Acheter" if lang == 'fr' else "🛒 Buy", callback_data='buy_menu'),
-                        InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')
+                        back_to_main_button(lang)
                     ]])
                 )
                 return
@@ -1283,7 +1283,7 @@ class BuyHandlers:
                     InlineKeyboardButton(f"⬇️ Télécharger" if lang == 'fr' else f"⬇️ Download", callback_data=f'download_product_{product_id}'),
                     InlineKeyboardButton(f"📞 Contact" if lang == 'fr' else f"📞 Contact", callback_data=f'contact_seller_{product_id}')
                 ])
-            keyboard.append([InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')])
+            keyboard.append([back_to_main_button(lang)])
 
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
@@ -1292,7 +1292,7 @@ class BuyHandlers:
             await query.edit_message_text(
                 "❌ Erreur chargement bibliothèque." if lang == 'fr' else "❌ Error loading library.",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')
+                    back_to_main_button(lang)
                 ]])
             )
 
@@ -1316,7 +1316,7 @@ class BuyHandlers:
                 await query.edit_message_text(
                     "❌ Produit non acheté ou introuvable." if lang == 'fr' else "❌ Product not purchased or not found.",
                     reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')
+                        back_to_main_button(lang)
                     ]])
                 )
                 return
@@ -1331,7 +1331,7 @@ class BuyHandlers:
                 await query.edit_message_text(
                     "❌ Fichier introuvable." if lang == 'fr' else "❌ File not found.",
                     reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')
+                        back_to_main_button(lang)
                     ]])
                 )
                 return
@@ -1349,7 +1349,7 @@ class BuyHandlers:
             await query.edit_message_text(
                 "❌ Erreur lors du téléchargement." if lang == 'fr' else "❌ Download error.",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')
+                    back_to_main_button(lang)
                 ]])
             )
 
@@ -1877,7 +1877,7 @@ class BuyHandlers:
                                         callback_data='library')],
                     [InlineKeyboardButton("⬇️ Télécharger maintenant" if lang == 'fr' else "⬇️ Download now",
                                         callback_data=f'download_product_{product_id}')],
-                    [InlineKeyboardButton("🏠 Accueil" if lang == 'fr' else "🏠 Home", callback_data='back_main')]
+                    [back_to_main_button(lang)]
                 ]),
                 parse_mode='Markdown'
             )
