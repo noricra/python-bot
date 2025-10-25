@@ -15,9 +15,10 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.core.i18n import t as i18n
 from app.core import settings as core_settings
-from app.core.error_messages import get_error_message, send_error_message
+from app.core.error_messages import get_error_message
 from app.core.seller_notifications import SellerNotifications
 from app.integrations.telegram.keyboards import buy_menu_keyboard, back_to_main_button
+from app.integrations.telegram.utils import safe_transition_to_text
 
 
 class BuyHandlers:
@@ -26,51 +27,6 @@ class BuyHandlers:
         self.order_repo = order_repo
         self.payment_service = payment_service
         self.review_repo = review_repo  # V2: Added for reviews functionality
-
-    async def _safe_transition_to_text(self, query, text: str, keyboard=None, parse_mode='Markdown'):
-        """
-        Gère intelligemment la transition d'un message (photo ou texte) vers un message texte
-
-        Problème résolu:
-        - Les carousels ont des photos → edit_message_text() échoue
-        - Solution: Détecter photo et supprimer/renvoyer au lieu d'éditer
-        """
-        try:
-            # Si le message original a une photo, on ne peut pas edit_message_text
-            if query.message.photo:
-                # Supprimer l'ancien message avec photo
-                try:
-                    await query.message.delete()
-                except:
-                    pass
-
-                # Envoyer nouveau message texte
-                await query.message.get_bot().send_message(
-                    chat_id=query.message.chat_id,
-                    text=text,
-                    reply_markup=keyboard,
-                    parse_mode=parse_mode
-                )
-            else:
-                # Message texte normal, on peut éditer
-                await query.edit_message_text(
-                    text=text,
-                    reply_markup=keyboard,
-                    parse_mode=parse_mode
-                )
-        except Exception as e:
-            logger.error(f"Error in _safe_transition_to_text: {e}")
-            # Fallback ultime : nouveau message
-            try:
-                await query.message.delete()
-            except:
-                pass
-            await query.message.get_bot().send_message(
-                chat_id=query.message.chat_id,
-                text=text,
-                reply_markup=keyboard,
-                parse_mode=parse_mode
-            )
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # V2 WORKFLOW: HELPER FUNCTIONS (Refactored to eliminate code duplication)
@@ -81,6 +37,10 @@ class BuyHandlers:
         if num >= 1000:
             return f"{num/1000:.1f}k"
         return str(num)
+
+    def _build_buy_button_label(self, price_eur: float, lang: str = 'fr') -> str:
+        """Génère le label du bouton buy (réutilisable partout)"""
+        return f"💳 ACHETER - {price_eur}€ 💳" if lang == 'fr' else f"💳 BUY - {price_eur}€ 💳"
 
     def _build_product_caption(self, product: Dict, mode: str = 'short', lang: str = 'fr') -> str:
         """
@@ -113,6 +73,12 @@ class BuyHandlers:
             sales_formatted = self._format_number(sales) if sales >= 1000 else str(sales)
             views_formatted = self._format_number(views)
 
+            # ✨ BADGES AUTOMATIQUES (Gamification)
+            badges = self.get_product_badges(product)
+            if badges:
+                badge_line = " | ".join(badges)
+                caption += f"{badge_line}\n\n"
+
             # Titre (BOLD uniquement)
             caption += f"<b>{title}</b>\n"
 
@@ -127,19 +93,21 @@ class BuyHandlers:
 
             # Stats avec labels texte complets
             stats_text = f"⭐ {rating:.1f}/5 ({reviews_count})" if lang == 'fr' else f"⭐ {rating:.1f}/5 ({reviews_count})"
-            stats_text += f" • {sales_formatted} ventes" if lang == 'fr' else f" • {sales_formatted} sales"
-            stats_text += f" • {views_formatted} vues\n\n" if lang == 'fr' else f" • {views_formatted} views\n\n"
+            stats_text += f"  •  {sales_formatted} ventes\n" if lang == 'fr' else f"  •  {sales_formatted} sales\n"
+           # stats_text += f" • {views_formatted} vues\n" if lang == 'fr' else f" • {views_formatted} views\n"
             caption += stats_text
-
-            # Métadonnées (catégorie + taille)
-            caption += f"📂 {category} • 📁 {file_size:.1f} MB\n"
 
             # Séparateur #2
             caption += "────────────────\n"
 
+            # Métadonnées (catégorie + taille)
+            caption += f"📂 {category} • 📁 {file_size:.1f} MB"
+
+            
+
             # Message recherche ID (gardé pour visibilité)
-            search_hint = "🔍 Vous avez un ID ? Entrez-le" if lang == 'fr' else "🔍 Have an ID ? Enter it directly "
-            caption += search_hint
+            #search_hint = "🔍 Vous avez un ID ? Entrez-le" if lang == 'fr' else "🔍 Have an ID ? Enter it directly "
+            #caption += search_hint
 
         elif mode == 'full':
             # V2 REDESIGN: Card Complète (Détails) - Design épuré avec description
@@ -157,6 +125,12 @@ class BuyHandlers:
             # Format numbers (1234 → 1.2k)
             sales_formatted = self._format_number(sales) if sales >= 1000 else str(sales)
             views_formatted = self._format_number(views)
+
+            # ✨ BADGES AUTOMATIQUES (Gamification)
+            badges = self.get_product_badges(product)
+            if badges:
+                badge_line = " | ".join(badges)
+                caption += f"{badge_line}\n\n"
 
             # Titre (BOLD uniquement)
             caption += f"<b>{title}</b>\n"
@@ -202,26 +176,41 @@ class BuyHandlers:
             product: Product dict
 
         Returns:
-            Path to image file
+            Path to image file (absolute path)
         """
         from app.core.image_utils import ImageUtils
+        from app.core.settings import get_absolute_path
         import os
 
         thumbnail_path = product.get('thumbnail_path')
 
-        logger.info(f"🖼️ Image lookup - Product: {product['product_id']}, thumbnail_path: {thumbnail_path}")
+        logger.info(f"🖼️ Image lookup - Product: {product['product_id']}, thumbnail_path (raw): {thumbnail_path}")
 
-        if not thumbnail_path or not os.path.exists(thumbnail_path):
-            logger.info(f"⚠️ Image not found, generating placeholder")
-            thumbnail_path = ImageUtils.create_or_get_placeholder(
+        # Convert to absolute path if relative
+        if thumbnail_path:
+            thumbnail_path_abs = get_absolute_path(thumbnail_path)
+            logger.info(f"📁 Resolved absolute path: {thumbnail_path_abs}")
+        else:
+            thumbnail_path_abs = None
+
+        # Check if file exists (with absolute path)
+        if not thumbnail_path_abs or not os.path.exists(thumbnail_path_abs):
+            if thumbnail_path_abs:
+                logger.warning(f"⚠️ Image not found at: {thumbnail_path_abs}")
+            else:
+                logger.warning(f"⚠️ No thumbnail_path in product")
+
+            logger.info(f"🎨 Generating placeholder...")
+            placeholder_path = ImageUtils.create_or_get_placeholder(
                 product_title=product['title'],
                 category=product.get('category', 'General'),
                 product_id=product['product_id']
             )
+            # Placeholder paths are already absolute
+            return placeholder_path if placeholder_path else None
         else:
-            logger.info(f"✅ Using stored image: {thumbnail_path}")
-
-        return thumbnail_path
+            logger.info(f"✅ Using stored image: {thumbnail_path_abs}")
+            return thumbnail_path_abs
 
     def _build_product_keyboard(self, product: Dict, context: str, lang: str = 'fr',
                                  category_key: str = None, index: int = 0,
@@ -250,8 +239,8 @@ class BuyHandlers:
         else:
             buy_callback = f'buy_product_{product_id}'
 
-        # Format avec emojis autour pour mettre EN VALEUR
-        buy_label = f"💳 ACHETER - {product['price_eur']}€ 💳" if lang == 'fr' else f"💳 BUY - {product['price_eur']}€ 💳"
+        # Utiliser la fonction helper réutilisable
+        buy_label = self._build_buy_button_label(product['price_eur'], lang)
 
         keyboard.append([
             InlineKeyboardButton(buy_label, callback_data=buy_callback)
@@ -501,6 +490,131 @@ class BuyHandlers:
         return badges
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # PAYMENT TEXT BUILDERS (Centralized & Modifiable)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    def _build_crypto_selection_text(self, title: str, price_eur: float, lang: str = 'fr') -> str:
+        """
+        Génère le texte de sélection crypto avec prix et frais détaillés (Format HTML)
+
+        Args:
+            title: Titre du produit
+            price_eur: Prix en euros
+            lang: Langue (fr/en)
+
+        Returns:
+            Texte formaté pour la sélection crypto (HTML)
+        """
+        # Calcul des frais (2.78% de frais NowPayments)
+        fees = round(price_eur * 0.0278, 2)
+        total = round(price_eur + fees, 2)
+
+        if lang == 'fr':
+            return f"""💳 <b>CHOISISSEZ VOTRE CRYPTO</b>
+
+<b>{title}</b>
+
+<b>Prix :</b> {price_eur}€
+<b>Frais de gestion :</b> {fees}€
+────────────────
+<b>Total :</b> {total}€
+
+<b>Délais de confirmation :</b>
+
+<b>Bitcoin (BTC)</b> - ~30min
+<b>Ethereum (ETH)</b> - ~5min
+<b>Solana (SOL)</b> - ~1min
+<b>USDC</b> - ~5min
+<b>USDT</b> - ~5min
+
+────────────────
+💡 <b>Recommandé : Solana</b> (le plus rapide)"""
+        else:
+            return f"""💳 <b>CHOOSE YOUR CRYPTO</b>
+
+<b>{title}</b>
+
+<b>Price:</b> €{price_eur}
+<b>Processing fee:</b> €{fees}
+────────────────
+<b>Total:</b> €{total}
+
+<b>Time for confirmation:</b>
+
+<b>Bitcoin (BTC)</b> - ~30min
+<b>Ethereum (ETH)</b> - ~5min
+<b>Solana (SOL)</b> - ~1min
+<b>USDC</b> - ~5min
+<b>USDT</b> - ~5min
+
+────────────────
+💡 <b>Recommended: Solana</b> (fastest)"""
+
+    def _build_payment_confirmation_text(self, title: str, price_eur: float, price_usd: float,
+                                         exact_amount: str, crypto_code: str, payment_address: str,
+                                         order_id: str, network: str = None, lang: str = 'fr') -> str:
+        """
+        Génère le texte de confirmation de paiement avec adresse et montant exact (Format HTML)
+
+        Args:
+            title: Titre du produit
+            price_eur: Prix en euros
+            price_usd: Prix en USD
+            exact_amount: Montant exact en crypto
+            crypto_code: Code de la crypto (BTC, ETH, SOL, etc.)
+            payment_address: Adresse de paiement
+            order_id: ID de commande
+            network: Réseau optionnel
+            lang: Langue (fr/en)
+
+        Returns:
+            Texte formaté pour la confirmation de paiement (HTML)
+        """
+        crypto_upper = crypto_code.upper()
+        network_display = network or crypto_upper
+
+        # Calcul des frais (2.78%)
+        fees = round(price_eur * 0.0278, 2)
+        total_eur = round(price_eur + fees, 2)
+
+        if lang == 'fr':
+            return f"""<b>{title}</b>
+Prix : {price_eur}€ × 1.0278 = <b>{total_eur}€</b> ({price_usd:.2f} USD)
+
+<b>Envoyez EXACTEMENT :</b>
+<code>{exact_amount} {crypto_upper}</code>
+
+<b>ADRESSE DE PAIEMENT {network_display} :</b>
+<code>{payment_address}</code>
+
+<b>Order ID :</b> <code>{order_id}</code>
+
+<b>⚠️ IMPORTANT</b>
+• Le paiement expire dans <b>1 heure</b>
+• Vous recevrez un email de confirmation automatique
+
+<b>❓ BESOIN D'AIDE ?</b>
+Contactez le support avec votre Order ID"""
+        else:
+            return f"""<b>{title}</b>
+Price: €{price_eur} × 1.0278 = <b>€{total_eur}</b> (${price_usd:.2f} USD)
+
+<b>Send EXACTLY:</b>
+<code>{exact_amount} {crypto_upper}</code>
+
+<b>{network_display} PAYMENT ADDRESS:</b>
+<code>{payment_address}</code>
+
+<b>Order ID:</b> <code>{order_id}</code>
+
+<b>⚠️ IMPORTANT</b>
+• Payment expires in <b>1 hour</b>
+• You will receive an automatic confirmation email
+
+<b>❓ NEED HELP?</b>
+Contact support with your Order ID"""
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # V2 NEW FEATURES (Spec Section 8: Missing Functionality)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -519,7 +633,7 @@ class BuyHandlers:
         """
         try:
             if not self.review_repo:
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     "❌ Service d'avis temporairement indisponible" if lang == 'fr' else "❌ Reviews service temporarily unavailable",
                     InlineKeyboardMarkup([[
@@ -532,7 +646,7 @@ class BuyHandlers:
             # Get product for context
             product = bot.get_product_by_id(product_id)
             if not product:
-                await self._safe_transition_to_text(query, i18n(lang, 'err_product_not_found'))
+                await safe_transition_to_text(query, i18n(lang, 'err_product_not_found'))
                 return
 
             # Get reviews (5 per page)
@@ -541,27 +655,25 @@ class BuyHandlers:
             total_reviews = product.get('reviews_count', 0)
             avg_rating = product.get('rating', 0.0)
 
-            # Build message
-            text = f"⭐ **AVIS CLIENTS**\n\n"
-            text += f"📦 {product['title']}\n"
-            text += f"💰 {product['price_eur']:.2f}€\n\n"
+            # Build message - Format simplifié
+            text = f"**⭐ AVIS CLIENTS**\n\n"
+            text += f"**{product['title']}**\n"
 
             # Rating summary
             if total_reviews > 0:
-                rating_stars = "⭐" * int(round(avg_rating))
-                text += f"**Note moyenne:** {rating_stars} **{avg_rating:.1f}**/5\n"
-                text += f"**Total:** {total_reviews} avis\n\n"
+                text += f"⭐ **{avg_rating:.1f}/5** ({total_reviews})\n\n"
             else:
-                text += "_Aucun avis pour le moment._\n\n"
-                text += "Soyez le premier à donner votre avis après l'achat!\n\n" if lang == 'fr' else "Be the first to review after purchase!\n\n"
+                text += "⭐ Aucun avis\n\n"
+                text += ("Soyez le premier à donner votre avis après l'achat!\n\n"
+                        if lang == 'fr' else "Be the first to review after purchase!\n\n")
 
             # Display reviews
             if reviews:
-                text += "─────────────────────\n\n"
-
                 from datetime import datetime
 
                 for review in reviews:
+                    text += "─────────────────────\n"
+
                     # User info
                     buyer_name = review.get('buyer_first_name', 'Acheteur')
                     if len(buyer_name) > 20:
@@ -578,7 +690,7 @@ class BuyHandlers:
                         # Limit to 150 chars per review for readability
                         if len(review_text) > 150:
                             review_text = review_text[:147] + "..."
-                        text += f"_{review_text}_\n"
+                        text += f"{review_text}\n"
 
                     # Time ago
                     created_at = review.get('created_at')
@@ -595,13 +707,13 @@ class BuyHandlers:
                             elif days_ago == 1:
                                 time_text = "Hier" if lang == 'fr' else "Yesterday"
                             elif days_ago < 7:
-                                time_text = f"Il y a {days_ago} jours" if lang == 'fr' else f"{days_ago} days ago"
+                                time_text = f"Il y a {days_ago}j" if lang == 'fr' else f"{days_ago}d ago"
                             elif days_ago < 30:
                                 weeks = days_ago // 7
-                                time_text = f"Il y a {weeks} semaine{'s' if weeks > 1 else ''}" if lang == 'fr' else f"{weeks} week{'s' if weeks > 1 else ''} ago"
+                                time_text = f"Il y a {weeks}sem" if lang == 'fr' else f"{weeks}w ago"
                             else:
                                 months = days_ago // 30
-                                time_text = f"Il y a {months} mois" if lang == 'fr' else f"{months} month{'s' if months > 1 else ''} ago"
+                                time_text = f"Il y a {months}mois" if lang == 'fr' else f"{months}m ago"
 
                             text += f"🕒 {time_text}\n"
                         except:
@@ -667,13 +779,13 @@ class BuyHandlers:
             ])
 
             # Transition from photo message (details page) to text
-            await self._safe_transition_to_text(query, text, InlineKeyboardMarkup(keyboard))
+            await safe_transition_to_text(query, text, InlineKeyboardMarkup(keyboard))
 
         except Exception as e:
             logger.error(f"Error showing product reviews: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 "❌ Erreur lors du chargement des avis" if lang == 'fr' else "❌ Error loading reviews",
                 InlineKeyboardMarkup([[
@@ -714,7 +826,7 @@ class BuyHandlers:
                 products.append(product_dict)
 
             if not products:
-                await self._safe_transition_to_text(query, "❌ No products found" if lang == 'en' else "❌ Aucun produit trouvé")
+                await safe_transition_to_text(query, "❌ No products found" if lang == 'en' else "❌ Aucun produit trouvé")
                 return
 
             # Show carousel at saved index
@@ -722,7 +834,7 @@ class BuyHandlers:
 
         except Exception as e:
             logger.error(f"Error collapsing details: {e}")
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 "❌ Erreur" if lang == 'fr' else "❌ Error",
                 InlineKeyboardMarkup([[
@@ -747,7 +859,7 @@ class BuyHandlers:
 
         except Exception as e:
             logger.error(f"Error navigating categories: {e}")
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 "❌ Erreur de navigation" if lang == 'fr' else "❌ Navigation error",
                 InlineKeyboardMarkup([[
@@ -1093,7 +1205,6 @@ class BuyHandlers:
             await query.edit_message_text("❌ Commande introuvable!")
             return
         logger.info(order)
-        print("ICI BRO")
         payment_id = order[7]
 
         # Check if payment_id exists
@@ -1247,113 +1358,6 @@ class BuyHandlers:
                     ]]),
                     parse_mode='Markdown')
 
-    # Library Methods - Extracted from bot_mlt.py
-    async def show_my_library(self, bot, query, lang):
-        """Bibliothèque utilisateur"""
-        user_id = query.from_user.id
-        try:
-            conn = bot.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT p.product_id, p.title, MAX(o.completed_at) as completed_at
-                FROM orders o
-                JOIN products p ON o.product_id = p.product_id
-                WHERE o.buyer_user_id = ? AND o.payment_status = 'completed'
-                GROUP BY p.product_id, p.title
-                ORDER BY MAX(o.completed_at) DESC
-                LIMIT 10
-            ''', (user_id,))
-            purchases = cursor.fetchall()
-            conn.close()
-
-            if not purchases:
-                await query.edit_message_text(
-                    "📚 Aucun achat trouvé." if lang == 'fr' else "📚 No purchases found.",
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🛒 Acheter" if lang == 'fr' else "🛒 Buy", callback_data='buy_menu'),
-                        back_to_main_button(lang)
-                    ]])
-                )
-                return
-
-            text = "📚 **MA BIBLIOTHÈQUE**\n\n" if lang == 'fr' else "📚 **MY LIBRARY**\n\n"
-            keyboard = []
-            for product_id, title, completed_at in purchases:
-                text += f"📖 {title}\n"
-                keyboard.append([
-                    InlineKeyboardButton(f"⬇️ Télécharger" if lang == 'fr' else f"⬇️ Download", callback_data=f'download_product_{product_id}'),
-                    InlineKeyboardButton(f"📞 Contact" if lang == 'fr' else f"📞 Contact", callback_data=f'contact_seller_{product_id}')
-                ])
-            keyboard.append([back_to_main_button(lang)])
-
-            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-        except Exception as e:
-            logger.error(f"Erreur bibliothèque: {e}")
-            await query.edit_message_text(
-                "❌ Erreur chargement bibliothèque." if lang == 'fr' else "❌ Error loading library.",
-                reply_markup=InlineKeyboardMarkup([[
-                    back_to_main_button(lang)
-                ]])
-            )
-
-    async def download_product(self, bot, query, context, product_id, lang):
-        """Télécharger produit acheté"""
-        user_id = query.from_user.id
-        try:
-            # Vérifier achat
-            conn = bot.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT p.main_file_path, p.title
-                FROM orders o
-                JOIN products p ON o.product_id = p.product_id
-                WHERE o.buyer_user_id = ? AND o.product_id = ? AND o.payment_status = 'completed'
-            ''', (user_id, product_id))
-            result = cursor.fetchone()
-            conn.close()
-
-            if not result:
-                await query.edit_message_text(
-                    "❌ Produit non acheté ou introuvable." if lang == 'fr' else "❌ Product not purchased or not found.",
-                    reply_markup=InlineKeyboardMarkup([[
-                        back_to_main_button(lang)
-                    ]])
-                )
-                return
-
-            file_path, title = result
-
-            # Construire le chemin complet vers le fichier
-            from app.core.settings import settings
-            full_file_path = os.path.join(settings.UPLOADS_DIR, file_path) if file_path else None
-
-            if not file_path or not os.path.exists(full_file_path):
-                await query.edit_message_text(
-                    "❌ Fichier introuvable." if lang == 'fr' else "❌ File not found.",
-                    reply_markup=InlineKeyboardMarkup([[
-                        back_to_main_button(lang)
-                    ]])
-                )
-                return
-
-            # Envoyer le fichier - utiliser query.get_bot() si context n'est pas disponible
-            bot_instance = context.bot if context else query.get_bot()
-            await bot_instance.send_document(
-                chat_id=query.message.chat_id,
-                document=open(full_file_path, 'rb'),
-                caption=f"📖 {title}"
-            )
-
-        except Exception as e:
-            logger.error(f"Erreur téléchargement: {e}")
-            await query.edit_message_text(
-                "❌ Erreur lors du téléchargement." if lang == 'fr' else "❌ Download error.",
-                reply_markup=InlineKeyboardMarkup([[
-                    back_to_main_button(lang)
-                ]])
-            )
-
     async def buy_product(self, bot, query, product_id: str, lang: str, category_key: str = None, index: int = None):
         """
         Show crypto selection for product purchase
@@ -1369,7 +1373,7 @@ class BuyHandlers:
                 keyboard = InlineKeyboardMarkup([[
                     InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='back_main')
                 ]])
-                await self._safe_transition_to_text(query, i18n(lang, 'err_product_not_found'), keyboard)
+                await safe_transition_to_text(query, i18n(lang, 'err_product_not_found'), keyboard)
                 return
 
             # Check if user already owns this product
@@ -1402,14 +1406,15 @@ class BuyHandlers:
                 ])
 
                 # Gérer transition depuis carousel (message avec photo)
-                await self._safe_transition_to_text(query, already_owned_text, keyboard)
+                await safe_transition_to_text(query, already_owned_text, keyboard)
                 return
 
             # Show crypto selection menu
             title = product.get('title', 'Produit')
             price_eur = product.get('price_eur', 0)
 
-            text = f"💳 **{i18n(lang, 'payment_title')}**\n\n📦 {bot.escape_markdown(title)}\n💰 {price_eur}€\n\n{i18n(lang, 'crypto_selection_text')}"
+            # Utiliser la fonction centralisée de génération de texte
+            text = self._build_crypto_selection_text(title, price_eur, lang)
 
             # V2 SPEC: Layout crypto en grille 2x2 + 1 (ÉTAPE 2)
             keyboard = []
@@ -1425,14 +1430,14 @@ class BuyHandlers:
                 if 'btc' in settings.CRYPTO_DISPLAY_INFO:
                     display_name, time_info = settings.CRYPTO_DISPLAY_INFO['btc']
                     row1.append(InlineKeyboardButton(
-                        "₿ BTC",
+                        " BTC",
                         callback_data=f'pay_crypto_btc_{product_id}'
                     ))
                 # ETH
                 if 'eth' in settings.CRYPTO_DISPLAY_INFO:
                     display_name, time_info = settings.CRYPTO_DISPLAY_INFO['eth']
                     row1.append(InlineKeyboardButton(
-                        "⟠ ETH",
+                        " ETH",
                         callback_data=f'pay_crypto_eth_{product_id}'
                     ))
                 if row1:
@@ -1442,7 +1447,7 @@ class BuyHandlers:
             if 'sol' in settings.CRYPTO_DISPLAY_INFO:
                 display_name, time_info = settings.CRYPTO_DISPLAY_INFO['sol']
                 keyboard.append([InlineKeyboardButton(
-                    f"◎ SOLANA {time_info}",
+                    f" SOLANA {time_info}",
                     callback_data=f'pay_crypto_sol_{product_id}'
                 )])
 
@@ -1450,7 +1455,7 @@ class BuyHandlers:
             row3 = []
             if 'usdc' in settings.CRYPTO_DISPLAY_INFO:
                 row3.append(InlineKeyboardButton(
-                    "🟢 USDC",
+                    " USDC",
                     callback_data=f'pay_crypto_usdc_{product_id}'
                 ))
             if 'usdt' in settings.CRYPTO_DISPLAY_INFO:
@@ -1473,15 +1478,15 @@ class BuyHandlers:
                 callback_data=back_callback
             )])
 
-            # Gérer transition depuis carousel (message avec photo)
-            await self._safe_transition_to_text(query, text, InlineKeyboardMarkup(keyboard))
+            # Gérer transition depuis carousel (message avec photo) - HTML pour bold
+            await safe_transition_to_text(query, text, InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
         except Exception as e:
             logger.error(f"Error buying product: {e}")
             keyboard_error = InlineKeyboardMarkup([[
                 InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='back_main')
             ]])
-            await self._safe_transition_to_text(query, i18n(lang, 'err_purchase_error'), keyboard_error)
+            await safe_transition_to_text(query, i18n(lang, 'err_purchase_error'), keyboard_error)
 
     async def process_crypto_payment(self, bot, query, crypto_code: str, product_id: str, lang: str):
         """Create payment with selected crypto using NowPayments"""
@@ -1492,14 +1497,14 @@ class BuyHandlers:
                 keyboard = InlineKeyboardMarkup([[
                     InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='back_main')
                 ]])
-                await self._safe_transition_to_text(query, i18n(lang, 'err_product_not_found'), keyboard)
+                await safe_transition_to_text(query, i18n(lang, 'err_product_not_found'), keyboard)
                 return
 
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             # LOADING STATE (création paiement NowPayments peut prendre 2-3s)
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             try:
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     "🔄 Création du paiement en cours..." if lang == 'fr' else "🔄 Creating payment..."
                 )
@@ -1609,15 +1614,7 @@ class BuyHandlers:
             await query.edit_message_text(i18n(lang, 'err_product_not_found'))
             return
 
-        # Extrait de description (200-300 chars)
-        desc = (product['description'] or '')
-        snippet_raw = (desc[:300] + '…') if len(desc) > 300 else desc or ("No preview available" if lang=='en' else "Aucun aperçu disponible")
         safe_title = escape_markdown(str(product.get('title') or ''))
-        snippet = escape_markdown(snippet_raw)
-        text = (
-            f"👀 **PREVIEW**\n\n📦 {safe_title}\n\n{snippet}" if lang=='en'
-            else f"👀 **APERÇU**\n\n📦 {safe_title}\n\n{snippet}"
-        )
 
         media_preview_sent = False
 
@@ -1656,24 +1653,14 @@ class BuyHandlers:
                                 bio = BytesIO(pix.tobytes('png'))
                                 bio.seek(0)
 
-                                # Format selon BUYER_WORKFLOW_V2_SPEC.md
-                                caption_text = (
-                                    f"👁️ **PREVIEW**\n\n"
-                                    f"📄 Page 1/{doc.page_count}\n\n"
-                                    f"📦 {safe_title}" if lang=='en'
-                                    else f"👁️ **APERÇU**\n\n"
-                                    f"📄 Page 1/{doc.page_count}\n\n"
-                                    f"📦 {safe_title}"
-                                )
-
                                 # Delete original message first
                                 try:
                                     await query.delete_message()
                                 except:
                                     pass
 
-                                # Send PDF preview
-                                await query.message.reply_photo(photo=bio, caption=caption_text, parse_mode='Markdown')
+                                # Send PDF preview (no caption)
+                                await query.message.reply_photo(photo=bio)
                                 doc.close()
                                 logger.info(f"[PDF Preview] Preview sent successfully!")
                                 media_preview_sent = True
@@ -1716,30 +1703,15 @@ class BuyHandlers:
                                 duration_sec_rem = duration_sec % 60
                                 duration_str = f"{duration_min}:{duration_sec_rem:02d}"
 
-                                caption_text = (
-                                    f"🎬 **Video Preview**\n\n"
-                                    f"_{safe_title}_\n\n"
-                                    f"⏱️ Duration: {duration_str}\n"
-                                    f"💡 Full video available after purchase" if lang=='en'
-                                    else f"🎬 **Aperçu Vidéo**\n\n"
-                                    f"_{safe_title}_\n\n"
-                                    f"⏱️ Durée: {duration_str}\n"
-                                    f"💡 Vidéo complète disponible après achat"
-                                )
-
                                 # Delete original message
                                 try:
                                     await query.delete_message()
                                 except:
                                     pass
 
-                                # Send thumbnail
+                                # Send thumbnail (no caption)
                                 with open(thumbnail_path, 'rb') as thumb_file:
-                                    await query.message.reply_photo(
-                                        photo=thumb_file,
-                                        caption=caption_text,
-                                        parse_mode='Markdown'
-                                    )
+                                    await query.message.reply_photo(photo=thumb_file)
 
                                 # Cleanup
                                 os.remove(thumbnail_path)
@@ -1775,28 +1747,13 @@ class BuyHandlers:
                                     if len(info_list) > 10:
                                         file_list.append(f"  ... et {len(info_list) - 10} fichiers de plus")
 
-                            total_size_mb = total_size / (1024 * 1024)
-                            files_text = '\n'.join(file_list) if file_list else ("No files found" if lang=='en' else "Aucun fichier trouvé")
-
-                            caption_text = (
-                                f"📦 **Archive Preview**\n\n"
-                                f"_{safe_title}_\n\n"
-                                f"**Contents ({len(file_list)} files shown):**\n{files_text}\n\n"
-                                f"📊 Total size: {total_size_mb:.1f} MB" if lang=='en'
-                                else f"📦 **Aperçu Archive**\n\n"
-                                f"_{safe_title}_\n\n"
-                                f"**Contenu ({len(file_list)} fichiers affichés):**\n{files_text}\n\n"
-                                f"📊 Taille totale: {total_size_mb:.1f} MB"
-                            )
-
                             # Delete original message
                             try:
                                 await query.delete_message()
                             except:
                                 pass
 
-                            # Send archive preview
-                            await query.message.reply_text(caption_text, parse_mode='Markdown')
+                            # Send archive preview (no text - archive previews will just show buttons)
                             logger.info(f"[Archive Preview] Preview sent successfully!")
                             media_preview_sent = True
                         except Exception as e:
@@ -1806,19 +1763,12 @@ class BuyHandlers:
         except Exception as e:
             logger.error(f"[Preview] General error: {e}")
 
-        # Show text preview if no media preview was sent
+        # Delete message if no media preview was sent
         if not media_preview_sent:
             try:
-                # Delete original message (peut être une photo)
                 await query.delete_message()
             except:
                 pass
-
-            try:
-                # Send new text message
-                await query.message.reply_text(text, parse_mode='Markdown')
-            except Exception as e:
-                logger.error(f"Error sending preview text: {e}")
 
         # Now send action buttons AFTER the preview content (at the bottom, easy to access)
         # V2: Include context for closed circuit Preview → Précédent → Details (with context) → Réduire → Carousel
@@ -1831,20 +1781,18 @@ class BuyHandlers:
             buy_callback = f'buy_product_{product_id}'
             back_callback = f'product_{product_id}'
 
+        # Utiliser la fonction helper réutilisable
+        buy_label = self._build_buy_button_label(product['price_eur'], lang)
+
         keyboard = [
-            [InlineKeyboardButton(i18n(lang, 'btn_buy'), callback_data=buy_callback)],
+            [InlineKeyboardButton(buy_label, callback_data=buy_callback)],
             [InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data=back_callback)]
         ]
 
-        action_text = (
-            "👇 **What would you like to do?**" if lang=='en'
-            else "👇 **Que souhaitez-vous faire ?**"
-        )
-
+        # Send buttons without text
         await query.message.reply_text(
-            action_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
+            ".",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
     async def mark_as_paid(self, bot, query, product_id: str, lang: str):
@@ -1903,27 +1851,28 @@ class BuyHandlers:
             network = payment_details.get('network', crypto_code.upper())
             qr_code = payment_data.get('qr_code')
 
-            # Build payment message
-            text = f"💳 **Payment Created / Paiement Créé**\n\n"
-            text += f"📦 **Product / Produit:** {title}\n"
-            text += f"💰 **Price / Prix:** {price_eur}€ ({price_usd:.2f} USD)\n"
-            text += f"🔗 **Network / Réseau:** {network}\n\n"
+            # Utiliser la fonction centralisée de génération de texte
+            text = self._build_payment_confirmation_text(
+                title=title,
+                price_eur=price_eur,
+                price_usd=price_usd,
+                exact_amount=formatted_amount,
+                crypto_code=crypto_code,
+                payment_address=payment_address,
+                order_id=order_id,
+                network=network,
+                lang=lang
+            )
 
-            text += f"**💎 Exact Amount / Montant Exact:**\n"
-            text += f"`{formatted_amount} {crypto_code.upper()}`\n\n"
-
-            text += f"**📍 Payment Address / Adresse de Paiement:**\n"
-            text += f"`{payment_address}`\n\n"
-
-            text += f"**📋 Order ID:** `{order_id}`\n\n"
-
-            text += "⏰ **Payment expires in 1 hour / Le paiement expire dans 1 heure**\n"
-            text += "🔔 You will receive automatic notification when payment is confirmed"
+            # Boutons bilingues
+            refresh_label = "🔄 Actualiser statut" if lang == 'fr' else "🔄 Refresh status"
+            preview_label = "👁️ Aperçu" if lang == 'fr' else "👁️ Preview"
+            back_label = "🔙 Retour" if lang == 'fr' else "🔙 Back"
 
             keyboard = [
-                [InlineKeyboardButton(f"Actualiser / Refresh Status", callback_data=f'refresh_payment_{order_id}')],
-                [InlineKeyboardButton(f"Aperçu / Preview", callback_data=f'preview_product_{product_id}')],
-                [InlineKeyboardButton("Retour / Back", callback_data=f'buy_product_{product_id}')]
+                [InlineKeyboardButton(refresh_label, callback_data=f'refresh_payment_{order_id}')],
+                [InlineKeyboardButton(preview_label, callback_data=f'preview_product_{product_id}')],
+                [InlineKeyboardButton(back_label, callback_data=f'buy_product_{product_id}')]
             ]
 
             # Try to send QR code image if available
@@ -1951,7 +1900,7 @@ class BuyHandlers:
                     # Send payment details as separate text message with buttons
                     await query.message.reply_text(
                         text,
-                        parse_mode='Markdown',
+                        parse_mode='HTML',
                         reply_markup=InlineKeyboardMarkup(keyboard)
                     )
 
@@ -1964,7 +1913,7 @@ class BuyHandlers:
             # Fallback: send text-only message
             await query.edit_message_text(
                 text,
-                parse_mode='Markdown',
+                parse_mode='HTML',
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
 

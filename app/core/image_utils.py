@@ -26,12 +26,12 @@ class ImageUtils:
     }
 
     @staticmethod
-    def generate_thumbnail(image_path: str, output_path: str, size: tuple = (400, 400)):
+    def generate_thumbnail(image_path: str, output_path: str, size: tuple = (1280, 1280)):
         """
         Generate HIGH QUALITY thumbnail from image with CENTER CROP
 
         QUALITY OPTIMIZATIONS:
-        - Larger size (400x400) for more detail
+        - Large size (1280x1280) for maximum detail and sharpness
         - BICUBIC resampling for sharper edges (no blur)
         - Quality 98 for maximum clarity
         - NO blur on borders
@@ -39,7 +39,7 @@ class ImageUtils:
         Args:
             image_path: Path to source image
             output_path: Path to save thumbnail
-            size: Thumbnail size (default 400x400 for high quality)
+            size: Thumbnail size (default 1280x1280 for high quality)
 
         Returns:
             bool: Success status
@@ -149,7 +149,7 @@ class ImageUtils:
         product_title: str,
         category: str,
         output_path: str,
-        size: tuple = (400, 400)
+        size: tuple = (1280, 1280)
     ) -> bool:
         """
         Generate HIGH QUALITY gradient placeholder image with product initial
@@ -158,7 +158,7 @@ class ImageUtils:
             product_title: Product title (first letter used)
             category: Product category (determines color)
             output_path: Where to save placeholder
-            size: Image size (default 400x400 for high quality)
+            size: Image size (default 1280x1280 for high quality)
 
         Returns:
             bool: Success status
@@ -237,10 +237,18 @@ class ImageUtils:
         Create product image directory structure
 
         Returns:
-            str: Path to product image directory
+            str: ABSOLUTE path to product image directory
         """
-        base_dir = os.path.join('data', 'product_images', str(seller_id), product_id)
+        from app.core.settings import get_absolute_path
+
+        # Build relative path
+        base_dir_rel = os.path.join('data', 'product_images', str(seller_id), product_id)
+
+        # Convert to absolute path
+        base_dir = get_absolute_path(base_dir_rel)
         os.makedirs(base_dir, exist_ok=True)
+
+        logger.info(f"📁 Product image directory: {base_dir}")
         return base_dir
 
     @staticmethod
@@ -315,10 +323,15 @@ class ImageUtils:
         Get existing placeholder or create new one
 
         Returns:
-            str: Path to placeholder image
+            str: ABSOLUTE path to placeholder image
         """
-        # Placeholder directory
-        placeholder_dir = os.path.join('data', 'product_images', 'placeholders')
+        from app.core.settings import get_absolute_path
+
+        # Placeholder directory (relative)
+        placeholder_dir_rel = os.path.join('data', 'product_images', 'placeholders')
+
+        # Convert to absolute path
+        placeholder_dir = get_absolute_path(placeholder_dir_rel)
         os.makedirs(placeholder_dir, exist_ok=True)
 
         # Use hash of category for filename to cache
@@ -327,6 +340,7 @@ class ImageUtils:
 
         # Check if already exists
         if os.path.exists(placeholder_path):
+            logger.info(f"✅ Using cached placeholder: {placeholder_path}")
             return placeholder_path
 
         # Generate new placeholder
