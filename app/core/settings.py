@@ -1,6 +1,32 @@
 import os
 from typing import List, Dict, Optional
 
+
+def get_absolute_path(relative_path: str) -> str:
+    """
+    Convert relative path to absolute path based on project root.
+
+    Args:
+        relative_path: Relative path (e.g., 'data/product_images/...')
+
+    Returns:
+        Absolute path
+    """
+    if not relative_path:
+        return None
+
+    # If already absolute, return as-is
+    if os.path.isabs(relative_path):
+        return relative_path
+
+    # Get project root (2 levels up from this file)
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+    # Join with project root
+    absolute_path = os.path.join(project_root, relative_path)
+
+    return absolute_path
+
 try:
     # Optional; present in this project
     from dotenv import load_dotenv
@@ -13,6 +39,9 @@ class Settings:
     """Central application settings loaded from environment with safe defaults."""
 
     def __init__(self) -> None:
+        # Project root directory (absolute path to bot root)
+        self.PROJECT_ROOT: str = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
         # Telegram / Admin
         self.TELEGRAM_BOT_TOKEN: Optional[str] = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
         self.TELEGRAM_TOKEN: Optional[str] = self.TELEGRAM_BOT_TOKEN  # Compatibility
