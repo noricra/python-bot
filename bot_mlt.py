@@ -741,15 +741,10 @@ class MarketplaceBot:
                 logger.info(f"🔍 Auto-detection ID produit: {message_clean}")
                 await self.buy_handlers.process_product_search(self, update, message_text)
             else:
-                # Message non reconnu
-                await update.message.reply_text(
-                    "💬 Pour nous contacter, utilisez le système de support.",
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🎫 Créer un ticket",
-                                             callback_data='create_ticket'),
-                        InlineKeyboardButton("🏠 Menu principal",
-                                             callback_data='back_main')
-                    ]]))
+                # Message non reconnu - Essayer recherche textuelle
+                from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+                logger.info(f"🔍 Tentative recherche textuelle: {message_text}")
+                await self.buy_handlers.process_product_search(self, update, message_text)
 
 
 

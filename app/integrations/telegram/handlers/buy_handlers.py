@@ -1102,37 +1102,181 @@ Contact support with your Order ID"""
             )
 
     async def process_product_search(self, bot, update, message_text):
-        """Traite la recherche de produit par ID"""
+        """Traite la recherche de produit par ID OU texte libre"""
         user_id = update.effective_user.id
         user_state = bot.state_manager.get_state(user_id)
+        lang = user_state.get('lang', 'fr')
 
-        product_id = message_text.strip().upper()
+        search_input = message_text.strip()
 
-        # No format validation - accept any input for searching
-
-        product = bot.get_product_by_id(product_id)
-
+        # Reset state
         if user_id in bot.state_manager.user_states:
             state = bot.state_manager.get_state(user_id)
             for k in ['waiting_for_product_id']:
                 state.pop(k, None)
             bot.state_manager.update_state(user_id, **state)
 
-        if product:
-            await self.show_product_details_from_search(bot, update, product)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # STRATÉGIE 1: Essayer recherche par ID (si ressemble à un ID)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        product_id_upper = search_input.upper()
+
+        # Si ça ressemble à un ID (format TBF-XXX ou contient des tirets)
+        if 'TBF-' in product_id_upper or '-' in search_input:
+            product = bot.get_product_by_id(product_id_upper)
+            if product:
+                logger.info(f"✅ Product found by ID: {product_id_upper}")
+                await self.show_product_details_from_search(bot, update, product)
+                return
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # STRATÉGIE 2: Recherche textuelle (titre + description)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        logger.info(f"🔍 Text search for: {search_input}")
+        results = self.product_repo.search_products(search_input, limit=10)
+
+        if results:
+            logger.info(f"✅ Found {len(results)} products matching '{search_input}'")
+            await self.show_search_results(bot, update, results, search_input, index=0, lang=lang)
+        else:
+            # Aucun résultat
+            no_results_text = (
+                f"🔍 **Aucun résultat pour :** `{search_input}`\n\n"
+                "💡 **Essayez :**\n"
+                "• Des mots-clés plus courts\n"
+                "• Rechercher par ID produit (ex: TBF-123...)\n"
+                "• Parcourir les catégories"
+            ) if lang == 'fr' else (
+                f"🔍 **No results for:** `{search_input}`\n\n"
+                "💡 **Try:**\n"
+                "• Shorter keywords\n"
+                "• Search by product ID (e.g. TBF-123...)\n"
+                "• Browse categories"
+            )
+
+            await update.message.reply_text(
+                no_results_text,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(
+                        "📂 Parcourir catégories" if lang == 'fr' else "📂 Browse categories",
+                        callback_data='browse_categories'
+                    )],
+                    [InlineKeyboardButton(
+                        "🔙 Retour" if lang == 'fr' else "🔙 Back",
+                        callback_data='buy_menu'
+                    )]
+                ]),
+                parse_mode='Markdown'
+            )
+
+    async def show_search_results(self, bot, update, results, search_query, index=0, lang='fr'):
+        """
+        Affiche les résultats de recherche textuelle en carousel
+
+        Args:
+            bot: Bot instance
+            update: Telegram update
+            results: Liste des produits trouvés
+            search_query: Requête de recherche
+            index: Index du produit affiché
+            lang: Langue
+        """
+        if not results:
+            return
+
+        product = results[index]
+        total = len(results)
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # CAPTION avec contexte recherche
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        caption = self._build_product_caption(product, mode='short', lang=lang)
+
+        # Ajouter header recherche
+        search_header = (
+            f"🔍 Recherche: <b>{search_query}</b>\n"
+            f"📊 {total} résultat{'s' if total > 1 else ''}\n\n"
+        ) if lang == 'fr' else (
+            f"🔍 Search: <b>{search_query}</b>\n"
+            f"📊 {total} result{'s' if total > 1 else ''}\n\n"
+        )
+
+        caption_with_header = search_header + caption
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # IMAGE
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        thumbnail_path = self._get_product_image_or_placeholder(product)
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # KEYBOARD avec navigation carousel
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        keyboard = []
+
+        # Ligne 1: Navigation + Acheter
+        nav_row = []
+
+        # Bouton précédent (seulement si pas au début)
+        if index > 0:
+            nav_row.append(InlineKeyboardButton(
+                "⬅️",
+                callback_data=f'search_nav_{search_query}_{index-1}'
+            ))
+
+        # Position
+        nav_row.append(InlineKeyboardButton(
+            f"{index + 1}/{total}",
+            callback_data='noop'
+        ))
+
+        # Bouton suivant (seulement si pas à la fin)
+        if index < total - 1:
+            nav_row.append(InlineKeyboardButton(
+                "➡️",
+                callback_data=f'search_nav_{search_query}_{index+1}'
+            ))
+
+        keyboard.append(nav_row)
+
+        # Ligne 2: Détails + Prix
+        buy_label = self._build_buy_button_label(product, lang)
+        keyboard.append([
+            InlineKeyboardButton(
+                "ℹ️ Détails" if lang == 'fr' else "ℹ️ Details",
+                callback_data=f'search_details_{product["product_id"]}_{search_query}_{index}'
+            ),
+            InlineKeyboardButton(
+                buy_label,
+                callback_data=f'buy_product_{product["product_id"]}'
+            )
+        ])
+
+        # Ligne 3: Retour
+        keyboard.append([
+            InlineKeyboardButton(
+                "🔙 Nouvelle recherche" if lang == 'fr' else "🔙 New search",
+                callback_data='buy_menu'
+            )
+        ])
+
+        keyboard_markup = InlineKeyboardMarkup(keyboard)
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # DISPLAY
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if thumbnail_path and os.path.exists(thumbnail_path):
+            await update.message.reply_photo(
+                photo=open(thumbnail_path, 'rb'),
+                caption=caption_with_header,
+                reply_markup=keyboard_markup,
+                parse_mode='HTML'
+            )
         else:
             await update.message.reply_text(
-                f"❌ **Produit introuvable :** `{product_id}`\n\nVérifiez l'ID ou explorez les catégories.",
-                reply_markup=InlineKeyboardMarkup(
-                    [[
-                        InlineKeyboardButton("Parcourir catégories" if lang == 'fr' else "Browse categories",
-                                             callback_data='back_main')
-                    ],
-                     [
-                         InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
-                                              callback_data='buy_menu')
-                     ]]),
-                parse_mode='Markdown')
+                caption_with_header,
+                reply_markup=keyboard_markup,
+                parse_mode='HTML'
+            )
 
     async def show_product_details_from_search(self, bot, update, product):
         """Affiche les détails d'un produit trouvé par recherche - STRUCTURE IDENTIQUE À MODE 'FULL'"""

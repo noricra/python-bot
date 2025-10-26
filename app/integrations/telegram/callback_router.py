@@ -2,8 +2,9 @@
 Callback Router - Routage centralisé des callbacks Telegram
 """
 from typing import Dict, Any, Callable
-from telegram import CallbackQuery
+from telegram import CallbackQuery, InputMediaPhoto
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ class CallbackRouter:
             'seller_analytics': lambda query, lang: self.bot.sell_handlers.seller_analytics(self.bot, query, lang),
             'seller_analytics_visual': lambda query, lang: self.bot.sell_handlers.seller_analytics_visual(self.bot, query, lang),
             'seller_settings': lambda query, lang: self.bot.sell_handlers.seller_settings(self.bot, query, lang),
+            'seller_messages': lambda query, lang: self.bot.sell_handlers.seller_messages(self.bot, query, lang),
             'seller_info': self._handle_seller_info,
             'sell_payout_history': lambda query, lang: self.bot.sell_handlers.payout_history(self.bot, query, lang),
             'sell_copy_address': lambda query, lang: self.bot.sell_handlers.copy_address(self.bot, query, lang),
@@ -218,6 +220,161 @@ class CallbackRouter:
             except Exception as e:
                 logger.error(f"Error in seller carousel navigation: {e}")
                 await query.answer("Error" if lang == 'en' else "Erreur")
+                return True
+
+        # 🔍 Search results navigation (search_nav_{query}_{index})
+        if callback_data.startswith('search_nav_'):
+            try:
+                # Parse: search_nav_trading_2
+                parts = callback_data.replace('search_nav_', '').rsplit('_', 1)
+                search_query = parts[0]
+                index = int(parts[1])
+
+                # Re-fetch search results
+                results = self.bot.buy_handlers.product_repo.search_products(search_query, limit=10)
+
+                if results and index < len(results):
+                    # Update message with new product
+                    product = results[index]
+                    total = len(results)
+
+                    # Build caption
+                    caption = self.bot.buy_handlers._build_product_caption(product, mode='short', lang=lang)
+                    search_header = (
+                        f"🔍 Recherche: <b>{search_query}</b>\n"
+                        f"📊 {total} résultat{'s' if total > 1 else ''}\n\n"
+                    ) if lang == 'fr' else (
+                        f"🔍 Search: <b>{search_query}</b>\n"
+                        f"📊 {total} result{'s' if total > 1 else ''}\n\n"
+                    )
+                    caption_with_header = search_header + caption
+
+                    # Build keyboard
+                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                    keyboard = []
+
+                    # Navigation row
+                    nav_row = []
+                    if index > 0:
+                        nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'search_nav_{search_query}_{index-1}'))
+                    nav_row.append(InlineKeyboardButton(f"{index + 1}/{total}", callback_data='noop'))
+                    if index < total - 1:
+                        nav_row.append(InlineKeyboardButton("➡️", callback_data=f'search_nav_{search_query}_{index+1}'))
+                    keyboard.append(nav_row)
+
+                    # Actions row
+                    buy_label = self.bot.buy_handlers._build_buy_button_label(product, lang)
+                    keyboard.append([
+                        InlineKeyboardButton("ℹ️ Détails" if lang == 'fr' else "ℹ️ Details",
+                                           callback_data=f'search_details_{product["product_id"]}_{search_query}_{index}'),
+                        InlineKeyboardButton(buy_label, callback_data=f'buy_product_{product["product_id"]}')
+                    ])
+
+                    # Back button
+                    keyboard.append([InlineKeyboardButton(
+                        "🔙 Nouvelle recherche" if lang == 'fr' else "🔙 New search",
+                        callback_data='buy_menu'
+                    )])
+
+                    keyboard_markup = InlineKeyboardMarkup(keyboard)
+
+                    # Get image
+                    thumbnail_path = self.bot.buy_handlers._get_product_image_or_placeholder(product)
+
+                    # Update message
+                    if thumbnail_path and os.path.exists(thumbnail_path):
+                        try:
+                            await query.edit_message_media(
+                                media=InputMediaPhoto(
+                                    media=open(thumbnail_path, 'rb'),
+                                    caption=caption_with_header,
+                                    parse_mode='HTML'
+                                ),
+                                reply_markup=keyboard_markup
+                            )
+                        except:
+                            await query.edit_message_caption(
+                                caption=caption_with_header,
+                                reply_markup=keyboard_markup,
+                                parse_mode='HTML'
+                            )
+                    else:
+                        await query.edit_message_text(
+                            text=caption_with_header,
+                            reply_markup=keyboard_markup,
+                            parse_mode='HTML'
+                        )
+                else:
+                    await query.answer("Produit introuvable" if lang == 'fr' else "Product not found")
+
+                return True
+            except Exception as e:
+                logger.error(f"Error in search navigation: {e}")
+                import traceback
+                traceback.print_exc()
+                await query.answer("Erreur" if lang == 'fr' else "Error")
+                return True
+
+        # 🔍 Search details from results (search_details_{product_id}_{query}_{index})
+        if callback_data.startswith('search_details_'):
+            try:
+                # Parse: search_details_TBF-123_trading_2
+                parts = callback_data.replace('search_details_', '').split('_', 2)
+                product_id = parts[0] + '_' + parts[1]  # Reconstruct TBF-XXX
+                # Remaining parts contain query and index
+                remaining = parts[2].rsplit('_', 1)
+                search_query = remaining[0]
+                index = int(remaining[1]) if len(remaining) > 1 else 0
+
+                # Get product
+                product = self.bot.get_product_by_id(product_id)
+                if product:
+                    # Show details (mode full) with back to search
+                    caption = self.bot.buy_handlers._build_product_caption(product, mode='full', lang=lang)
+                    thumbnail_path = self.bot.buy_handlers._get_product_image_or_placeholder(product)
+
+                    # Keyboard with back to search results
+                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                    buy_label = self.bot.buy_handlers._build_buy_button_label(product, lang)
+                    keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton(buy_label, callback_data=f'buy_product_{product["product_id"]}')],
+                        [InlineKeyboardButton("🔙 Retour résultats" if lang == 'fr' else "🔙 Back to results",
+                                            callback_data=f'search_nav_{search_query}_{index}')],
+                        [InlineKeyboardButton("🔙 Nouvelle recherche" if lang == 'fr' else "🔙 New search",
+                                            callback_data='buy_menu')]
+                    ])
+
+                    if thumbnail_path and os.path.exists(thumbnail_path):
+                        try:
+                            await query.edit_message_media(
+                                media=InputMediaPhoto(
+                                    media=open(thumbnail_path, 'rb'),
+                                    caption=caption,
+                                    parse_mode='HTML'
+                                ),
+                                reply_markup=keyboard
+                            )
+                        except:
+                            await query.edit_message_caption(
+                                caption=caption,
+                                reply_markup=keyboard,
+                                parse_mode='HTML'
+                            )
+                    else:
+                        await query.edit_message_text(
+                            text=caption,
+                            reply_markup=keyboard,
+                            parse_mode='HTML'
+                        )
+                else:
+                    await query.answer("Produit introuvable" if lang == 'fr' else "Product not found")
+
+                return True
+            except Exception as e:
+                logger.error(f"Error showing search details: {e}")
+                import traceback
+                traceback.print_exc()
+                await query.answer("Erreur" if lang == 'fr' else "Error")
                 return True
 
         # 🎠 Library carousel navigation (library_carousel_{index})
@@ -499,16 +656,19 @@ class CallbackRouter:
             await self.bot.support_handlers.admin_reply_ticket_prompt(query, ticket_id)
             return True
 
-        # Library item view
-        if callback_data.startswith('library_item_'):
-            product_id = callback_data.replace('library_item_', '')
-            await self.bot.library_handlers.show_library_item(self.bot, query, product_id, lang)
-            return True
-
         # Review product
         if callback_data.startswith('review_product_'):
             product_id = callback_data.replace('review_product_', '')
             await self.bot.library_handlers.write_review_prompt(self.bot, query, product_id, lang)
+            return True
+
+        # Rate product (1-5 stars)
+        if callback_data.startswith('rate_'):
+            parts = callback_data.split('_')
+            if len(parts) >= 3:
+                product_id = '_'.join(parts[1:-1])
+                rating = int(parts[-1])
+                await self.bot.library_handlers.process_rating(self.bot, query, product_id, rating, lang)
             return True
 
         # ════════════════════════════════════════════════════════════════
