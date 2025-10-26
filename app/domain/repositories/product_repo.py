@@ -333,6 +333,38 @@ class ProductRepository:
         finally:
             conn.close()
 
+    def search_products(self, query: str, limit: int = 10):
+        """
+        Recherche full-text dans titre + description des produits
+
+        Args:
+            query: Texte de recherche
+            limit: Nombre max de résultats
+
+        Returns:
+            Liste de produits correspondants
+        """
+        conn = get_sqlite_connection(self.database_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            search_pattern = f'%{query}%'
+            cursor.execute('''
+                SELECT * FROM products
+                WHERE (title LIKE ? OR description LIKE ?)
+                  AND status = 'active'
+                ORDER BY sales_count DESC, created_at DESC
+                LIMIT ?
+            ''', (search_pattern, search_pattern, limit))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        except sqlite3.Error as e:
+            import logging
+            logging.error(f"Search error: {e}")
+            return []
+        finally:
+            conn.close()
+
     def create_product(self, product_data: Dict) -> Optional[str]:
         """Create a new product with auto-generated ID"""
         from app.core.utils import generate_product_id
