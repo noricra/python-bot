@@ -56,7 +56,8 @@ class AdminHandlers:
             [InlineKeyboardButton("📦 Voir produits", callback_data='admin_products'),
              InlineKeyboardButton("🔍 Rechercher produit", callback_data='admin_search_product')],
             [InlineKeyboardButton("❌ Suspendre produit", callback_data='admin_suspend_product'),
-             InlineKeyboardButton("📊 Export produits", callback_data='admin_export_products_csv')],
+             InlineKeyboardButton("✅ Rétablir produit", callback_data='admin_restore_product')],
+            [InlineKeyboardButton("📊 Export produits", callback_data='admin_export_products_csv')],
             [InlineKeyboardButton("🔙 Retour admin", callback_data='admin_menu')]
         ]
 
@@ -184,11 +185,60 @@ class AdminHandlers:
             parse_mode='Markdown')
 
     async def admin_suspend_product_prompt(self, query, lang):
-        """Prompt suspension produit"""
+        """Prompt suspension produit - étape 1: choisir la raison"""
         user_id = query.from_user.id
 
+        # Liste des raisons prédéfinies
+        reasons_keyboard = [
+            [InlineKeyboardButton("🚫 Contenu inapproprié", callback_data='suspend_reason_inappropriate')],
+            [InlineKeyboardButton("⚠️ Arnaque / Spam", callback_data='suspend_reason_scam')],
+            [InlineKeyboardButton("📋 Violation des conditions", callback_data='suspend_reason_tos')],
+            [InlineKeyboardButton("💰 Prix abusif", callback_data='suspend_reason_price')],
+            [InlineKeyboardButton("📄 Contenu protégé / Piratage", callback_data='suspend_reason_copyright')],
+            [InlineKeyboardButton("⚖️ Illégal", callback_data='suspend_reason_illegal')],
+            [InlineKeyboardButton("🔍 Autre raison", callback_data='suspend_reason_other')],
+            [InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='admin_menu')]
+        ]
+
         await query.edit_message_text(
-            "❌ **Suspendre Produit**\n\nEntrez l'ID produit à suspendre :" if lang == 'fr' else "❌ **Suspend Product**\n\nEnter product ID to suspend:",
+            "❌ **Suspendre Produit**\n\nChoisissez la raison de la suspension :" if lang == 'fr'
+            else "❌ **Suspend Product**\n\nChoose suspension reason:",
+            reply_markup=InlineKeyboardMarkup(reasons_keyboard),
+            parse_mode='Markdown')
+
+    async def admin_suspend_product_id_prompt(self, bot, query, reason_key, lang):
+        """Prompt suspension produit - étape 2: demander l'ID après sélection raison"""
+        user_id = query.from_user.id
+
+        # Mapping des raisons
+        reason_map = {
+            'inappropriate': "Contenu inapproprié ou offensant",
+            'scam': "Arnaque, spam ou tentative de fraude",
+            'tos': "Violation des conditions d'utilisation de la marketplace",
+            'price': "Prix abusif ou pratiques commerciales déloyales",
+            'copyright': "Contenu protégé par des droits d'auteur ou piratage",
+            'illegal': "Contenu illégal ou activité frauduleuse",
+            'other': "Autre raison (non spécifiée)"
+        }
+
+        reason_text = reason_map.get(reason_key, "Raison non spécifiée")
+
+        # Stocker la raison dans l'état
+        bot.state_manager.update_state(user_id, admin_suspend_product=True, suspend_reason=reason_text, lang=lang)
+
+        await query.edit_message_text(
+            f"❌ **Suspendre Produit**\n\n📋 Raison: {reason_text}\n\nEntrez l'ID du produit à suspendre :" if lang == 'fr'
+            else f"❌ **Suspend Product**\n\n📋 Reason: {reason_text}\n\nEnter product ID to suspend:",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='admin_menu')]]),
+            parse_mode='Markdown')
+
+    async def admin_restore_product_prompt(self, bot, query, lang):
+        """Prompt rétablissement produit"""
+        user_id = query.from_user.id
+        bot.state_manager.update_state(user_id, restoring_product=True, lang=lang)
+
+        await query.edit_message_text(
+            "✅ **Rétablir Produit**\n\nEntrez l'ID du produit à rétablir :" if lang == 'fr' else "✅ **Restore Product**\n\nEnter product ID to restore:",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='admin_menu')]]),
             parse_mode='Markdown')
 
@@ -563,13 +613,107 @@ class AdminHandlers:
     async def handle_product_suspend_message(self, bot, update, user_state):
         """Process suspension produit"""
         message_text = update.message.text.strip()
+        product_id = message_text.strip()
+
+        # Récupérer la raison stockée dans l'état
+        reason = user_state.get('suspend_reason', "Votre produit ne respecte pas les règles de la marketplace.")
+
         try:
-            success = self.product_repo.update_status(message_text.strip(), 'banned')
-            text = "✅ Produit suspendu" if success else "❌ Erreur suspension"
-            await update.message.reply_text(text)
+            success = self.product_repo.update_status(product_id, 'banned')
+
+            # Send email notification to seller if product suspended
+            if success:
+                try:
+                    product = self.product_repo.get_product(product_id)
+                    if product:
+                        seller = self.user_repo.get_user(product['seller_user_id'])
+                        if seller and seller.get('email'):
+                            from app.core.email_service import EmailService
+                            email_service = EmailService()
+                            email_service.send_product_suspended_notification(
+                                to_email=seller['email'],
+                                seller_name=seller.get('seller_name', seller.get('username', 'Vendeur')),
+                                product_title=product['title'],
+                                reason=reason,
+                                can_appeal=True
+                            )
+                except Exception as email_error:
+                    logger.error(f"Erreur envoi email suspension produit: {email_error}")
+
+            # Message de confirmation avec la raison
+            if success:
+                text = f"✅ **Produit suspendu**\n\n📋 Raison: {reason}\n🆔 Produit: {product_id}"
+            else:
+                text = "❌ Erreur suspension"
+
+            await update.message.reply_text(text, parse_mode='Markdown')
             bot.reset_user_state(update.effective_user.id)
         except Exception as e:
             await update.message.reply_text(f"❌ Erreur: {str(e)}")
+            bot.reset_user_state(update.effective_user.id)
+
+    async def process_admin_restore_product(self, bot, update, user_state):
+        """Process restoration produit"""
+        product_id = update.message.text.strip()
+        lang = user_state.get('lang', 'fr')
+
+        try:
+            # Vérifier que le produit existe
+            product = self.product_repo.get_product(product_id)
+            if not product:
+                await update.message.reply_text(
+                    "❌ Produit introuvable." if lang == 'fr' else "❌ Product not found."
+                )
+                bot.reset_user_state(update.effective_user.id)
+                return
+
+            # Vérifier que le produit est suspendu
+            if product.get('status') != 'banned':
+                await update.message.reply_text(
+                    f"⚠️ Ce produit n'est pas suspendu (statut actuel: {product.get('status')})." if lang == 'fr'
+                    else f"⚠️ This product is not suspended (current status: {product.get('status')})."
+                )
+                bot.reset_user_state(update.effective_user.id)
+                return
+
+            # Rétablir le produit
+            success = self.product_repo.update_status(product_id, 'active')
+
+            if success:
+                text = (
+                    f"✅ **Produit rétabli avec succès!**\n\n"
+                    f"📦 **{product['title']}**\n"
+                    f"🆔 {product_id}\n"
+                    f"💰 {product['price_eur']}€\n\n"
+                    f"Le produit est maintenant visible sur la marketplace."
+                ) if lang == 'fr' else (
+                    f"✅ **Product restored successfully!**\n\n"
+                    f"📦 **{product['title']}**\n"
+                    f"🆔 {product_id}\n"
+                    f"💰 {product['price_eur']}€\n\n"
+                    f"The product is now visible on the marketplace."
+                )
+
+                # Optionnel: Envoyer email au vendeur (notification de rétablissement)
+                try:
+                    seller = self.user_repo.get_user(product['seller_user_id'])
+                    if seller and seller.get('email'):
+                        # TODO: Créer email de notification de rétablissement si souhaité
+                        pass
+                except Exception as email_error:
+                    logger.error(f"Erreur notification vendeur restoration: {email_error}")
+            else:
+                text = "❌ Erreur lors du rétablissement." if lang == 'fr' else "❌ Error restoring product."
+
+            await update.message.reply_text(text, parse_mode='Markdown')
+            bot.reset_user_state(update.effective_user.id)
+
+        except Exception as e:
+            logger.error(f"Error in process_admin_restore_product: {e}")
+            await update.message.reply_text(
+                f"❌ Erreur: {str(e)}" if lang == 'fr' else f"❌ Error: {str(e)}"
+            )
+            bot.reset_user_state(update.effective_user.id)
 
     async def admin_export_products_csv(self, query, lang):
         """Export products to CSV file"""

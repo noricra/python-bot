@@ -6,6 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.core.i18n import t as i18n
 from app.integrations.telegram.keyboards import sell_menu_keyboard, back_to_main_button
 from app.core.validation import validate_email, validate_solana_address
+from app.integrations.telegram.utils import safe_transition_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -15,101 +16,136 @@ class SellHandlers:
         self.product_repo = product_repo
         self.payment_service = payment_service
 
-    async def _safe_transition_to_text(self, query, text: str, keyboard=None, parse_mode='Markdown'):
+    # ==================== HELPER FUNCTIONS ====================
+
+    async def _verify_product_ownership(self, bot, query, product_id: str):
         """
-        Gère intelligemment la transition d'un message (photo ou texte) vers un message texte
-        Identique à la fonction dans BuyHandlers
+        Verify product ownership and return product if owned by current seller
+
+        Args:
+            bot: Bot instance
+            query: Callback query
+            product_id: Product ID to verify
+
+        Returns:
+            Product dict if owned, None otherwise (with error message sent)
         """
-        try:
-            if query.message.photo:
-                try:
-                    await query.message.delete()
-                except:
-                    pass
-                await query.message.get_bot().send_message(
-                    chat_id=query.message.chat_id,
-                    text=text,
-                    reply_markup=keyboard,
-                    parse_mode=parse_mode
-                )
-            else:
-                await query.edit_message_text(
-                    text=text,
-                    reply_markup=keyboard,
-                    parse_mode=parse_mode
-                )
-        except Exception as e:
-            logger.error(f"Error in _safe_transition_to_text: {e}")
-            try:
-                await query.message.delete()
-            except:
-                pass
-            await query.message.get_bot().send_message(
-                chat_id=query.message.chat_id,
-                text=text,
-                reply_markup=keyboard,
-                parse_mode=parse_mode
+        # Get actual seller_id (handles multi-account mapping)
+        user_id = query.from_user.id
+
+        # Get product and verify ownership
+        product = self.product_repo.get_product_by_id(product_id)
+        if not product or product.get('seller_user_id') != user_id:
+            await safe_transition_to_text(
+                query,
+                "❌ Produit introuvable ou vous n'êtes pas le propriétaire",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')
+                ]])
             )
+            return None
+
+        return product
+
+    def _set_editing_state(self, bot, user_id: int, field: str, value=True):
+        """
+        Set editing state for a specific field
+
+        Args:
+            bot: Bot instance
+            user_id: User ID
+            field: Field name (e.g., 'product_title', 'seller_name', etc.)
+            value: Value to set (True, product_id, etc.)
+        """
+        bot.reset_conflicting_states(user_id, keep={f'editing_{field}'})
+        bot.state_manager.update_state(user_id, **{f'editing_{field}': value})
+
+    # ==================== PUBLIC METHODS ====================
 
     async def sell_menu(self, bot, query, lang: str):
-        """Menu vendeur"""
-        # Résoudre le mapping: telegram_id → seller_user_id
-        seller_id = bot.get_seller_id(query.from_user.id)
-        user_data = self.user_repo.get_user(seller_id)
+        """Menu vendeur - Connexion par email requise"""
+        user_id = query.from_user.id
 
-        # Vérifier à la fois si l'utilisateur est vendeur ET s'il est connecté (avec le BON seller_id)
-        if user_data and user_data['is_seller'] and bot.is_seller_logged_in(seller_id):
+        # Reset conflicting states when entering sell workflow
+        bot.reset_conflicting_states(user_id, keep={'lang'})
+
+        user_data = self.user_repo.get_user(user_id)
+
+        # Vérifier si déjà connecté via session
+        if user_data and user_data['is_seller'] and bot.is_seller_logged_in(user_id):
             await self.seller_dashboard(bot, query, lang)
             return
 
-        # Si pas connecté, aller directement au prompt email (plus simple)
-        await self.seller_login_prompt(bot, query, lang)
+        # Si vendeur mais pas connecté → Demander email
+        if user_data and user_data['is_seller']:
+            await query.edit_message_text(
+                (
+                    "🔐 **CONNEXION VENDEUR**\n\n"
+                    "Entrez votre **email** pour vous connecter à votre compte vendeur."
+                ) if lang == 'fr' else (
+                    "🔐 **SELLER LOGIN**\n\n"
+                    "Enter your **email** to login to your seller account."
+                ),
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "🔙 Retour" if lang == 'fr' else "🔙 Back",
+                        callback_data='back_main'
+                    )
+                ]]),
+                parse_mode='Markdown'
+            )
+            # Définir l'état en attente d'email
+            bot.state_manager.update_state(user_id, waiting_seller_login_email=True, lang=lang)
+            return
 
-    async def create_seller_prompt(self, bot, query, lang: str):
-        """Demande création compte vendeur"""
-        bot.reset_conflicting_states(query.from_user.id, keep={'creating_seller'})
-        bot.state_manager.update_state(query.from_user.id, creating_seller=True, step='name', lang=lang)
+        # Sinon → Proposer création compte
         await query.edit_message_text(
-            f"{i18n(lang, 'seller_create_title')}\n\n{i18n(lang, 'seller_step1_prompt')}",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(i18n(lang, 'btn_cancel'), callback_data='sell_menu')]]),
-            parse_mode='Markdown')
-
-    async def seller_login_menu(self, bot, query, lang: str):
-        """Menu connexion vendeur"""
-        await query.edit_message_text(
-            i18n(lang, 'login_title'),
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton(i18n(lang, 'btn_email'), callback_data='seller_login'),
-                InlineKeyboardButton(i18n(lang, 'btn_create_seller'), callback_data='create_seller')
-            ], [InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='back_main')]]),
-            parse_mode='Markdown')
-
-    async def seller_login_prompt(self, bot, query, lang: str):
-        """Prompt pour connexion par email"""
-        bot.reset_conflicting_states(query.from_user.id, keep={'waiting_seller_email'})
-        bot.state_manager.update_state(query.from_user.id, waiting_seller_email=True, lang=lang)
-
-        prompt_text = ("""📧 **SELLER LOGIN**
-
-Enter your seller account email address:""" if lang == 'en' else """📧 **CONNEXION VENDEUR**
-
-Entrez l'adresse email de votre compte vendeur :""")
-
-        await query.edit_message_text(
-            prompt_text,
+            (
+                "🏪 **DEVENIR VENDEUR**\n\n"
+                "Vous n'avez pas encore de compte vendeur.\n\n"
+                "Créez votre compte en 2 minutes et commencez à vendre !"
+            ) if lang == 'fr' else (
+                "🏪 **BECOME A SELLER**\n\n"
+                "You don't have a seller account yet.\n\n"
+                "Create your account in 2 minutes and start selling!"
+            ),
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(
-                    ("🚀 Create account" if lang == 'en' else "🚀 Créer un compte"),
+                    "🚀 Créer mon compte vendeur" if lang == 'fr' else "🚀 Create seller account",
                     callback_data='create_seller'
                 )
             ], [
                 InlineKeyboardButton(
-                    ("🔙 Back" if lang == 'en' else "🔙 Retour"),
+                    "🔙 Retour" if lang == 'fr' else "🔙 Back",
                     callback_data='back_main'
                 )
             ]]),
             parse_mode='Markdown'
         )
+
+    async def create_seller_prompt(self, bot, query, lang: str):
+        """Demande création compte vendeur - SIMPLIFIÉ (email + Solana uniquement)"""
+        bot.reset_conflicting_states(query.from_user.id, keep={'creating_seller'})
+        bot.state_manager.update_state(query.from_user.id, creating_seller=True, step='email', lang=lang)
+
+        prompt_text = (
+            "📧 **CRÉER COMPTE VENDEUR**\n\n"
+            "Étape 1/2: Entrez votre **email** (pour recevoir les notifications de ventes)\n\n"
+            "💡 Vous pourrez configurer votre bio et nom dans les paramètres après."
+        ) if lang == 'fr' else (
+            "📧 **CREATE SELLER ACCOUNT**\n\n"
+            "Step 1/2: Enter your **email** (to receive sales notifications)\n\n"
+            "💡 You can configure your bio and name in settings later."
+        )
+
+        await query.edit_message_text(
+            prompt_text,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(i18n(lang, 'btn_cancel'), callback_data='sell_menu')
+            ]]),
+            parse_mode='Markdown'
+        )
+
 
     async def seller_dashboard(self, bot, query, lang: str):
         """Dashboard vendeur avec graphiques visuels"""
@@ -117,14 +153,27 @@ Entrez l'adresse email de votre compte vendeur :""")
         from datetime import datetime, timedelta
 
         # Get actual seller_id (handles multi-account mapping)
-        seller_id = bot.get_seller_id(query.from_user.id)
+        seller_id = query.from_user.id
         user_data = self.user_repo.get_user(seller_id)
         if not user_data or not user_data['is_seller']:
             await self.seller_login_menu(bot, query, lang)
             return
 
         products = self.product_repo.get_products_by_seller(seller_id)
-        total_revenue = sum(p.get('total_revenue', 0) for p in products)
+
+        # Calculer revenu réel depuis la table orders (source de vérité)
+        import sqlite3
+        from app.core import get_sqlite_connection
+        from app.core import settings as core_settings
+        conn = get_sqlite_connection(core_settings.DATABASE_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COALESCE(SUM(product_price_eur), 0)
+            FROM orders
+            WHERE seller_user_id = ? AND payment_status = 'completed'
+        """, (seller_id,))
+        total_revenue = cursor.fetchone()[0]
+        conn.close()
 
         # Message texte simple
         dashboard_text = i18n(lang, 'dashboard_welcome').format(
@@ -133,16 +182,14 @@ Entrez l'adresse email de votre compte vendeur :""")
             revenue=f"{total_revenue:.2f}€"
         )
 
+        # Simplified layout: 6 lignes → 4 lignes (SELLER_WORKFLOW_SPEC)
         keyboard = [
-            [InlineKeyboardButton("📊 Analytics IA", callback_data='analytics_dashboard'),
-             InlineKeyboardButton("📈 Graphiques", callback_data='seller_analytics_visual')],
-            [InlineKeyboardButton(i18n(lang, 'btn_add_product'), callback_data='add_product'),
-             InlineKeyboardButton(i18n(lang, 'btn_my_products'), callback_data='my_products')],
-            [InlineKeyboardButton(i18n(lang, 'btn_my_wallet'), callback_data='my_wallet'),
-             InlineKeyboardButton(i18n(lang, 'btn_seller_settings'), callback_data='seller_settings')],
-            [InlineKeyboardButton(i18n(lang, 'btn_library'), callback_data='library')],
+            [InlineKeyboardButton(i18n(lang, 'btn_my_products'), callback_data='my_products'),
+             InlineKeyboardButton("📊 Analytics", callback_data='seller_analytics_visual')],
+            [InlineKeyboardButton(i18n(lang, 'btn_add_product'), callback_data='add_product')],
             [InlineKeyboardButton(i18n(lang, 'btn_logout'), callback_data='seller_logout'),
-             InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')]
+             InlineKeyboardButton(i18n(lang, 'btn_seller_settings'), callback_data='seller_settings')],
+            [InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')]
         ]
 
         try:
@@ -154,10 +201,7 @@ Entrez l'adresse email de votre compte vendeur :""")
         """Affiche les analytics avec de vrais graphiques matplotlib"""
         from app.core import chart_generator
         from datetime import datetime, timedelta
-        import logging
-
-        logger = logging.getLogger(__name__)
-        seller_id = bot.get_seller_id(query.from_user.id)
+        seller_id = query.from_user.id
 
         try:
             # Notifier l'utilisateur
@@ -471,7 +515,7 @@ Entrez l'adresse email de votre compte vendeur :""")
     async def show_my_products(self, bot, query, lang: str, page: int = 0):
         """Affiche produits vendeur avec carousel visuel"""
         # Get actual seller_id (handles multi-account mapping)
-        seller_id = bot.get_seller_id(query.from_user.id)
+        seller_id = query.from_user.id
         products = self.product_repo.get_products_by_seller(seller_id, limit=100, offset=0)
 
         if not products:
@@ -506,10 +550,24 @@ Entrez l'adresse email de votre compte vendeur :""")
     async def seller_analytics(self, bot, query, lang: str):
         """Analytics vendeur"""
         # Get actual seller_id (handles multi-account mapping)
-        seller_id = bot.get_seller_id(query.from_user.id)
+        seller_id = query.from_user.id
         products = self.product_repo.get_products_by_seller(seller_id)
-        total_sales = sum(p.get('sales_count', 0) for p in products)
-        total_revenue = sum(p.get('total_revenue', 0) for p in products)
+
+        # Calculer ventes et revenu réels depuis la table orders (source de vérité)
+        import sqlite3
+        from app.core import get_sqlite_connection
+        from app.core import settings as core_settings
+        conn = get_sqlite_connection(core_settings.DATABASE_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                COUNT(*),
+                COALESCE(SUM(product_price_eur), 0)
+            FROM orders
+            WHERE seller_user_id = ? AND payment_status = 'completed'
+        """, (seller_id,))
+        total_sales, total_revenue = cursor.fetchone()
+        conn.close()
 
         analytics_text = i18n(lang, 'analytics_title').format(
             products=len(products),
@@ -523,16 +581,30 @@ Entrez l'adresse email de votre compte vendeur :""")
             parse_mode='Markdown')
 
     async def seller_settings(self, bot, query, lang: str):
-        """Paramètres vendeur"""
-        user_data = self.user_repo.get_user(query.from_user.id)
-        settings_text = i18n(lang, 'settings_title').format(
-            name=bot.escape_markdown(user_data.get('seller_name', '')),
-            email=bot.escape_markdown(user_data.get('email', ''))
+        """Paramètres vendeur - Enhanced avec tous les boutons (SELLER_WORKFLOW_SPEC)"""
+        user_id = query.from_user.id
+        user_data = self.user_repo.get_user(user_id)
+
+        # Afficher informations récapitulatives
+        solana_addr = user_data.get('seller_solana_address', '')
+        solana_display = f"{solana_addr[:8]}..." if solana_addr and len(solana_addr) > 8 else solana_addr or "Non configurée"
+
+        settings_text = (
+            "⚙️ **PARAMÈTRES VENDEUR**\n\n"
+            f"👤 **Nom:** {bot.escape_markdown(user_data.get('seller_name', 'Non défini'))}\n"
+            f"📄 **Bio:** {bot.escape_markdown(user_data.get('seller_bio', 'Non définie')[:50] + '...' if user_data.get('seller_bio') and len(user_data.get('seller_bio', '')) > 50 else user_data.get('seller_bio', 'Non définie'))}\n"
+            f"📧 **Email:** {bot.escape_markdown(user_data.get('email', 'Non défini'))}\n"
+            f"💰 **Adresse Solana:** `{solana_display}`"
         )
 
+        # Layout selon SELLER_WORKFLOW_SPEC (sans Mdp)
         keyboard = [
-            [InlineKeyboardButton(i18n(lang, 'btn_edit_name'), callback_data='edit_seller_name'),
-             InlineKeyboardButton(i18n(lang, 'btn_edit_bio'), callback_data='edit_seller_bio')],
+            [InlineKeyboardButton("📄 Bio", callback_data='edit_seller_bio'),
+             InlineKeyboardButton("👤 Nom", callback_data='edit_seller_name'),
+             InlineKeyboardButton("📧 Mail", callback_data='edit_seller_email')],
+            [InlineKeyboardButton("🔕 Désactiver", callback_data='disable_seller_account'),
+             InlineKeyboardButton("🗑️ Supprimer", callback_data='delete_seller_prompt'),
+             InlineKeyboardButton("💰 Adresse", callback_data='edit_solana_address')],
             [InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='seller_dashboard')]
         ]
 
@@ -541,8 +613,8 @@ Entrez l'adresse email de votre compte vendeur :""")
     async def seller_logout(self, bot, query):
         """Déconnexion vendeur"""
         # Résoudre le mapping pour déconnecter le BON seller_id
-        seller_id = bot.get_seller_id(query.from_user.id)
-        bot.logout_seller(seller_id)
+        seller_id = query.from_user.id
+        # Removed: bot.logout_seller(seller_id) - mapping removed
         await query.edit_message_text(
             "✅ **Déconnexion réussie**\n\nÀ bientôt !",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu principal", callback_data='back_main')]]),
@@ -573,209 +645,195 @@ Entrez l'adresse email de votre compte vendeur :""")
 
     # Text processing methods
     async def process_seller_creation(self, bot, update, message_text: str):
-        """Process création vendeur"""
+        """Process création vendeur - SIMPLIFIÉ (email + Solana uniquement)"""
         user_id = update.effective_user.id
         user_state = bot.state_manager.get_state(user_id)
         step = user_state.get('step')
+        lang = user_state.get('lang', 'fr')
 
-        if step == 'name':
-            if len(message_text) < 2 or len(message_text) > 20:
-                await update.message.reply_text("❌ Le nom doit contenir entre 2 et 30 caractères.")
-                return
-            user_state['seller_name'] = message_text
-            user_state['step'] = 'bio'
-            await update.message.reply_text(f"✅ **Nom :** {bot.escape_markdown(message_text)}\n\nÉtape 2: Entrez votre biographie (max 500 caractères)", parse_mode='Markdown')
-
-        elif step == 'bio':
-            user_state['seller_bio'] = message_text[:500]
-            user_state['step'] = 'email'
-            await update.message.reply_text("✅ **Bio sauvegardée**\n\nÉtape 3: Entrez votre email de récupération", parse_mode='Markdown')
-
-        elif step == 'email':
+        if step == 'email':
+            # Étape 1/2: Email
             email = message_text.strip().lower()
             if not validate_email(email):
-                await update.message.reply_text("❌ Email invalide")
+                error_msg = "❌ Email invalide" if lang == 'fr' else "❌ Invalid email"
+                await update.message.reply_text(error_msg)
                 return
+
             user_state['email'] = email
-            user_state['step'] = 'password'
-            await update.message.reply_text("✅ **Email sauvegardé**\n\nÉtape 4: Créez un mot de passe sécurisé (min 8 caractères)", parse_mode='Markdown')
-
-        elif step == 'password':
-            password = message_text.strip()
-            if len(password) < 8:
-                await update.message.reply_text("❌ Le mot de passe doit contenir au moins 8 caractères")
-                return
-
-            user_state['password'] = password
             user_state['step'] = 'solana_address'
-            await update.message.reply_text(
-                "✅ **Mot de passe sauvegardé**\n\nÉtape 5: Entrez votre adresse Solana pour recevoir vos paiements\n\n💡 **Format attendu:** `1A2B3C...` (32-44 caractères)\n\n⚠️ **Important:** Vérifiez bien l'adresse, c'est là que vous recevrez vos gains !",
-                parse_mode='Markdown'
+
+            prompt_text = (
+                "✅ **Email enregistré**\n\n"
+                "Étape 2/2: Entrez votre **adresse Solana** (pour recevoir vos paiements)\n\n"
+                "💡 **Format:** `1A2B3C...` (32-44 caractères)\n"
+                "⚠️ **Important:** Vérifiez bien, c'est là que vous recevrez vos gains !"
+            ) if lang == 'fr' else (
+                "✅ **Email registered**\n\n"
+                "Step 2/2: Enter your **Solana address** (to receive payments)\n\n"
+                "💡 **Format:** `1A2B3C...` (32-44 characters)\n"
+                "⚠️ **Important:** Double-check, this is where you'll receive your earnings!"
             )
 
+            await update.message.reply_text(prompt_text, parse_mode='Markdown')
+
         elif step == 'solana_address':
+            # Étape 2/2: Adresse Solana
             solana_address = message_text.strip()
             if not validate_solana_address(solana_address):
-                await update.message.reply_text(
-                    "❌ **Adresse Solana invalide**\n\nVérifiez le format depuis votre wallet\n\n💡 L'adresse doit contenir entre 32 et 44 caractères",
-                    parse_mode='Markdown'
+                error_msg = (
+                    "❌ **Adresse Solana invalide**\n\n"
+                    "Vérifiez le format depuis votre wallet\n"
+                    "💡 L'adresse doit contenir entre 32 et 44 caractères"
+                ) if lang == 'fr' else (
+                    "❌ **Invalid Solana address**\n\n"
+                    "Check the format from your wallet\n"
+                    "💡 Address must be 32-44 characters"
                 )
+                await update.message.reply_text(error_msg, parse_mode='Markdown')
                 return
 
-            # Create seller account with all collected data
-            result = bot.seller_service.create_seller_account_with_recovery(
-                user_id, user_state['seller_name'], user_state['seller_bio'],
-                user_state['email'], user_state['password'], solana_address
+            # Récupérer nom depuis Telegram
+            telegram_user = update.effective_user
+            seller_name = telegram_user.first_name or telegram_user.username or f"User{user_id}"
+
+            # Créer compte vendeur SIMPLIFIÉ
+            # Pas de password, pas de bio au début
+            result = bot.seller_service.create_seller_account_simple(
+                user_id=user_id,
+                seller_name=seller_name,
+                email=user_state['email'],
+                solana_address=solana_address
             )
 
             bot.state_manager.reset_state(user_id, keep={'lang'})
+
             if result['success']:
-                bot.login_seller(user_id)
+                # Removed: bot.login_seller(user_id) - mapping removed
+
+                # Envoyer email de bienvenue avec le style site2.html
+                try:
+                    from app.core.email_service import EmailService
+                    email_service = EmailService()
+                    email_service.send_seller_welcome_email(
+                        to_email=user_state['email'],
+                        seller_name=seller_name,
+                        solana_address=solana_address
+                    )
+                    logger.info(f"📧 Email de bienvenue envoyé à {user_state['email']}")
+                except Exception as e:
+                    logger.error(f"Erreur envoi email bienvenue: {e}")
+                    # Continue même si l'email échoue
+
+                success_msg = (
+                    "✅ **Compte vendeur créé !**\n\n"
+                    f"👤 Nom: **{seller_name}**\n"
+                    f"📧 Email: `{user_state['email']}`\n"
+                    f"💰 Solana: `{solana_address[:8]}...`\n\n"
+                    "🎉 Vous êtes prêt à vendre !\n\n"
+                    "💡 Configurez votre bio et nom dans **Paramètres**"
+                ) if lang == 'fr' else (
+                    "✅ **Seller account created!**\n\n"
+                    f"👤 Name: **{seller_name}**\n"
+                    f"📧 Email: `{user_state['email']}`\n"
+                    f"💰 Solana: `{solana_address[:8]}...`\n\n"
+                    "🎉 You're ready to sell!\n\n"
+                    "💡 Configure your bio and name in **Settings**"
+                )
+
                 try:
                     await update.message.reply_text(
-                        "✅ **Compte vendeur créé avec succès !**\n\n🎉 Bienvenue dans votre espace vendeur.\n\n💰 Votre adresse Solana est configurée, vous êtes prêt à vendre !",
-                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏪 Mon Dashboard Vendeur", callback_data='seller_dashboard')]]),
-                        parse_mode='Markdown')
+                        success_msg,
+                        reply_markup=InlineKeyboardMarkup([[
+                            InlineKeyboardButton(
+                                "🏪 Dashboard" if lang == 'en' else "🏪 Dashboard",
+                                callback_data='seller_dashboard'
+                            )
+                        ]]),
+                        parse_mode='Markdown'
+                    )
                 except Exception as e:
-                    logger.error(f"❌ Timeout sending success message: {e}")
-                    # Try simpler message without markup
-                    try:
-                        await update.message.reply_text("✅ Compte créé ! Tapez /start pour accéder au dashboard")
-                    except:
-                        pass  # Silent fail, user can restart bot
+                    logger.error(f"Timeout sending success message: {e}")
+                    await update.message.reply_text("✅ Compte créé ! /start")
             else:
                 error_msg = result.get('error', 'Erreur inconnue')
-                try:
-                    await update.message.reply_text(f"❌ Erreur création compte: {error_msg}")
-                except Exception as e:
-                    logger.error(f"❌ Timeout sending error message: {e}")
+                await update.message.reply_text(f"❌ Erreur: {error_msg}")
 
-    async def process_seller_email(self, bot, update, message_text: str):
-        """Process email pour connexion vendeur"""
+    async def process_seller_login_email(self, bot, update, message_text: str):
+        """Process email de connexion vendeur"""
         user_id = update.effective_user.id
         email = message_text.strip().lower()
         lang = bot.get_user_state(user_id).get('lang', 'fr')
 
+        # Valider format email
+        from app.core.validation import validate_email
         if not validate_email(email):
-            error_msg = "❌ Invalid email format" if lang == 'en' else "❌ Format email invalide"
+            error_msg = "❌ Format email invalide" if lang == 'fr' else "❌ Invalid email format"
             await update.message.reply_text(error_msg)
             return
 
-        # Chercher utilisateur par email
-        user = self.user_repo.get_user_by_email(email)
-        if not user or not user.get('is_seller'):
-            error_msg = "❌ No seller account found with this email" if lang == 'en' else "❌ Aucun compte vendeur avec cet email"
+        # Vérifier que l'email correspond bien au vendeur
+        user_data = self.user_repo.get_user(user_id)
+        if not user_data or not user_data.get('is_seller'):
+            error_msg = "❌ Vous n'avez pas de compte vendeur" if lang == 'fr' else "❌ You don't have a seller account"
             await update.message.reply_text(error_msg)
-            bot.reset_user_state_preserve_login(user_id)
+            bot.state_manager.reset_state(user_id, keep={'lang'})
             return
 
-        # Passer à l'étape password
-        bot.state_manager.update_state(user_id,
-            waiting_seller_email=False,
-            waiting_seller_password=True,
-            seller_email=email,
-            target_seller_user_id=user['user_id'],
-            lang=lang
+        if user_data.get('email') != email:
+            error_msg = (
+                "❌ **Email incorrect**\n\n"
+                "Cet email ne correspond pas à votre compte vendeur."
+            ) if lang == 'fr' else (
+                "❌ **Incorrect email**\n\n"
+                "This email doesn't match your seller account."
+            )
+            await update.message.reply_text(error_msg, parse_mode='Markdown')
+            return
+
+        # Connexion réussie
+        # Removed: bot.login_seller(user_id) - mapping removed
+        bot.state_manager.reset_state(user_id, keep={'lang'})
+
+        # Envoyer email de notification de connexion
+        try:
+            from app.core.email_service import EmailService
+            import datetime
+            email_service = EmailService()
+
+            # Récupérer infos pour l'email
+            seller_name = user_data.get('seller_name', 'Vendeur')
+            login_time = datetime.datetime.now().strftime("%d/%m/%Y à %H:%M")
+
+            email_service.send_seller_login_notification(
+                to_email=email,
+                seller_name=seller_name,
+                login_time=login_time
+            )
+            logger.info(f"📧 Email de connexion envoyé à {email}")
+        except Exception as e:
+            logger.error(f"Erreur envoi email connexion: {e}")
+            # Continue même si l'email échoue
+
+        success_msg = (
+            "✅ **Connexion réussie !**\n\n"
+            f"Bienvenue **{user_data.get('seller_name')}** 👋\n\n"
+            "📧 Un email de confirmation vous a été envoyé."
+        ) if lang == 'fr' else (
+            "✅ **Login successful!**\n\n"
+            f"Welcome **{user_data.get('seller_name')}** 👋\n\n"
+            "📧 A confirmation email has been sent to you."
         )
 
-        prompt_text = ("""🔐 **PASSWORD**
-
-Enter your password:""" if lang == 'en' else """🔐 **MOT DE PASSE**
-
-Entrez votre mot de passe :""")
-
         await update.message.reply_text(
-            prompt_text,
+            success_msg,
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(
-                    ("🔐 Forgot password?" if lang == 'en' else "🔐 Mot de passe oublié?"),
-                    callback_data='account_recovery'
-                )
-            ], [
-                InlineKeyboardButton(
-                    ("🔙 Cancel" if lang == 'en' else "🔙 Annuler"),
-                    callback_data='back_main'
+                    "🏪 Dashboard" if lang == 'en' else "🏪 Dashboard",
+                    callback_data='seller_dashboard'
                 )
             ]]),
             parse_mode='Markdown'
         )
-
-    async def process_seller_password(self, bot, update, message_text: str):
-        """Process password pour connexion vendeur"""
-        user_id = update.effective_user.id
-        user_state = bot.get_user_state(user_id)
-        password = message_text.strip()
-        email = user_state.get('seller_email')
-        target_seller_user_id = user_state.get('target_seller_user_id')
-        lang = user_state.get('lang', 'fr')
-
-        if not target_seller_user_id:
-            error_msg = "❌ Session expired" if lang == 'en' else "❌ Session expirée"
-            await update.message.reply_text(error_msg)
-            bot.reset_user_state_preserve_login(user_id)
-            return
-
-        if bot.authenticate_seller(target_seller_user_id, password):
-            # Connexion réussie
-            bot.reset_user_state_preserve_login(user_id)
-
-            # IMPORTANT: Connecter le VRAI seller_id (pas le telegram_id)
-            bot.login_seller(target_seller_user_id)
-
-            # Créer le mapping si connexion depuis un autre Telegram ID
-            if user_id != target_seller_user_id:
-                bot.update_user_mapping(user_id, target_seller_user_id)
-
-            success_msg = "✅ Login successful!" if lang == 'en' else "✅ Connexion réussie !"
-            await update.message.reply_text(
-                success_msg,
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(
-                        ("🏪 Dashboard" if lang == 'en' else "🏪 Dashboard"),
-                        callback_data='seller_dashboard'
-                    )
-                ]])
-            )
-        else:
-            # Mauvais password - proposer recovery
-            error_msg = "❌ Incorrect password" if lang == 'en' else "❌ Mot de passe incorrect"
-            await update.message.reply_text(
-                error_msg,
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(
-                        ("🔐 Forgot password?" if lang == 'en' else "🔐 Mot de passe oublié?"),
-                        callback_data='account_recovery'
-                    ),
-                    InlineKeyboardButton(
-                        ("🔄 Try again" if lang == 'en' else "🔄 Réessayer"),
-                        callback_data='sell_menu'
-                    )
-                ], [
-                    InlineKeyboardButton(
-                        ("🔙 Cancel" if lang == 'en' else "🔙 Annuler"),
-                        callback_data='back_main'
-                    )
-                ]])
-            )
-            bot.reset_user_state_preserve_login(user_id)
-
-    async def process_seller_login(self, bot, update, message_text: str):
-        """Process connexion vendeur"""
-        user_id = update.effective_user.id
-        if bot.authenticate_seller(user_id, ""):
-            await update.message.reply_text(
-                "✅ **Connexion réussie !**\n\nBienvenue dans votre espace vendeur.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🏪 Dashboard", callback_data='seller_dashboard'),
-                    InlineKeyboardButton("💰 Wallet", callback_data='my_wallet')
-                ]]))
-        else:
-            await update.message.reply_text(
-                "❌ **Vous n'êtes pas encore vendeur**\n\nCréez votre compte en quelques étapes.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🚀 Créer compte", callback_data='create_seller'),
-                    InlineKeyboardButton("🔙 Retour", callback_data='back_main')
-                ]]))
 
     async def process_product_addition(self, bot, update, message_text: str):
         """Process ajout produit"""
@@ -990,7 +1048,7 @@ Entrez votre mot de passe :""")
             import tempfile
 
             telegram_id = update.effective_user.id
-            seller_id = bot.get_seller_id(telegram_id)
+            seller_id = telegram_id
 
             user_state = bot.get_user_state(telegram_id)
             product_data = user_state.get('product_data', {})
@@ -1058,7 +1116,7 @@ Entrez votre mot de passe :""")
         try:
             telegram_id = update.effective_user.id
             # Get actual seller_id (handles multi-account mapping)
-            seller_id = bot.get_seller_id(telegram_id)
+            seller_id = telegram_id
 
             user_state = bot.get_user_state(telegram_id)
             product_data = user_state.get('product_data', {})
@@ -1098,6 +1156,24 @@ Entrez votre mot de passe :""")
 
                 # Succès - réinitialiser l'état et rediriger
                 bot.reset_user_state_preserve_login(telegram_id)
+
+                # Vérifier si c'est le premier produit et envoyer email de félicitations
+                try:
+                    total_products = self.product_repo.count_products_by_seller(seller_id)
+                    if total_products == 1:  # Premier produit
+                        user_data = self.user_repo.get_user(telegram_id)
+                        if user_data and user_data.get('email'):
+                            from app.core.email_service import EmailService
+                            email_service = EmailService()
+                            email_service.send_first_product_published_notification(
+                                to_email=user_data['email'],
+                                seller_name=user_data.get('seller_name', 'Vendeur'),
+                                product_title=product_data['title'],
+                                product_price=product_data['price_eur']
+                            )
+                            logger.info(f"📧 Email premier produit envoyé à {user_data['email']}")
+                except Exception as e:
+                    logger.error(f"Erreur envoi email premier produit: {e}")
 
                 success_msg = f"✅ **Produit créé avec succès!**\n\n**ID:** {product_id}\n**Titre:** {product_data['title']}\n**Prix:** {product_data['price_eur']}€"
 
@@ -1188,6 +1264,24 @@ Entrez votre mot de passe :""")
             bot.state_manager.reset_state(user_id, keep={'lang'})
             await update.message.reply_text("✅ Biographie mise à jour." if success else "❌ Erreur mise à jour bio.")
 
+        elif step == 'edit_email':
+            new_email = message_text.strip().lower()
+            if not validate_email(new_email):
+                await update.message.reply_text("❌ Email invalide")
+                return
+            success = self.user_repo.update_seller_email(user_id, new_email)
+            bot.state_manager.reset_state(user_id, keep={'lang'})
+            await update.message.reply_text("✅ Email mis à jour." if success else "❌ Erreur mise à jour email.")
+
+        elif step == 'edit_solana_address':
+            new_address = message_text.strip()
+            if not validate_solana_address(new_address):
+                await update.message.reply_text("❌ Adresse Solana invalide (32-44 caractères)")
+                return
+            success = self.user_repo.update_seller_solana_address(user_id, new_address)
+            bot.state_manager.reset_state(user_id, keep={'lang'})
+            await update.message.reply_text("✅ Adresse Solana mise à jour." if success else "❌ Erreur mise à jour adresse.")
+
     # Missing methods from monolith - extracted from bot_mlt.py
     async def payout_history(self, bot, query, lang):
         """Historique payouts vendeur"""
@@ -1261,7 +1355,7 @@ Entrez votre mot de passe :""")
                 keyboard = InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
                 ]])
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     "❌ Produit introuvable." if lang == 'fr' else "❌ Product not found.",
                     keyboard
@@ -1277,6 +1371,8 @@ Entrez votre mot de passe :""")
             keyboard = [
                 [InlineKeyboardButton("📝 Modifier titre" if lang == 'fr' else "📝 Edit title",
                                     callback_data=f'edit_field_title_{product_id}')],
+                [InlineKeyboardButton("📄 Modifier description" if lang == 'fr' else "📄 Edit description",
+                                    callback_data=f'edit_field_description_{product_id}')],
                 [InlineKeyboardButton("💰 Modifier prix" if lang == 'fr' else "💰 Edit price",
                                     callback_data=f'edit_field_price_{product_id}')],
                 [InlineKeyboardButton("🔄 Changer statut" if lang == 'fr' else "🔄 Toggle status",
@@ -1286,7 +1382,7 @@ Entrez votre mot de passe :""")
                 [InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')]
             ]
 
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 menu_text,
                 InlineKeyboardMarkup(keyboard)
@@ -1297,7 +1393,7 @@ Entrez votre mot de passe :""")
             keyboard_error = InlineKeyboardMarkup([[
                 InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
             ]])
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 "❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.",
                 keyboard_error
@@ -1312,7 +1408,7 @@ Entrez votre mot de passe :""")
                 keyboard = InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
                 ]])
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     "❌ Produit introuvable." if lang == 'fr' else "❌ Product not found.",
                     keyboard
@@ -1323,13 +1419,13 @@ Entrez votre mot de passe :""")
 
             # Delete the product - Get actual seller_id (not telegram_id)
             telegram_id = query.from_user.id
-            seller_user_id = bot.get_seller_id(telegram_id)
+            seller_user_id = telegram_id
 
             if not seller_user_id:
                 keyboard = InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
                 ]])
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     "❌ Vous devez être connecté en tant que vendeur." if lang == 'fr' else "❌ You must be logged in as a seller.",
                     keyboard
@@ -1342,7 +1438,7 @@ Entrez votre mot de passe :""")
                 keyboard = InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Mes produits" if lang == 'fr' else "🔙 My products", callback_data='my_products')
                 ]])
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     f"✅ **Produit supprimé**\n\n📦 {title} a été supprimé avec succès." if lang == 'fr'
                     else f"✅ **Product deleted**\n\n📦 {title} has been deleted successfully.",
@@ -1352,7 +1448,7 @@ Entrez votre mot de passe :""")
                 keyboard = InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
                 ]])
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     "❌ Impossible de supprimer le produit." if lang == 'fr' else "❌ Could not delete product.",
                     keyboard
@@ -1370,28 +1466,19 @@ Entrez votre mot de passe :""")
     async def edit_product_field(self, bot, query, field: str, product_id: str, lang: str):
         """Handle product field editing"""
         try:
-            # Get actual seller_id (handles multi-account mapping)
-            user_id = bot.get_seller_id(query.from_user.id)
-
-            # Verify user owns this product
-            product = self.product_repo.get_product_by_id(product_id)
-            if not product or product.get('seller_user_id') != user_id:
-                await self._safe_transition_to_text(
-                    query,
-                    "❌ Produit non trouvé ou non autorisé." if lang == 'fr' else "❌ Product not found or unauthorized.",
-                    InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
-                    ]])
-                )
+            # Verify ownership using helper
+            product = await self._verify_product_ownership(bot, query, product_id)
+            if not product:
                 return
 
-            # Set user state for editing
-            bot.reset_conflicting_states(user_id, keep={f'editing_product_{field}'})
-            bot.state_manager.update_state(user_id, **{f'editing_product_{field}': product_id})
+            user_id = query.from_user.id
+
+            # Set editing state using helper
+            self._set_editing_state(bot, user_id, f'product_{field}', product_id)
 
             # Show appropriate prompt based on field
             if field == 'price':
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     f"💰 **Modifier le prix de:** {product.get('title', 'N/A')}\n\n"
                     f"Prix actuel: {product.get('price_eur', 0):.2f}€\n\n"
@@ -1404,7 +1491,7 @@ Entrez votre mot de passe :""")
                     ]])
                 )
             elif field == 'title':
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     f"📝 **Modifier le titre de:** {product.get('title', 'N/A')}\n\n"
                     f"Entrez le nouveau titre:" if lang == 'fr' else
@@ -1415,7 +1502,7 @@ Entrez votre mot de passe :""")
                     ]])
                 )
             elif field == 'description':
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     f"📄 **Modifier la description de:** {product.get('title', 'N/A')}\n\n"
                     f"Entrez la nouvelle description:" if lang == 'fr' else
@@ -1426,7 +1513,7 @@ Entrez votre mot de passe :""")
                     ]])
                 )
             else:
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     "❌ Champ non éditable." if lang == 'fr' else "❌ Field not editable.",
                     InlineKeyboardMarkup([[
@@ -1436,7 +1523,7 @@ Entrez votre mot de passe :""")
 
         except Exception as e:
             logger.error(f"Error in edit_product_field: {e}")
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 "❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.",
                 InlineKeyboardMarkup([[
@@ -1460,9 +1547,8 @@ Entrez votre mot de passe :""")
                 )
                 return
 
-            # Set editing state
-            bot.reset_conflicting_states(user_id, keep={'editing_seller_name'})
-            bot.state_manager.update_state(user_id, editing_seller_name=True)
+            # Set editing state using helper
+            self._set_editing_state(bot, user_id, 'seller_name', True)
 
             current_name = user_data.get('seller_name', 'Non défini')
             await query.edit_message_text(
@@ -1503,9 +1589,8 @@ Entrez votre mot de passe :""")
                 )
                 return
 
-            # Set editing state
-            bot.reset_conflicting_states(user_id, keep={'editing_seller_bio'})
-            bot.state_manager.update_state(user_id, editing_seller_bio=True)
+            # Set editing state using helper
+            self._set_editing_state(bot, user_id, 'seller_bio', True)
 
             current_bio = user_data.get('seller_bio', 'Non défini')
             await query.edit_message_text(
@@ -1530,29 +1615,90 @@ Entrez votre mot de passe :""")
                 ]])
             )
 
-    async def edit_product_price_prompt(self, bot, query, product_id, lang):
-        """Prompt for editing product price"""
+    async def edit_seller_email(self, bot, query, lang):
+        """Edit seller email"""
         try:
-            # Get actual seller_id (handles multi-account mapping)
-            user_id = bot.get_seller_id(query.from_user.id)
-
-            # Get product and verify ownership
-            product = self.product_repo.get_product_by_id(product_id)
-            if not product or product.get('seller_user_id') != user_id:
-                await self._safe_transition_to_text(
-                    query,
-                    "❌ Produit non trouvé ou non autorisé." if lang == 'fr' else "❌ Product not found or unauthorized.",
-                    InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
-                    ]])
+            user_id = query.from_user.id
+            user_data = self.user_repo.get_user(user_id)
+            if not user_data or not user_data.get('is_seller'):
+                await query.edit_message_text(
+                    "❌ Vous devez être vendeur pour modifier ces informations." if lang == 'fr' else "❌ You must be a seller to edit this information.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]])
                 )
                 return
 
-            # Set editing state
-            bot.reset_conflicting_states(user_id, keep={'editing_product_price'})
-            bot.state_manager.update_state(user_id, editing_product_price=product_id)
+            bot.state_manager.update_state(user_id, step='edit_email')
+            current_email = user_data.get('email', 'Non défini')
+            await query.edit_message_text(
+                f"📧 **Modifier l'email**\n\nEmail actuel: {current_email}\n\nEntrez votre nouvel email:" if lang == 'fr' else f"📧 **Edit email**\n\nCurrent email: {current_email}\n\nEnter your new email:",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='seller_settings')]])
+            )
+        except Exception as e:
+            logger.error(f"Error in edit_seller_email: {e}")
+            await query.edit_message_text("❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]]))
 
-            await self._safe_transition_to_text(
+    async def edit_solana_address(self, bot, query, lang):
+        """Edit Solana address"""
+        try:
+            user_id = query.from_user.id
+            user_data = self.user_repo.get_user(user_id)
+            if not user_data or not user_data.get('is_seller'):
+                await query.edit_message_text(
+                    "❌ Vous devez être vendeur pour modifier ces informations." if lang == 'fr' else "❌ You must be a seller to edit this information.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]])
+                )
+                return
+
+            bot.state_manager.update_state(user_id, step='edit_solana_address')
+            current_addr = user_data.get('seller_solana_address', 'Non configurée')
+            await query.edit_message_text(
+                f"💰 **Modifier l'adresse Solana**\n\nAdresse actuelle: {current_addr}\n\nEntrez votre nouvelle adresse Solana (32-44 caractères):" if lang == 'fr' else f"💰 **Edit Solana address**\n\nCurrent address: {current_addr}\n\nEnter your new Solana address (32-44 characters):",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='seller_settings')]])
+            )
+        except Exception as e:
+            logger.error(f"Error in edit_solana_address: {e}")
+            await query.edit_message_text("❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]]))
+
+    async def disable_seller_account(self, bot, query, lang):
+        """Disable seller account temporarily"""
+        await query.edit_message_text(
+            "⚠️ **DÉSACTIVER COMPTE VENDEUR**\n\nÊtes-vous sûr de vouloir désactiver votre compte vendeur ?\n\n• Vos produits seront cachés\n• Vous pourrez réactiver plus tard" if lang == 'fr' else "⚠️ **DISABLE SELLER ACCOUNT**\n\nAre you sure you want to disable your seller account?\n\n• Your products will be hidden\n• You can reactivate later",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Confirmer" if lang == 'fr' else "✅ Confirm", callback_data='disable_seller_confirm')],
+                [InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='seller_settings')]
+            ]),
+            parse_mode='Markdown'
+        )
+
+    async def disable_seller_confirm(self, bot, query):
+        """Confirm seller account disable"""
+        user_id = query.from_user.id
+        success = self.user_repo.disable_seller_account(user_id)
+        if success:
+            await query.edit_message_text(
+                "✅ **Compte vendeur désactivé**\n\nVos produits sont maintenant cachés.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu principal", callback_data='back_main')]]),
+                parse_mode='Markdown'
+            )
+        else:
+            await query.edit_message_text("❌ Erreur lors de la désactivation")
+
+    async def edit_product_price_prompt(self, bot, query, product_id, lang):
+        """Prompt for editing product price"""
+        try:
+            # Verify ownership using helper
+            product = await self._verify_product_ownership(bot, query, product_id)
+            if not product:
+                return
+
+            user_id = query.from_user.id
+
+            # Set editing state using helper
+            self._set_editing_state(bot, user_id, 'product_price', product_id)
+
+            await safe_transition_to_text(
                 query,
                 f"💰 **Modifier le prix de:** {product.get('title', 'N/A')}\n\n"
                 f"Prix actuel: {product.get('price_eur', 0):.2f}€\n\n"
@@ -1567,7 +1713,7 @@ Entrez votre mot de passe :""")
 
         except Exception as e:
             logger.error(f"Error in edit_product_price_prompt: {e}")
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 "❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.",
                 InlineKeyboardMarkup([[
@@ -1578,26 +1724,17 @@ Entrez votre mot de passe :""")
     async def edit_product_title_prompt(self, bot, query, product_id, lang):
         """Prompt for editing product title"""
         try:
-            # Get actual seller_id (handles multi-account mapping)
-            user_id = bot.get_seller_id(query.from_user.id)
-
-            # Get product and verify ownership
-            product = self.product_repo.get_product_by_id(product_id)
-            if not product or product.get('seller_user_id') != user_id:
-                await self._safe_transition_to_text(
-                    query,
-                    "❌ Produit non trouvé ou non autorisé." if lang == 'fr' else "❌ Product not found or unauthorized.",
-                    InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
-                    ]])
-                )
+            # Verify ownership using helper
+            product = await self._verify_product_ownership(bot, query, product_id)
+            if not product:
                 return
 
-            # Set editing state
-            bot.reset_conflicting_states(user_id, keep={'editing_product_title'})
-            bot.state_manager.update_state(user_id, editing_product_title=product_id)
+            user_id = query.from_user.id
 
-            await self._safe_transition_to_text(
+            # Set editing state using helper
+            self._set_editing_state(bot, user_id, 'product_title', product_id)
+
+            await safe_transition_to_text(
                 query,
                 f"📝 **Modifier le titre de:** {product.get('title', 'N/A')}\n\n"
                 f"Entrez le nouveau titre:" if lang == 'fr' else
@@ -1610,7 +1747,7 @@ Entrez votre mot de passe :""")
 
         except Exception as e:
             logger.error(f"Error in edit_product_title_prompt: {e}")
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 "❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.",
                 InlineKeyboardMarkup([[
@@ -1621,19 +1758,9 @@ Entrez votre mot de passe :""")
     async def toggle_product_status(self, bot, query, product_id, lang):
         """Toggle product active/inactive status"""
         try:
-            # Get actual seller_id (handles multi-account mapping)
-            user_id = bot.get_seller_id(query.from_user.id)
-
-            # Get product and verify ownership
-            product = self.product_repo.get_product_by_id(product_id)
-            if not product or product.get('seller_user_id') != user_id:
-                await self._safe_transition_to_text(
-                    query,
-                    "❌ Produit non trouvé ou non autorisé." if lang == 'fr' else "❌ Product not found or unauthorized.",
-                    InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
-                    ]])
-                )
+            # Verify ownership using helper
+            product = await self._verify_product_ownership(bot, query, product_id)
+            if not product:
                 return
 
             # Toggle status
@@ -1645,7 +1772,7 @@ Entrez votre mot de passe :""")
             if success:
                 status_text = "activé" if new_status == 'active' else "désactivé"
                 status_text_en = "activated" if new_status == 'active' else "deactivated"
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     f"✅ Produit {status_text} avec succès." if lang == 'fr' else f"✅ Product {status_text_en} successfully.",
                     InlineKeyboardMarkup([[
@@ -1653,7 +1780,7 @@ Entrez votre mot de passe :""")
                     ]])
                 )
             else:
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     "❌ Erreur lors de la mise à jour." if lang == 'fr' else "❌ Update error.",
                     InlineKeyboardMarkup([[
@@ -1663,7 +1790,7 @@ Entrez votre mot de passe :""")
 
         except Exception as e:
             logger.error(f"Error in toggle_product_status: {e}")
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 "❌ Erreur lors de la mise à jour." if lang == 'fr' else "❌ Update error.",
                 reply_markup=InlineKeyboardMarkup([[
@@ -1674,7 +1801,7 @@ Entrez votre mot de passe :""")
         """Process product title update"""
         try:
             # Get actual seller_id (handles multi-account mapping)
-            user_id = bot.get_seller_id(update.effective_user.id)
+            user_id = update.effective_user.id
 
             # Validate ownership
             product = self.product_repo.get_product_by_id(product_id)
@@ -1721,7 +1848,7 @@ Entrez votre mot de passe :""")
         """Process product price update with consolidated logic"""
         try:
             # Get actual seller_id (handles multi-account mapping)
-            user_id = bot.get_seller_id(update.effective_user.id)
+            user_id = update.effective_user.id
 
             # Validate ownership
             product = self.product_repo.get_product_by_id(product_id)
@@ -1764,3 +1891,161 @@ Entrez votre mot de passe :""")
             logger.error(f"Erreur maj prix produit: {e}")
             await update.message.reply_text(i18n(lang, 'err_price_update_error'))
             return False
+
+    async def process_product_description_update(self, bot, update, product_id: str, new_description: str, lang: str = 'fr') -> bool:
+        """Process product description update"""
+        try:
+            # Get actual seller_id (handles multi-account mapping)
+            user_id = update.effective_user.id
+
+            # Validate ownership
+            product = self.product_repo.get_product_by_id(product_id)
+            if not product or product.get('seller_user_id') != user_id:
+                await update.message.reply_text(
+                    "❌ Produit introuvable ou vous n'êtes pas le propriétaire" if lang == 'fr' else "❌ Product not found or unauthorized"
+                )
+                return False
+
+            # Validate description (10-1000 characters)
+            if len(new_description) < 10 or len(new_description) > 1000:
+                await update.message.reply_text(
+                    "❌ La description doit contenir entre 10 et 1000 caractères." if lang == 'fr' else "❌ Description must be between 10 and 1000 characters."
+                )
+                return False
+
+            # Reset state BEFORE update
+            bot.state_manager.reset_state(user_id, keep={'lang'})
+
+            # Update description in database
+            success = self.product_repo.update_description(product_id, user_id, new_description)
+
+            if success:
+                await update.message.reply_text(
+                    "✅ **Description mise à jour avec succès !**" if lang == 'fr' else "✅ **Description updated successfully!**",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton(
+                            "🔙 Mon Dashboard" if lang == 'fr' else "🔙 My Dashboard",
+                            callback_data='seller_dashboard'
+                        )
+                    ]]),
+                    parse_mode='Markdown'
+                )
+                return True
+            else:
+                await update.message.reply_text(
+                    "❌ Erreur lors de la mise à jour" if lang == 'fr' else "❌ Update error",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton(
+                            "🔙 Mon Dashboard" if lang == 'fr' else "🔙 My Dashboard",
+                            callback_data='seller_dashboard'
+                        )
+                    ]])
+                )
+                return False
+
+        except Exception as e:
+            logger.error(f"Erreur maj description produit: {e}")
+            bot.state_manager.reset_state(user_id, keep={'lang'})
+            await update.message.reply_text(
+                "❌ Erreur lors de la mise à jour" if lang == 'fr' else "❌ Update error"
+            )
+            return False
+
+    async def seller_messages(self, bot, query, lang: str):
+        """Affiche les messages/tickets reçus par le vendeur concernant ses produits"""
+        seller_id = query.from_user.id
+        
+        try:
+            conn = bot.get_db_connection()
+            cursor = conn.cursor()
+            
+            # Récupérer les tickets liés aux produits du vendeur
+            cursor.execute('''
+                SELECT 
+                    t.ticket_id,
+                    t.subject,
+                    t.created_at,
+                    t.status,
+                    u.first_name as buyer_name,
+                    p.title as product_title,
+                    t.creator_user_id
+                FROM tickets t
+                LEFT JOIN users u ON t.creator_user_id = u.user_id
+                LEFT JOIN products p ON t.product_id = p.product_id
+                WHERE p.seller_user_id = ?
+                ORDER BY t.created_at DESC
+                LIMIT 20
+            ''', (seller_id,))
+            
+            tickets = cursor.fetchall()
+            conn.close()
+            
+            if not tickets:
+                text = (
+                    "💬 **NO MESSAGES**\n\n"
+                    "You have no messages from buyers yet."
+                    if lang == 'en' else
+                    "💬 **AUCUN MESSAGE**\n\n"
+                    "Vous n'avez pas encore de messages d'acheteurs."
+                )
+                
+                await query.edit_message_text(
+                    text,
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton(
+                            "🔙 Dashboard" if lang == 'en' else "🔙 Dashboard",
+                            callback_data='seller_dashboard'
+                        )
+                    ]]),
+                    parse_mode='Markdown'
+                )
+                return
+            
+            # Construire le message avec la liste des tickets
+            text = (
+                f"💬 **MESSAGES FROM BUYERS** ({len(tickets)})\n\n"
+                if lang == 'en' else
+                f"💬 **MESSAGES DES ACHETEURS** ({len(tickets)})\n\n"
+            )
+            
+            keyboard = []
+            for ticket in tickets[:10]:  # Limiter à 10 pour pas surcharger
+                ticket_id, subject, created_at, status, buyer_name, product_title, creator_id = ticket
+                
+                # Status emoji
+                status_emoji = "✅" if status == 'closed' else "🟢" if status == 'open' else "🟡"
+                
+                # Créer le bouton
+                button_label = f"{status_emoji} {buyer_name or 'Acheteur'}: {subject[:30]}..."
+                keyboard.append([
+                    InlineKeyboardButton(
+                        button_label,
+                        callback_data=f'view_ticket_{ticket_id}'
+                    )
+                ])
+            
+            # Bouton retour
+            keyboard.append([
+                InlineKeyboardButton(
+                    "🔙 Dashboard" if lang == 'en' else "🔙 Dashboard",
+                    callback_data='seller_dashboard'
+                )
+            ])
+            
+            await query.edit_message_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error showing seller messages: {e}")
+            await query.edit_message_text(
+                "❌ Error loading messages." if lang == 'en' else "❌ Erreur de chargement.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "🔙 Dashboard" if lang == 'en' else "🔙 Dashboard",
+                        callback_data='seller_dashboard'
+                    )
+                ]])
+            )

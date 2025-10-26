@@ -58,10 +58,35 @@ class OrderRepository:
         conn = get_sqlite_connection(self.database_path)
         cursor = conn.cursor()
         try:
+            # Mettre à jour le statut
             cursor.execute(
                 'UPDATE orders SET payment_status = ? WHERE order_id = ?',
                 (status, order_id)
             )
+
+            # Si paiement complété, incrémenter sales_count et total_revenue
+            if status == 'completed':
+                # Récupérer product_id, seller_user_id et prix
+                cursor.execute(
+                    'SELECT product_id, seller_user_id, product_price_eur FROM orders WHERE order_id = ?',
+                    (order_id,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    product_id, seller_user_id, product_price = row
+
+                    # Incrémenter sales_count du produit
+                    cursor.execute(
+                        'UPDATE products SET sales_count = sales_count + 1 WHERE product_id = ?',
+                        (product_id,)
+                    )
+
+                    # Incrémenter total_sales et total_revenue du vendeur
+                    cursor.execute(
+                        'UPDATE users SET total_sales = total_sales + 1, total_revenue = total_revenue + ? WHERE user_id = ?',
+                        (product_price, seller_user_id)
+                    )
+
             conn.commit()
             return cursor.rowcount > 0
         except sqlite3.Error:

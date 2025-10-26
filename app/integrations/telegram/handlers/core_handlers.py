@@ -4,56 +4,12 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 from app.core.i18n import t as i18n
 from app.core.utils import logger
+from app.integrations.telegram.utils import safe_transition_to_text
 
 
 class CoreHandlers:
     def __init__(self, user_repo):
         self.user_repo = user_repo
-
-    async def _safe_transition_to_text(self, query, text: str, keyboard=None, parse_mode='Markdown'):
-        """
-        Gère intelligemment la transition d'un message (photo ou texte) vers un message texte
-
-        Problème résolu:
-        - Les carousels ont des photos → edit_message_text() échoue
-        - Solution: Détecter photo et supprimer/renvoyer au lieu d'éditer
-        """
-        try:
-            # Si le message original a une photo, on ne peut pas edit_message_text
-            if query.message.photo:
-                # Supprimer l'ancien message avec photo
-                try:
-                    await query.message.delete()
-                except:
-                    pass
-
-                # Envoyer nouveau message texte
-                await query.message.get_bot().send_message(
-                    chat_id=query.message.chat_id,
-                    text=text,
-                    reply_markup=keyboard,
-                    parse_mode=parse_mode
-                )
-            else:
-                # Message texte normal, on peut éditer
-                await query.edit_message_text(
-                    text=text,
-                    reply_markup=keyboard,
-                    parse_mode=parse_mode
-                )
-        except Exception as e:
-            logger.error(f"Error in _safe_transition_to_text: {e}")
-            # Fallback ultime : nouveau message
-            try:
-                await query.message.delete()
-            except:
-                pass
-            await query.message.get_bot().send_message(
-                chat_id=query.message.chat_id,
-                text=text,
-                reply_markup=keyboard,
-                parse_mode=parse_mode
-            )
 
     async def start_command(self, marketplace_bot, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Nouveau menu d'accueil marketplace"""
@@ -74,7 +30,7 @@ class CoreHandlers:
         await update.message.reply_text(
             welcome_text,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown')
+            parse_mode='HTML')
 
     async def help_command(self, marketplace_bot, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Redirige vers la FAQ en respectant la langue de l'utilisateur."""
@@ -106,12 +62,12 @@ class CoreHandlers:
             await query.edit_message_text(
                 welcome_text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown')
+                parse_mode='HTML')
         except Exception:
             await query.message.reply_text(
                 welcome_text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown')
+                parse_mode='HTML')
 
     async def change_language(self, bot, query, new_lang):
         """Change la langue de l'utilisateur - Compatible avec CallbackRouter"""
@@ -153,8 +109,9 @@ class CoreHandlers:
         keyboard = main_menu_keyboard(lang)
         welcome_text = i18n(lang, 'welcome')
 
-        await self._safe_transition_to_text(
+        await safe_transition_to_text(
             query,
             welcome_text,
-            InlineKeyboardMarkup(keyboard)
+            InlineKeyboardMarkup(keyboard),
+            parse_mode='HTML'
         )

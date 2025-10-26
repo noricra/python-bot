@@ -567,35 +567,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     statValues.forEach(stat => statsObserver.observe(stat));
 
-    // ========================================
-    // Auto-scroll Carousel (optional)
-    // ========================================
-    let autoScrollInterval = null;
-    const startAutoScroll = () => {
-        if (featuresScroll && window.innerWidth > 768) {
-            autoScrollInterval = setInterval(() => {
-                const currentIndex = Math.round(featuresScroll.scrollLeft / (cards[0].offsetWidth + 48));
-                const nextIndex = (currentIndex + 1) % totalCards;
-                scrollToCard(nextIndex);
-            }, 5000);
-        }
-    };
-
-    const stopAutoScroll = () => {
-        if (autoScrollInterval) {
-            clearInterval(autoScrollInterval);
-            autoScrollInterval = null;
-        }
-    };
-
-    // Pause auto-scroll on hover
-    if (featuresScroll) {
-        featuresScroll.addEventListener('mouseenter', stopAutoScroll);
-        featuresScroll.addEventListener('mouseleave', startAutoScroll);
-
-        // Start auto-scroll after page load
-        setTimeout(startAutoScroll, 2000);
-    }
+    // Auto-scroll carousel désactivé pour éviter les reloads
 
     // ========================================
     // Crypto Icons Animation
