@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview Email - Bienvenue Vendeur</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+            background: #fafbfc;
+            color: #334155;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(139, 92, 246, 0.12);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 50%, #ec4899 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 900;
+            color: white;
+            margin-bottom: 8px;
+            letter-spacing: -0.02em;
+        }
+
+        .header p {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .content {
+            padding: 40px 30px;
+        }
+
+        .welcome-box {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(236, 72, 153, 0.05) 100%);
+            border-left: 4px solid #8b5cf6;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+
+        .welcome-box h2 {
+            font-size: 24px;
+            font-weight: 800;
+            color: #1e293b;
+            margin-bottom: 10px;
+        }
+
+        .info-section {
+            background: #f3f4f6;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+
+        .info-item {
+            margin-bottom: 16px;
+        }
+
+        .info-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1e293b;
+            word-break: break-all;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+            color: white;
+            text-decoration: none;
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 16px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+            transition: transform 0.2s;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .steps {
+            margin-top: 30px;
+        }
+
+        .step {
+            display: flex;
+            margin-bottom: 20px;
+            align-items: flex-start;
+        }
+
+        .step-number {
+            background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 18px;
+            margin-right: 16px;
+            flex-shrink: 0;
+        }
+
+        .step-content h3 {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 4px;
+        }
+
+        .step-content p {
+            font-size: 14px;
+            color: #64748b;
+        }
+
+        .footer {
+            background: #f3f4f6;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .footer p {
+            font-size: 14px;
+            color: #64748b;
+            margin-bottom: 8px;
+        }
+
+        .footer a {
+            color: #8b5cf6;
+            text-decoration: none;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎉 Bienvenue sur UZEUR !</h1>
+            <p>Votre compte vendeur est actif</p>
+        </div>
+
+        <div class="content">
+            <div class="welcome-box">
+                <h2>Bonjour Jean Martin 👋</h2>
+                <p>Félicitations ! Votre compte vendeur a été créé avec succès. Vous pouvez maintenant commencer à vendre vos produits numériques sur notre marketplace décentralisée.</p>
+            </div>
+
+            <div class="info-section">
+                <div class="info-item">
+                    <div class="info-label">📧 Email de notification</div>
+                    <div class="info-value">jean.martin@example.com</div>
+                </div>
+
+                <div class="info-item">
+                    <div class="info-label">💰 Adresse Solana (Payouts)</div>
+                    <div class="info-value">DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK</div>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="https://t.me/YourBotUsername" class="cta-button">
+                    🚀 Accéder au Dashboard
+                </a>
+            </div>
+
+            <div class="steps">
+                <h3 style="font-size: 20px; font-weight: 800; color: #1e293b; margin-bottom: 20px;">
+                    Prochaines étapes :
+                </h3>
+
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Ajoutez votre premier produit</h3>
+                        <p>Créez votre catalogue en quelques clics depuis le bot Telegram</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Configurez votre profil</h3>
+                        <p>Personnalisez votre bio et nom dans les paramètres vendeur</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Recevez vos premiers paiements</h3>
+                        <p>Les payouts crypto sont automatiques après chaque vente</p>
+                    </div>
+                </div>
+            </div>
+
+            <div style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px; text-align: center;">
+                <p style="font-size: 14px; color: #64748b; margin: 0;">
+                    💡 <strong>Besoin d'aide ?</strong> Contactez le support directement depuis le bot avec /support
+                </p>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p><strong>UZEUR Marketplace</strong></p>
+            <p>La marketplace décentralisée pour produits numériques</p>
+            <p style="margin-top: 16px;">
+                <a href="#">Politique de confidentialité</a> • <a href="#">CGV</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

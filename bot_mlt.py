@@ -163,10 +163,6 @@ class MarketplaceBot:
         """Get product by ID"""
         return self.product_repo.get_product_by_id(product_id)
 
-    def authenticate_seller(self, user_id: int, password: str):
-        """Authenticate seller by user_id/password"""
-        return self.seller_service.validate_seller_password(user_id, password)
-
     def create_ticket(self, user_id: int, subject: str, message: str):
         """Create support ticket"""
         return self.support_service.create_ticket(user_id, subject, message)
@@ -501,15 +497,10 @@ class MarketplaceBot:
         # === CRÉATION VENDEUR (prioritaire pour éviter la collision avec recherche) ===
         if user_state.get('creating_seller'):
             await self.sell_handlers.process_seller_creation(self, update, message_text)
-        # === CONNEXION VENDEUR (email puis password) ===
-        elif user_state.get('waiting_seller_email'):
-            await self.sell_handlers.process_seller_email(self, update, message_text)
-        elif user_state.get('waiting_seller_password'):
-            await self.sell_handlers.process_seller_password(self, update, message_text)
 
-        # === CONNEXION VENDEUR ===
-        elif user_state.get('seller_login'):
-            await self.sell_handlers.process_seller_login(self, update, message_text)
+        # === CONNEXION VENDEUR PAR EMAIL ===
+        elif user_state.get('waiting_seller_login_email'):
+            await self.sell_handlers.process_seller_login_email(self, update, message_text)
 
         # === RECHERCHE PRODUIT ===
         elif user_state.get('waiting_for_product_id'):
@@ -639,7 +630,9 @@ class MarketplaceBot:
         elif user_state.get('admin_search_product'):
             await self.admin_handlers.process_admin_search_product(update, message_text)
         elif user_state.get('admin_suspend_product'):
-            await self.admin_handlers.process_admin_suspend_product(update, message_text)
+            await self.admin_handlers.handle_product_suspend_message(self, update, user_state)
+        elif user_state.get('restoring_product'):
+            await self.admin_handlers.process_admin_restore_product(self, update, user_state)
         elif user_state.get('suspending_user'):
             await self.admin_handlers.process_admin_suspend_user(update, message_text)
         elif user_state.get('restoring_user'):

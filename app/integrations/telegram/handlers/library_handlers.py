@@ -10,6 +10,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.core.utils import logger, escape_markdown
 from app.core.i18n import t as i18n
 from app.integrations.telegram.keyboards import back_to_main_button
+from app.integrations.telegram.utils import safe_transition_to_text
 
 
 class LibraryHandlers:
@@ -17,51 +18,6 @@ class LibraryHandlers:
         self.product_repo = product_repo
         self.order_repo = order_repo
         self.user_repo = user_repo
-
-    async def _safe_transition_to_text(self, query, text: str, keyboard=None, parse_mode='Markdown'):
-        """
-        Gère intelligemment la transition d'un message (photo ou texte) vers un message texte
-
-        Problème résolu:
-        - Les carousels ont des photos → edit_message_text() échoue
-        - Solution: Détecter photo et supprimer/renvoyer au lieu d'éditer
-        """
-        try:
-            # Si le message original a une photo, on ne peut pas edit_message_text
-            if query.message.photo:
-                # Supprimer l'ancien message avec photo
-                try:
-                    await query.message.delete()
-                except:
-                    pass
-
-                # Envoyer nouveau message texte
-                await query.message.get_bot().send_message(
-                    chat_id=query.message.chat_id,
-                    text=text,
-                    reply_markup=keyboard,
-                    parse_mode=parse_mode
-                )
-            else:
-                # Message texte normal, on peut éditer
-                await query.edit_message_text(
-                    text=text,
-                    reply_markup=keyboard,
-                    parse_mode=parse_mode
-                )
-        except Exception as e:
-            logger.error(f"Error in _safe_transition_to_text: {e}")
-            # Fallback ultime : nouveau message
-            try:
-                await query.message.delete()
-            except:
-                pass
-            await query.message.get_bot().send_message(
-                chat_id=query.message.chat_id,
-                text=text,
-                reply_markup=keyboard,
-                parse_mode=parse_mode
-            )
 
     async def show_library(self, bot, query, lang: str, page: int = 0):
         """Affiche la bibliothèque de l'utilisateur avec carousel visuel"""
@@ -166,59 +122,35 @@ class LibraryHandlers:
 
             product = purchases[index]
 
-            # Build caption - UX OPTIMIZED Bibliothèque
+            # Build caption - Format IDENTIQUE à buy_handlers (mode short)
             caption = ""
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 0. BREADCRUMB (Bibliothèque + Catégorie)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            category = product.get('category', '')
-            if lang == 'fr':
-                breadcrumb = "📚 _Ma Bibliothèque" + (f" › {category}_" if category else "_")
-            else:
-                breadcrumb = "📚 _My Library" + (f" › {category}_" if category else "_")
-            caption += f"{breadcrumb}\n\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 1. TITRE PRODUIT (GRAS pour maximum visibilité)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += f"**{product['title']}**\n\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 3. INFOS ACHAT
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += f"💳 Acheté pour **{product['price_eur']:.2f} €**\n"
-
-            # Date d'achat
-            if product.get('completed_at'):
-                try:
-                    purchase_date = datetime.fromisoformat(product['completed_at'])
-                    caption += f"📅 _{purchase_date.strftime('%d %B %Y')}_\n"
-                except:
-                    pass
-
-            caption += f"🏪 Par **{product['seller_name']}**\n\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 4. UTILISATION
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Variables
+            title = product['title']
+            seller = product.get('seller_name', 'Vendeur')
+            price = product['price_eur']
+            category = product.get('category', 'Produits')
+            file_size = product.get('file_size_mb', 0)
             download_count = product.get('download_count', 0)
+
+            # Titre (BOLD uniquement)
+            caption += f"<b>{title}</b>\n"
+
+            # Vendeur (italic)
+            caption += f"<i>par {seller}</i>\n\n" if lang == 'fr' else f"<i>by {seller}</i>\n\n"
+
+            # Stats adaptées pour library
+            stats_text = f"💳 Acheté pour {price:.2f} €"
             if download_count > 0:
-                caption += f"📥 Téléchargé **{download_count}** fois\n\n"
+                stats_text += f" • 📥 {download_count} " + ("téléchargements" if lang == 'fr' else "downloads")
+            stats_text += "\n"
+            caption += stats_text
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 5. DESCRIPTION (Texte utilisateur - GARDER LE MARKDOWN)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            if product.get('description'):
-                desc = product['description']
-                if len(desc) > 160:
-                    desc = desc[:160].rsplit(' ', 1)[0] + "..."
-                caption += f"{desc}\n\n"
+            # Séparateur
+            caption += "────────────────\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 6. MÉTADONNÉES
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            caption += f"📂 _{product.get('category', 'N/A')}_  •  📁 {product.get('file_size_mb', 0):.1f} MB"
+            # Métadonnées (catégorie + taille)
+            caption += f"📂 {category} • 📁 {file_size:.1f} MB"
 
             # Get image or placeholder
             thumbnail_path = product.get('thumbnail_path')
@@ -233,45 +165,49 @@ class LibraryHandlers:
             # Build keyboard - Actions bibliothèque
             keyboard = []
 
-            # Row 1: Télécharger (bouton principal)
+            # Row 1: Télécharger (action directe)
             keyboard.append([
                 InlineKeyboardButton(
-                    "📥 TÉLÉCHARGER" if lang == 'fr' else "📥 DOWNLOAD",
-                    callback_data=f'library_item_{product["product_id"]}'
+                    "📥 Télécharger" if lang == 'fr' else "📥 Download",
+                    callback_data=f'download_product_{product["product_id"]}'
                 )
             ])
 
-            # Row 2: Navigation arrows
+            # Row 2: Navigation arrows + position (Asymétrique - cohérent avec buy_handlers)
             nav_row = []
+
+            # Ajouter flèche gauche SI pas au début
             if index > 0:
                 nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'library_carousel_{index-1}'))
-            else:
-                nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
 
+            # Toujours afficher compteur au centre
             nav_row.append(InlineKeyboardButton(
                 f"{index+1}/{len(purchases)}",
                 callback_data='noop'
             ))
 
+            # Ajouter flèche droite SI pas à la fin
             if index < len(purchases) - 1:
                 nav_row.append(InlineKeyboardButton("➡️", callback_data=f'library_carousel_{index+1}'))
-            else:
-                nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
 
             keyboard.append(nav_row)
 
-            # Row 3: Laisser un avis
+            # Row 3: Avis + Contact vendeur
             keyboard.append([
                 InlineKeyboardButton(
                     "⭐ Laisser un avis" if lang == 'fr' else "⭐ Leave a review",
                     callback_data=f'review_product_{product["product_id"]}'
+                ),
+                InlineKeyboardButton(
+                    "💬 Contacter vendeur" if lang == 'fr' else "💬 Contact seller",
+                    callback_data=f'contact_seller_{product["product_id"]}'
                 )
             ])
 
-            # Row 4: Back
+            # Row 4: Back (cohérent avec buy_handlers - sans emoji)
             keyboard.append([
                 InlineKeyboardButton(
-                    "🏠 Accueil" if lang == 'fr' else "🏠 Home",
+                    "Accueil" if lang == 'fr' else "Home",
                     callback_data='back_main'
                 )
             ])
@@ -284,7 +220,7 @@ class LibraryHandlers:
                             media=InputMediaPhoto(
                                 media=photo_file,
                                 caption=caption,
-                                parse_mode='Markdown'
+                                parse_mode='HTML'
                             ),
                             reply_markup=InlineKeyboardMarkup(keyboard)
                         )
@@ -292,7 +228,7 @@ class LibraryHandlers:
                     await query.edit_message_text(
                         text=caption,
                         reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='Markdown'
+                        parse_mode='HTML'
                     )
             except Exception as e:
                 logger.warning(f"Failed to edit message, sending new: {e}")
@@ -305,14 +241,14 @@ class LibraryHandlers:
                             photo=photo_file,
                             caption=caption,
                             reply_markup=InlineKeyboardMarkup(keyboard),
-                            parse_mode='Markdown'
+                            parse_mode='HTML'
                         )
                 else:
                     await bot.application.bot.send_message(
                         chat_id=query.message.chat_id,
                         text=caption,
                         reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='Markdown'
+                        parse_mode='HTML'
                     )
 
         except Exception as e:
@@ -321,148 +257,6 @@ class LibraryHandlers:
             logger.error(traceback.format_exc())
             await query.edit_message_text(
                 "❌ Error displaying product" if lang == 'en' else "❌ Erreur affichage produit"
-            )
-
-    async def show_library_item(self, bot, query, product_id: str, lang: str):
-        """Affiche les détails d'un produit acheté avec toutes les options"""
-        user_id = query.from_user.id
-
-        try:
-            conn = bot.get_db_connection()
-            cursor = conn.cursor()
-
-            # Vérifier que l'utilisateur possède ce produit
-            cursor.execute('''
-                SELECT
-                    p.product_id,
-                    p.title,
-                    p.description,
-                    COALESCE(u.seller_name, u.first_name) as seller_name,
-                    p.seller_user_id,
-                    p.category,
-                    p.file_size_mb,
-                    o.product_price_eur,
-                    o.completed_at,
-                    o.download_count,
-                    o.order_id
-                FROM orders o
-                JOIN products p ON o.product_id = p.product_id
-                JOIN users u ON p.seller_user_id = u.user_id
-                WHERE o.buyer_user_id = ? AND o.product_id = ? AND o.payment_status = 'completed'
-                ORDER BY o.completed_at DESC
-                LIMIT 1
-            ''', (user_id, product_id))
-
-            result = cursor.fetchone()
-
-            if not result:
-                conn.close()
-                await query.edit_message_text(
-                    "❌ Product not found in your library." if lang == 'en' else "❌ Produit introuvable dans votre bibliothèque.",
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton(
-                            "📚 My Library" if lang == 'en' else "📚 Ma Bibliothèque",
-                            callback_data='library_menu'
-                        )
-                    ]])
-                )
-                return
-
-            (product_id, title, description, seller_name, seller_user_id,
-             category, file_size_mb, price, completed_at, download_count, order_id) = result
-
-            # Vérifier s'il y a déjà un avis
-            cursor.execute('''
-                SELECT rating, review_text
-                FROM reviews
-                WHERE buyer_user_id = ? AND product_id = ?
-            ''', (user_id, product_id))
-            review_data = cursor.fetchone()
-            conn.close()
-
-            # Construire le texte
-            safe_title = escape_markdown(title or "Sans titre")
-            safe_seller = escape_markdown(seller_name or "Unknown")
-            safe_category = escape_markdown(category or "N/A")
-
-            # Date d'achat
-            try:
-                purchase_date = datetime.fromisoformat(completed_at).strftime("%d/%m/%Y")
-            except:
-                purchase_date = "N/A"
-
-            text = (
-                f"📦 **{safe_title}**\n\n"
-                f"👤 **Seller:** {safe_seller}\n"
-                f"📂 **Category:** {safe_category}\n"
-                f"💰 **Paid:** {price}€\n"
-                f"📅 **Purchased:** {purchase_date}\n"
-                f"📥 **Downloads:** {download_count or 0}\n"
-                f"📁 **Size:** {file_size_mb:.1f} MB\n"
-                if lang == 'en' else
-                f"📦 **{safe_title}**\n\n"
-                f"👤 **Vendeur:** {safe_seller}\n"
-                f"📂 **Catégorie:** {safe_category}\n"
-                f"💰 **Payé:** {price}€\n"
-                f"📅 **Acheté le:** {purchase_date}\n"
-                f"📥 **Téléchargements:** {download_count or 0}\n"
-                f"📁 **Taille:** {file_size_mb:.1f} MB\n"
-            )
-
-            if review_data:
-                rating, review_text = review_data
-                stars = "⭐" * rating
-                review_label = "Your Review" if lang == 'en' else "Votre Avis"
-                text += f"\n**{review_label}:** {stars}\n"
-                if review_text:
-                    text += f"_{escape_markdown(review_text[:100])}_\n"
-
-            # Boutons d'action - Layout 2-2-2
-            keyboard = [
-                [
-                    InlineKeyboardButton(
-                        "📥 Download" if lang == 'en' else "📥 Télécharger",
-                        callback_data=f'download_product_{product_id}'
-                    ),
-                    InlineKeyboardButton(
-                        "⭐ Rate/Review" if lang == 'en' else "⭐ Noter/Avis",
-                        callback_data=f'rate_product_{product_id}'
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "📞 Contact Seller" if lang == 'en' else "📞 Contacter Vendeur",
-                        callback_data=f'contact_seller_{product_id}'
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🔙 Library" if lang == 'en' else "🔙 Bibliothèque",
-                        callback_data='library_menu'
-                    ),
-                    InlineKeyboardButton(
-                        "🏠 Home" if lang == 'en' else "🏠 Accueil",
-                        callback_data='back_main'
-                    )
-                ]
-            ]
-
-            await query.edit_message_text(
-                text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-
-        except Exception as e:
-            logger.error(f"Error showing library item: {e}")
-            await query.edit_message_text(
-                "❌ Error loading product details." if lang == 'en' else "❌ Erreur de chargement.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(
-                        "📚 My Library" if lang == 'en' else "📚 Ma Bibliothèque",
-                        callback_data='library_menu'
-                    )
-                ]])
             )
 
     async def download_product(self, bot, query, context, product_id: str, lang: str):
@@ -486,7 +280,7 @@ class LibraryHandlers:
 
             if not result:
                 conn.close()
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     "❌ Product not purchased or not found." if lang == 'en' else "❌ Produit non acheté ou introuvable.",
                     InlineKeyboardMarkup([[
@@ -516,7 +310,7 @@ class LibraryHandlers:
 
             if not file_path or not os.path.exists(full_file_path):
                 logger.error(f"File not found: {full_file_path}")
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     "❌ File not found on server. Contact support." if lang == 'en' else "❌ Fichier introuvable sur le serveur. Contactez le support.",
                     InlineKeyboardMarkup([[
@@ -526,7 +320,7 @@ class LibraryHandlers:
                         ),
                         InlineKeyboardButton(
                             "🔙 Back" if lang == 'en' else "🔙 Retour",
-                            callback_data=f'library_item_{product_id}'
+                            callback_data='library_menu'
                         )
                     ]])
                 )
@@ -534,26 +328,32 @@ class LibraryHandlers:
 
             # Message de téléchargement en cours
             try:
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     "📥 Preparing download..." if lang == 'en' else "📥 Préparation du téléchargement..."
                 )
             except:
                 pass
 
-            # Envoyer le fichier
+            # Envoyer le fichier - utiliser context.bot ou query.get_bot()
             bot_instance = context.bot if context else query.get_bot()
 
             with open(full_file_path, 'rb') as file:
                 await bot_instance.send_document(
                     chat_id=query.message.chat_id,
                     document=file,
-                    caption=f"📦 {title}\n\n✅ " + ("Download complete!" if lang == 'en' else "Téléchargement terminé !"),
-                    reply_to_message_id=query.message.message_id
                 )
 
-            # Retourner à la fiche produit
-            await self.show_library_item(bot, query, product_id, lang)
+            # Message de confirmation
+            await query.message.reply_text(
+                "✅ Téléchargement terminé !" if lang == 'fr' else "✅ Download complete!",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "📚 Retour à ma bibliothèque" if lang == 'fr' else "📚 Back to my library",
+                        callback_data='library_menu'
+                    )
+                ]])
+            )
 
         except Exception as e:
             logger.error(f"Error downloading product: {e}")
@@ -562,7 +362,7 @@ class LibraryHandlers:
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
                         "🔙 Back" if lang == 'en' else "🔙 Retour",
-                        callback_data=f'library_item_{product_id}'
+                        callback_data='library_menu'
                     )
                 ]])
             )
@@ -592,11 +392,11 @@ class LibraryHandlers:
         keyboard.append([
             InlineKeyboardButton(
                 "🔙 Back" if lang == 'en' else "🔙 Retour",
-                callback_data=f'library_item_{product_id}'
+                callback_data='library_menu'
             )
         ])
 
-        await self._safe_transition_to_text(
+        await safe_transition_to_text(
             query,
             text,
             InlineKeyboardMarkup(keyboard)
@@ -642,12 +442,12 @@ class LibraryHandlers:
                 [
                     InlineKeyboardButton(
                         "✅ Done" if lang == 'en' else "✅ Terminé",
-                        callback_data=f'library_item_{product_id}'
+                        callback_data='library_menu'
                     )
                 ]
             ]
 
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 text,
                 InlineKeyboardMarkup(keyboard)
@@ -655,50 +455,113 @@ class LibraryHandlers:
 
         except Exception as e:
             logger.error(f"Error setting rating: {e}")
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 "❌ Error saving rating." if lang == 'en' else "❌ Erreur d'enregistrement.",
                 InlineKeyboardMarkup([[
                     InlineKeyboardButton(
                         "🔙 Back" if lang == 'en' else "🔙 Retour",
-                        callback_data=f'library_item_{product_id}'
+                        callback_data='library_menu'
                     )
                 ]])
             )
 
     async def write_review_prompt(self, bot, query, product_id: str, lang: str):
-        """Demande à l'utilisateur d'écrire un avis"""
-        # Use the MarketplaceBot instance passed as parameter
-        bot.reset_conflicting_states(query.from_user.id, keep={'waiting_for_review'})
-        bot.state_manager.update_state(
-            query.from_user.id,
-            waiting_for_review=True,
-            review_product_id=product_id,
-            lang=lang
-        )
-
+        """Demande la note sur 5 étoiles d'abord"""
         text = (
-            "📝 **WRITE YOUR REVIEW**\n\n"
-            "Share your experience with this product.\n"
-            "Your review will help other buyers.\n\n"
-            "Type your review below:"
+            "⭐ **RATE THIS PRODUCT**\n\n"
+            "How would you rate this product?\n"
+            "Choose a rating from 1 to 5 stars:"
             if lang == 'en' else
-            "📝 **ÉCRIRE VOTRE AVIS**\n\n"
-            "Partagez votre expérience avec ce produit.\n"
-            "Votre avis aidera les autres acheteurs.\n\n"
-            "Tapez votre avis ci-dessous :"
+            "⭐ **NOTEZ CE PRODUIT**\n\n"
+            "Quelle note donneriez-vous à ce produit ?\n"
+            "Choisissez une note de 1 à 5 étoiles :"
         )
 
-        await self._safe_transition_to_text(
-            query,
-            text,
-            InlineKeyboardMarkup([[
+        # Boutons d'étoiles
+        keyboard = [
+            [
+                InlineKeyboardButton("⭐", callback_data=f'rate_{product_id}_1'),
+                InlineKeyboardButton("⭐⭐", callback_data=f'rate_{product_id}_2'),
+                InlineKeyboardButton("⭐⭐⭐", callback_data=f'rate_{product_id}_3'),
+            ],
+            [
+                InlineKeyboardButton("⭐⭐⭐⭐", callback_data=f'rate_{product_id}_4'),
+                InlineKeyboardButton("⭐⭐⭐⭐⭐", callback_data=f'rate_{product_id}_5'),
+            ],
+            [
                 InlineKeyboardButton(
                     "❌ Cancel" if lang == 'en' else "❌ Annuler",
-                    callback_data=f'library_item_{product_id}'
+                    callback_data='library_menu'
                 )
-            ]])
+            ]
+        ]
+
+        await safe_transition_to_text(
+            query,
+            text,
+            InlineKeyboardMarkup(keyboard)
         )
+
+    async def process_rating(self, bot, query, product_id: str, rating: int, lang: str):
+        """Enregistre la note et demande le texte de l'avis"""
+        user_id = query.from_user.id
+
+        try:
+            conn = bot.get_db_connection()
+            cursor = conn.cursor()
+
+            # Créer ou mettre à jour la note
+            cursor.execute('''
+                INSERT INTO reviews (buyer_user_id, product_id, rating, created_at, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(buyer_user_id, product_id)
+                DO UPDATE SET rating = ?, updated_at = CURRENT_TIMESTAMP
+            ''', (user_id, product_id, rating, rating))
+
+            conn.commit()
+            conn.close()
+
+            # Demander maintenant le texte de l'avis
+            bot.reset_conflicting_states(user_id, keep={'waiting_for_review'})
+            bot.state_manager.update_state(
+                user_id,
+                waiting_for_review=True,
+                review_product_id=product_id,
+                lang=lang
+            )
+
+            stars = "⭐" * rating
+            text = (
+                f"✅ **Rating saved: {stars}**\n\n"
+                "📝 **Now write your review** (optional)\n\n"
+                "Share your experience with this product.\n"
+                "Your review will help other buyers.\n\n"
+                "Type your review below, or click Cancel:"
+                if lang == 'en' else
+                f"✅ **Note enregistrée : {stars}**\n\n"
+                "📝 **Écrivez maintenant votre avis** (optionnel)\n\n"
+                "Partagez votre expérience avec ce produit.\n"
+                "Votre avis aidera les autres acheteurs.\n\n"
+                "Tapez votre avis ci-dessous, ou cliquez sur Annuler :"
+            )
+
+            await safe_transition_to_text(
+                query,
+                text,
+                InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "❌ Skip" if lang == 'en' else "❌ Passer",
+                        callback_data='library_menu'
+                    )
+                ]])
+            )
+
+        except Exception as e:
+            logger.error(f"Error saving rating: {e}")
+            await query.message.reply_text(
+                "❌ Error saving rating." if lang == 'en' else "❌ Erreur d'enregistrement de la note."
+            )
 
     async def process_review_text(self, bot, update, message_text: str):
         """Traite l'avis écrit par l'utilisateur"""
@@ -744,7 +607,7 @@ class LibraryHandlers:
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
                         "📦 View Product" if lang == 'en' else "📦 Voir Produit",
-                        callback_data=f'library_item_{product_id}'
+                        callback_data='library_menu'
                     ),
                     InlineKeyboardButton(
                         "📚 My Library" if lang == 'en' else "📚 Ma Bibliothèque",
@@ -762,7 +625,7 @@ class LibraryHandlers:
             bot.reset_user_state_preserve_login(user_id)
 
     async def contact_seller(self, bot, query, product_id: str, lang: str):
-        """Permet de contacter le vendeur d'un produit acheté"""
+        """Ouvre directement le chat Telegram privé avec le vendeur"""
         user_id = query.from_user.id
 
         try:
@@ -783,7 +646,7 @@ class LibraryHandlers:
             conn.close()
 
             if not result:
-                await self._safe_transition_to_text(
+                await safe_transition_to_text(
                     query,
                     "❌ Product not found." if lang == 'en' else "❌ Produit introuvable.",
                     InlineKeyboardMarkup([[
@@ -800,33 +663,34 @@ class LibraryHandlers:
             safe_title = escape_markdown(product_title or "Product")
 
             text = (
-                f"📞 **CONTACT SELLER**\n\n"
+                f"💬 **CONTACT SELLER**\n\n"
                 f"**Seller:** {safe_seller}\n"
                 f"**Product:** {safe_title}\n\n"
-                "What would you like to do?"
+                "Click the button below to open a private chat with the seller."
                 if lang == 'en' else
-                f"📞 **CONTACTER LE VENDEUR**\n\n"
+                f"💬 **CONTACTER LE VENDEUR**\n\n"
                 f"**Vendeur:** {safe_seller}\n"
                 f"**Produit:** {safe_title}\n\n"
-                "Que souhaitez-vous faire ?"
+                "Cliquez sur le bouton ci-dessous pour ouvrir un chat privé avec le vendeur."
             )
 
+            # Créer un lien direct vers le chat Telegram du vendeur
             keyboard = [
                 [
                     InlineKeyboardButton(
-                        "💬 Send Message" if lang == 'en' else "💬 Envoyer Message",
-                        callback_data=f'message_seller_{seller_user_id}_{product_id}'
+                        "💬 Ouvrir le chat" if lang == 'fr' else "💬 Open chat",
+                        url=f'tg://user?id={seller_user_id}'
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        "🔙 Back" if lang == 'en' else "🔙 Retour",
-                        callback_data=f'library_item_{product_id}'
+                        "🔙 Retour" if lang == 'fr' else "🔙 Back",
+                        callback_data='library_menu'
                     )
                 ]
             ]
 
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 text,
                 InlineKeyboardMarkup(keyboard)
@@ -834,13 +698,13 @@ class LibraryHandlers:
 
         except Exception as e:
             logger.error(f"Error contacting seller: {e}")
-            await self._safe_transition_to_text(
+            await safe_transition_to_text(
                 query,
                 "❌ Error." if lang == 'en' else "❌ Erreur.",
                 InlineKeyboardMarkup([[
                     InlineKeyboardButton(
                         "🔙 Back" if lang == 'en' else "🔙 Retour",
-                        callback_data=f'library_item_{product_id}'
+                        callback_data='library_menu'
                     )
                 ]])
             )
@@ -907,7 +771,7 @@ class LibraryHandlers:
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
                         "❌ Cancel" if lang == 'en' else "❌ Annuler",
-                        callback_data=f'library_item_{product_id}'
+                        callback_data='library_menu'
                     )
                 ]]),
                 parse_mode='Markdown'

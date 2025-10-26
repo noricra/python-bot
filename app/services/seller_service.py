@@ -29,6 +29,84 @@ class SellerService:
     def __init__(self, db_path: str = None):
         self.db_path = db_path
 
+    def create_seller_account_simple(self, user_id: int, seller_name: str,
+                                    email: str, solana_address: str) -> Dict[str, Any]:
+        """
+        Create simplified seller account (no password, no bio initially)
+
+        Args:
+            user_id: Telegram user ID
+            seller_name: Name from Telegram (first_name or username)
+            email: For notifications
+            solana_address: For payments
+
+        Returns:
+            Dict with success status and error message if applicable
+        """
+        try:
+            # Validate email
+            if not email or '@' not in email:
+                return {'success': False, 'error': 'Email invalide'}
+
+            # Validate Solana address if provided
+            if solana_address:
+                if not validate_solana_address(solana_address):
+                    return {'success': False, 'error': 'Adresse Solana invalide'}
+
+            # Check if email belongs to a suspended user
+            conn = get_sqlite_connection(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('SELECT user_id, seller_name FROM users WHERE email = ? AND seller_name LIKE "[SUSPENDED]%"', (email,))
+            suspended_user = cursor.fetchone()
+
+            if suspended_user:
+                conn.close()
+                logger.warning(f"Blocked account creation for suspended user email: {email}")
+                return {'success': False, 'error': 'Cet email appartient à un compte suspendu. Contactez le support.'}
+
+            # Check if email already in use by another seller
+            cursor.execute('SELECT user_id FROM users WHERE email = ? AND user_id != ?', (email, user_id))
+            existing_email = cursor.fetchone()
+            if existing_email:
+                conn.close()
+                return {'success': False, 'error': 'Cet email est déjà utilisé par un autre vendeur'}
+
+            try:
+                # Ensure user exists in database
+                self._ensure_user_exists(cursor, user_id)
+
+                # Create simplified seller account (no password, no bio)
+                cursor.execute('''
+                    UPDATE users
+                    SET is_seller = TRUE,
+                        seller_name = ?,
+                        seller_bio = NULL,
+                        email = ?,
+                        seller_solana_address = ?,
+                        password_salt = NULL,
+                        password_hash = NULL,
+                        recovery_code_hash = NULL
+                    WHERE user_id = ?
+                ''', (seller_name, email, solana_address, user_id))
+
+                if cursor.rowcount > 0:
+                    conn.commit()
+                    conn.close()
+                    logger.info(f"✅ Simplified seller account created for user {user_id} ({seller_name})")
+                    return {'success': True}
+                else:
+                    conn.close()
+                    return {'success': False, 'error': 'Échec mise à jour'}
+
+            except sqlite3.Error as e:
+                logger.error(f"❌ Database error creating simplified seller: {e}")
+                conn.close()
+                return {'success': False, 'error': 'Erreur interne'}
+
+        except Exception as e:
+            logger.error(f"❌ Error creating simplified seller account: {e}")
+            return {'success': False, 'error': str(e)}
+
     def create_seller_account_with_recovery(self, user_id: int, seller_name: str,
                                          seller_bio: str, email: str,
                                          raw_password: str, solana_address: str = None) -> Dict[str, Any]:

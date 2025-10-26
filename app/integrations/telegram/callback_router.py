@@ -22,7 +22,6 @@ class CallbackRouter:
         self.routes.update({
             'buy_menu': lambda query, lang: self.bot.buy_handlers.buy_menu(self.bot, query, lang),
             'sell_menu': lambda query, lang: self.bot.sell_handlers.sell_menu(self.bot, query, lang),
-            'seller_login_menu': lambda query, lang: self.bot.sell_handlers.seller_login_menu(self.bot, query, lang),
             'seller_dashboard': lambda query, lang: self.bot.sell_handlers.seller_dashboard(self.bot, query, lang),
             'back_main': lambda query, lang: self.bot.core_handlers.back_to_main_with_bot(self.bot, query, lang),
         })
@@ -67,6 +66,10 @@ class CallbackRouter:
             'sell_copy_address': lambda query, lang: self.bot.sell_handlers.copy_address(self.bot, query, lang),
             'edit_seller_name': lambda query, lang: self.bot.sell_handlers.edit_seller_name(self.bot, query, lang),
             'edit_seller_bio': lambda query, lang: self.bot.sell_handlers.edit_seller_bio(self.bot, query, lang),
+            'edit_seller_email': lambda query, lang: self.bot.sell_handlers.edit_seller_email(self.bot, query, lang),
+            'edit_solana_address': lambda query, lang: self.bot.sell_handlers.edit_solana_address(self.bot, query, lang),
+            'disable_seller_account': lambda query, lang: self.bot.sell_handlers.disable_seller_account(self.bot, query, lang),
+            'disable_seller_confirm': lambda query, lang: self.bot.sell_handlers.disable_seller_confirm(self.bot, query),
         }
         self.routes.update(sell_routes)
 
@@ -104,10 +107,10 @@ class CallbackRouter:
         self.routes.update(support_routes)
 
         # Routes auth/recovery - signatures corrigées
+        # Note: account_recovery et recovery_by_email conservés pour anciens vendeurs avec password
         auth_routes = {
             'account_recovery': lambda query, lang: self.bot.auth_handlers.account_recovery_menu(self.bot, query, lang),
             'recovery_by_email': lambda query, lang: self.bot.auth_handlers.recovery_by_email_prompt(self.bot, query, lang),
-            'seller_login': lambda query, lang: self.bot.sell_handlers.seller_login_prompt(self.bot, query, lang),
         }
         self.routes.update(auth_routes)
 
@@ -139,9 +142,15 @@ class CallbackRouter:
         elif callback_data == 'admin_search_product':
             self.bot.reset_conflicting_states(user_id, keep={'admin_search_product'})
             self.bot.update_user_state(user_id, admin_search_product=True)
-        elif callback_data == 'admin_suspend_product':
-            self.bot.reset_conflicting_states(user_id, keep={'admin_suspend_product'})
-            self.bot.update_user_state(user_id, admin_suspend_product=True)
+        elif callback_data == 'admin_restore_product':
+            self.bot.reset_conflicting_states(user_id, keep={'restoring_product'})
+            self.bot.update_user_state(user_id, restoring_product=True)
+        # admin_suspend_product now shows reason selection menu (no state set here)
+        # Handle suspend reason selection callbacks
+        elif callback_data.startswith('suspend_reason_'):
+            reason_key = callback_data.replace('suspend_reason_', '')
+            await self.admin_handlers.admin_suspend_product_id_prompt(self.bot, query, reason_key, lang)
+            return True
         # admin_suspend_user is handled by the route above
 
         # Noop handler (boutons espaceurs non-cliquables)
@@ -249,11 +258,17 @@ class CallbackRouter:
                     )
                     caption_with_header = search_header + caption
 
-                    # Build keyboard
+                    # Build keyboard (même structure que show_search_results)
                     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
                     keyboard = []
 
-                    # Navigation row
+                    # Ligne 1: Bouton Acheter
+                    buy_label = self.bot.buy_handlers._build_buy_button_label(product['price_eur'], lang)
+                    keyboard.append([
+                        InlineKeyboardButton(buy_label, callback_data=f'buy_product_{product["product_id"]}')
+                    ])
+
+                    # Ligne 2: Navigation carousel
                     nav_row = []
                     if index > 0:
                         nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'search_nav_{search_query}_{index-1}'))
@@ -262,15 +277,7 @@ class CallbackRouter:
                         nav_row.append(InlineKeyboardButton("➡️", callback_data=f'search_nav_{search_query}_{index+1}'))
                     keyboard.append(nav_row)
 
-                    # Actions row
-                    buy_label = self.bot.buy_handlers._build_buy_button_label(product, lang)
-                    keyboard.append([
-                        InlineKeyboardButton("ℹ️ Détails" if lang == 'fr' else "ℹ️ Details",
-                                           callback_data=f'search_details_{product["product_id"]}_{search_query}_{index}'),
-                        InlineKeyboardButton(buy_label, callback_data=f'buy_product_{product["product_id"]}')
-                    ])
-
-                    # Back button
+                    # Ligne 3: Retour
                     keyboard.append([InlineKeyboardButton(
                         "🔙 Nouvelle recherche" if lang == 'fr' else "🔙 New search",
                         callback_data='buy_menu'
@@ -310,68 +317,6 @@ class CallbackRouter:
                 return True
             except Exception as e:
                 logger.error(f"Error in search navigation: {e}")
-                import traceback
-                traceback.print_exc()
-                await query.answer("Erreur" if lang == 'fr' else "Error")
-                return True
-
-        # 🔍 Search details from results (search_details_{product_id}_{query}_{index})
-        if callback_data.startswith('search_details_'):
-            try:
-                # Parse: search_details_TBF-123_trading_2
-                parts = callback_data.replace('search_details_', '').split('_', 2)
-                product_id = parts[0] + '_' + parts[1]  # Reconstruct TBF-XXX
-                # Remaining parts contain query and index
-                remaining = parts[2].rsplit('_', 1)
-                search_query = remaining[0]
-                index = int(remaining[1]) if len(remaining) > 1 else 0
-
-                # Get product
-                product = self.bot.get_product_by_id(product_id)
-                if product:
-                    # Show details (mode full) with back to search
-                    caption = self.bot.buy_handlers._build_product_caption(product, mode='full', lang=lang)
-                    thumbnail_path = self.bot.buy_handlers._get_product_image_or_placeholder(product)
-
-                    # Keyboard with back to search results
-                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-                    buy_label = self.bot.buy_handlers._build_buy_button_label(product, lang)
-                    keyboard = InlineKeyboardMarkup([
-                        [InlineKeyboardButton(buy_label, callback_data=f'buy_product_{product["product_id"]}')],
-                        [InlineKeyboardButton("🔙 Retour résultats" if lang == 'fr' else "🔙 Back to results",
-                                            callback_data=f'search_nav_{search_query}_{index}')],
-                        [InlineKeyboardButton("🔙 Nouvelle recherche" if lang == 'fr' else "🔙 New search",
-                                            callback_data='buy_menu')]
-                    ])
-
-                    if thumbnail_path and os.path.exists(thumbnail_path):
-                        try:
-                            await query.edit_message_media(
-                                media=InputMediaPhoto(
-                                    media=open(thumbnail_path, 'rb'),
-                                    caption=caption,
-                                    parse_mode='HTML'
-                                ),
-                                reply_markup=keyboard
-                            )
-                        except:
-                            await query.edit_message_caption(
-                                caption=caption,
-                                reply_markup=keyboard,
-                                parse_mode='HTML'
-                            )
-                    else:
-                        await query.edit_message_text(
-                            text=caption,
-                            reply_markup=keyboard,
-                            parse_mode='HTML'
-                        )
-                else:
-                    await query.answer("Produit introuvable" if lang == 'fr' else "Product not found")
-
-                return True
-            except Exception as e:
-                logger.error(f"Error showing search details: {e}")
                 import traceback
                 traceback.print_exc()
                 await query.answer("Erreur" if lang == 'fr' else "Error")

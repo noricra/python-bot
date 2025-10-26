@@ -284,10 +284,16 @@ class BuyHandlers:
                     current_cat_index = None
 
                 if current_cat_index is not None:
-                    # Flèche gauche SI pas première catégorie
+                    # Flèche gauche SI pas première catégorie ET catégorie précédente a des produits
                     if current_cat_index > 0:
-                        prev_cat = all_categories[current_cat_index - 1]
-                        cat_nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'navcat_{prev_cat}'))
+                        # Chercher la première catégorie précédente avec des produits
+                        for i in range(current_cat_index - 1, -1, -1):
+                            prev_cat = all_categories[i]
+                            # Vérifier si cette catégorie a des produits
+                            prev_cat_products = self.product_repo.get_products_by_category(prev_cat, limit=1, offset=0)
+                            if prev_cat_products:
+                                cat_nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'navcat_{prev_cat}'))
+                                break
 
                     # Nom catégorie (tronqué si nécessaire)
                     cat_display = category_key
@@ -295,12 +301,17 @@ class BuyHandlers:
                         cat_display = cat_display[:18] + "…"
                     cat_nav_row.append(InlineKeyboardButton(cat_display, callback_data='noop'))
 
-                    # Flèche droite SI pas dernière catégorie ET qu'il y a bien une catégorie suivante
+                    # Flèche droite SI pas dernière catégorie ET catégorie suivante a des produits
                     if current_cat_index < len(all_categories) - 1:
-                        next_cat = all_categories[current_cat_index + 1]
-                        # Vérifier que la catégorie suivante existe vraiment
-                        if next_cat and next_cat != category_key:
-                            cat_nav_row.append(InlineKeyboardButton("➡️", callback_data=f'navcat_{next_cat}'))
+                        # Chercher la première catégorie suivante avec des produits
+                        for i in range(current_cat_index + 1, len(all_categories)):
+                            next_cat = all_categories[i]
+                            if next_cat and next_cat != category_key:
+                                # Vérifier si cette catégorie a des produits
+                                next_cat_products = self.product_repo.get_products_by_category(next_cat, limit=1, offset=0)
+                                if next_cat_products:
+                                    cat_nav_row.append(InlineKeyboardButton("➡️", callback_data=f'navcat_{next_cat}'))
+                                    break
 
                     # N'ajouter la row que si elle contient au moins le nom de catégorie
                     if cat_nav_row:
@@ -378,6 +389,9 @@ class BuyHandlers:
         V2 WORKFLOW ÉTAPE 1: Click "Acheter" → DIRECT carousel (first category, first product)
         No intermediate menu, no category selection screen
         """
+        # Reset conflicting states when entering buy workflow
+        bot.reset_conflicting_states(query.from_user.id, keep={'lang'})
+
         # V2: Load first category and show carousel immediately
         try:
             conn = bot.get_db_connection()
@@ -579,7 +593,8 @@ class BuyHandlers:
 
         if lang == 'fr':
             return f"""<b>{title}</b>
-Prix : {price_eur}€ × 1.0278 = <b>{total_eur}€</b> ({price_usd:.2f} USD)
+Prix total : <b>{total_eur}€</b> ({price_usd:.2f} USD)
+<i>Frais inclus</i>
 
 <b>Envoyez EXACTEMENT :</b>
 <code>{exact_amount} {crypto_upper}</code>
@@ -597,7 +612,8 @@ Prix : {price_eur}€ × 1.0278 = <b>{total_eur}€</b> ({price_usd:.2f} USD)
 Contactez le support avec votre Order ID"""
         else:
             return f"""<b>{title}</b>
-Price: €{price_eur} × 1.0278 = <b>€{total_eur}</b> (${price_usd:.2f} USD)
+Total Price: <b>€{total_eur}</b> (${price_usd:.2f} USD)
+<i>Fees included</i>
 
 <b>Send EXACTLY:</b>
 <code>{exact_amount} {crypto_upper}</code>
@@ -990,7 +1006,14 @@ Contact support with your Order ID"""
                 error_data = get_error_message('no_products', lang,
                     custom_message=f"La catégorie '{category_key}' ne contient pas encore de produits." if lang == 'fr'
                     else f"Category '{category_key}' does not contain any products yet.")
-                await query.edit_message_text(
+
+                # Delete message and send new one (avoids edit_message_text on photo messages)
+                try:
+                    await query.message.delete()
+                except:
+                    pass  # Ignore if can't delete
+
+                await query.message.reply_text(
                     text=error_data['text'],
                     reply_markup=error_data['keyboard'],
                     parse_mode='Markdown'
@@ -1004,7 +1027,14 @@ Contact support with your Order ID"""
             logger.error(f"Error showing category products: {e}")
             # Use user-friendly error message
             error_data = get_error_message('product_load_error', lang)
-            await query.edit_message_text(
+
+            # Delete message and send new one (avoids edit_message_text on photo messages)
+            try:
+                await query.message.delete()
+            except:
+                pass  # Ignore if can't delete
+
+            await query.message.reply_text(
                 text=error_data['text'],
                 reply_markup=error_data['keyboard'],
                 parse_mode='Markdown'
@@ -1188,7 +1218,7 @@ Contact support with your Order ID"""
         total = len(results)
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # CAPTION avec contexte recherche
+        # CAPTION en mode 'short' (compact pour carousel)
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         caption = self._build_product_caption(product, mode='short', lang=lang)
 
@@ -1213,7 +1243,16 @@ Contact support with your Order ID"""
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         keyboard = []
 
-        # Ligne 1: Navigation + Acheter
+        # Ligne 1: Bouton Acheter (en premier comme recherche par ID)
+        buy_label = self._build_buy_button_label(product['price_eur'], lang)
+        keyboard.append([
+            InlineKeyboardButton(
+                buy_label,
+                callback_data=f'buy_product_{product["product_id"]}'
+            )
+        ])
+
+        # Ligne 2: Navigation carousel
         nav_row = []
 
         # Bouton précédent (seulement si pas au début)
@@ -1237,19 +1276,6 @@ Contact support with your Order ID"""
             ))
 
         keyboard.append(nav_row)
-
-        # Ligne 2: Détails + Prix
-        buy_label = self._build_buy_button_label(product, lang)
-        keyboard.append([
-            InlineKeyboardButton(
-                "ℹ️ Détails" if lang == 'fr' else "ℹ️ Details",
-                callback_data=f'search_details_{product["product_id"]}_{search_query}_{index}'
-            ),
-            InlineKeyboardButton(
-                buy_label,
-                callback_data=f'buy_product_{product["product_id"]}'
-            )
-        ])
 
         # Ligne 3: Retour
         keyboard.append([

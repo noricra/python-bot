@@ -166,6 +166,11 @@ class SupportHandlers:
     # Support UI Methods - Extracted from bot_mlt.py
     async def support_menu(self, query, lang):
         """Main support menu"""
+        # Reset conflicting states when entering support workflow
+        from bot_mlt import bot
+        if hasattr(query, 'from_user'):
+            bot.reset_conflicting_states(query.from_user.id, keep={'lang'})
+
         await self.show_faq(query, lang)
 
     async def show_faq(self, query, lang):

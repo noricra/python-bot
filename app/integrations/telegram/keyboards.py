@@ -8,12 +8,12 @@ from app.core.i18n import t as i18n
 
 def back_to_main_button(lang: str):
     """Bouton retour accueil - TOUJOURS identique"""
-    label = "🏠 Accueil" if lang == 'fr' else "🏠 Home"
+    label = "Accueil" if lang == 'fr' else "Home"
     return InlineKeyboardButton(label, callback_data='back_main')
 
 def support_button(lang: str):
     """Bouton support - TOUJOURS identique"""
-    return InlineKeyboardButton("💬 Support", callback_data='support_menu')
+    return InlineKeyboardButton("Support", callback_data='support_menu')
 
 def language_buttons():
     """Boutons langue - TOUJOURS identiques"""
@@ -24,7 +24,7 @@ def language_buttons():
 
 def cancel_button(lang: str):
     """Bouton annuler - TOUJOURS identique"""
-    label = "❌ Annuler" if lang == 'fr' else "❌ Cancel"
+    label = "Annuler" if lang == 'fr' else "Cancel"
     return InlineKeyboardButton(label, callback_data='back_main')
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -38,7 +38,7 @@ def main_menu_keyboard(lang: str):
         [InlineKeyboardButton(i18n(lang, 'cta_buy'), callback_data='buy_menu'),
          InlineKeyboardButton(i18n(lang, 'cta_sell'), callback_data='sell_menu')],
         # Ligne 2: Bibliothèque
-        [InlineKeyboardButton("📚 " + ("My Library" if lang == 'en' else "Ma Bibliothèque"), callback_data='library_menu')],
+        [InlineKeyboardButton("My Library" if lang == 'en' else "Ma Bibliothèque", callback_data='library_menu')],
         # Ligne 3: Support | FR/EN
         [support_button(lang)] + language_buttons(),
     ]
