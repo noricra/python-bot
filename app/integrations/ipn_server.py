@@ -52,21 +52,28 @@ async def nowpayments_ipn(request: Request):
         order_id, product_id, seller_user_id, seller_revenue = row
 
         if payment_status in ['finished', 'confirmed']:
-            # Update order status
-            cursor.execute('UPDATE orders SET payment_status = "completed", completed_at = CURRENT_TIMESTAMP, file_delivered = TRUE WHERE nowpayments_id = ?', (payment_id,))
+            # Check if already delivered to avoid duplicate sends
+            cursor.execute('SELECT payment_status, file_delivered, buyer_user_id FROM orders WHERE nowpayments_id = ?', (payment_id,))
+            order_check = cursor.fetchone()
+
+            if order_check and order_check[0] == 'completed' and order_check[1]:
+                # Already processed and delivered
+                conn.close()
+                logger.info(f"Order {order_id} already completed and delivered, skipping")
+                return {"ok": True}
+
+            buyer_user_id = order_check[2] if order_check else None
+
+            # Update order status (but keep file_delivered=FALSE until actually sent)
+            cursor.execute('UPDATE orders SET payment_status = "completed", completed_at = CURRENT_TIMESTAMP WHERE nowpayments_id = ?', (payment_id,))
             cursor.execute('UPDATE products SET sales_count = sales_count + 1 WHERE product_id = ?', (product_id,))
             cursor.execute('UPDATE users SET total_sales = total_sales + 1, total_revenue = total_revenue + ? WHERE user_id = ?', (seller_revenue, seller_user_id))
-
-            # Get buyer info to send formation
-            cursor.execute('SELECT buyer_user_id FROM orders WHERE nowpayments_id = ?', (payment_id,))
-            buyer_result = cursor.fetchone()
-            buyer_user_id = buyer_result[0] if buyer_result else None
 
             conn.commit()
 
             # Send formation automatically to buyer
             if buyer_user_id:
-                await send_formation_to_buyer(buyer_user_id, order_id, product_id)
+                await send_formation_to_buyer(buyer_user_id, order_id, product_id, payment_id)
         conn.close()
     except sqlite3.Error:
         conn.rollback()
@@ -76,7 +83,7 @@ async def nowpayments_ipn(request: Request):
     return {"ok": True}
 
 
-async def send_formation_to_buyer(buyer_user_id: int, order_id: str, product_id: str):
+async def send_formation_to_buyer(buyer_user_id: int, order_id: str, product_id: str, payment_id: str):
     """Envoie automatiquement la formation à l'acheteur après paiement confirmé"""
     try:
         bot = Bot(token=core_settings.TELEGRAM_BOT_TOKEN)
@@ -86,10 +93,10 @@ async def send_formation_to_buyer(buyer_user_id: int, order_id: str, product_id:
         cursor = conn.cursor()
         cursor.execute('SELECT title, main_file_path FROM products WHERE product_id = ?', (product_id,))
         product_result = cursor.fetchone()
-        conn.close()
 
         if not product_result:
             logger.error(f"Product {product_id} not found for auto delivery")
+            conn.close()
             return
 
         title, file_path = product_result
@@ -122,14 +129,14 @@ Votre formation est en cours d'envoi..."""
                         parse_mode='Markdown'
                     )
 
-                # Update download count
-                conn = get_sqlite_connection(core_settings.DATABASE_PATH)
-                cursor = conn.cursor()
-                cursor.execute('UPDATE orders SET download_count = download_count + 1 WHERE order_id = ?', (order_id,))
+                # Mark as delivered and update download count
+                cursor.execute('''UPDATE orders
+                                 SET file_delivered = TRUE,
+                                     download_count = download_count + 1
+                                 WHERE nowpayments_id = ?''', (payment_id,))
                 conn.commit()
-                conn.close()
 
-                logger.info(f"Formation automatically sent to user {buyer_user_id} for order {order_id}")
+                logger.info(f"✅ Formation automatically sent to user {buyer_user_id} for order {order_id}")
 
             except FileNotFoundError:
                 await bot.send_message(
@@ -138,12 +145,16 @@ Votre formation est en cours d'envoi..."""
                     parse_mode='Markdown'
                 )
                 logger.error(f"File not found for product {product_id}: {full_file_path}")
+            except Exception as file_err:
+                logger.error(f"Error sending file for order {order_id}: {file_err}")
         else:
             await bot.send_message(
                 chat_id=buyer_user_id,
                 text="❌ Aucun fichier associé à cette formation. Contactez le support.",
                 parse_mode='Markdown'
             )
+
+        conn.close()
 
     except Exception as e:
         logger.error(f"Error sending formation automatically: {e}")

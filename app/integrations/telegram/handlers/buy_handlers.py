@@ -1188,10 +1188,6 @@ Contact support with your Order ID"""
                 no_results_text,
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton(
-                        "📂 Parcourir catégories" if lang == 'fr' else "📂 Browse categories",
-                        callback_data='browse_categories'
-                    )],
-                    [InlineKeyboardButton(
                         "🔙 Retour" if lang == 'fr' else "🔙 Back",
                         callback_data='buy_menu'
                     )]
@@ -1475,25 +1471,83 @@ Contact support with your Order ID"""
                     payout_created = await bot.auto_create_seller_payout(order_id)
                 except Exception as e:
                     payout_created = False
-                finally:
-                    conn.close()
 
-                success_text = f"""🎉 **FÉLICITATIONS !**
+                # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                # 📦 ENVOI AUTOMATIQUE DU FICHIER
+                # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                file_sent = False
+                try:
+                    # Check if file was already delivered (by IPN webhook)
+                    cursor.execute('SELECT file_delivered FROM orders WHERE order_id = ?', (order_id,))
+                    already_delivered = cursor.fetchone()
+
+                    if already_delivered and already_delivered[0]:
+                        logger.info(f"File already delivered for order {order_id} (likely by IPN webhook)")
+                        file_sent = True  # Mark as sent so we show correct message
+                    else:
+                        # Get product file path
+                        cursor.execute('SELECT title, main_file_path FROM products WHERE product_id = ?', (order[3],))
+                        product_file = cursor.fetchone()
+
+                        if product_file and product_file[1]:
+                            product_title, file_path = product_file
+                            from app.core.file_utils import get_product_file_path
+                            full_file_path = get_product_file_path(file_path)
+
+                            # Send success message first
+                            success_text = f"""🎉 **FÉLICITATIONS !**
 
 ✅ **Paiement confirmé** - Commande : {order_id}
 {"✅ Payout vendeur créé automatiquement" if payout_created else "⚠️ Payout vendeur en attente"}
 
-📚 **ACCÈS IMMÉDIAT À VOTRE FORMATION**"""
+📚 **Envoi de votre formation en cours...**"""
+
+                            await self._safe_edit_message(query, success_text, None)
+
+                            # Send the file
+                            try:
+                                with open(full_file_path, 'rb') as file:
+                                    await query.message.reply_document(
+                                        document=file,
+                                        caption=f"📚 **{product_title}**\n\n✅ Téléchargement réussi !\n\n💡 Conservez ce fichier précieusement.",
+                                        parse_mode='Markdown'
+                                    )
+                                    file_sent = True
+
+                                    # Mark as delivered and update download count
+                                    cursor.execute('''UPDATE orders
+                                                     SET file_delivered = TRUE,
+                                                         download_count = download_count + 1
+                                                     WHERE order_id = ?''', (order_id,))
+                                    conn.commit()
+
+                                    logger.info(f"✅ Formation sent via manual check to user {query.from_user.id} for order {order_id}")
+                            except FileNotFoundError:
+                                logger.error(f"File not found: {full_file_path}")
+                            except Exception as file_error:
+                                logger.error(f"Error sending file: {file_error}")
+                except Exception as delivery_error:
+                    logger.error(f"Error in automatic file delivery: {delivery_error}")
+                finally:
+                    conn.close()
+
+                # Send final confirmation with buttons
+                final_text = f"""🎉 **FÉLICITATIONS !**
+
+✅ **Paiement confirmé** - Commande : {order_id}
+{"✅ Payout vendeur créé automatiquement" if payout_created else "⚠️ Payout vendeur en attente"}
+
+{"📚 **Votre formation a été envoyée ci-dessus !**" if file_sent else "📚 **ACCÈS À VOTRE FORMATION**"}"""
 
                 keyboard = [[
                     InlineKeyboardButton(
-                        "📥 Télécharger maintenant",
+                        "📥 Télécharger à nouveau" if file_sent else "📥 Télécharger maintenant",
                         callback_data=f'download_product_{order[3]}')
                 ], [
                     InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')
                 ]]
 
-                await self._safe_edit_message(query, success_text, InlineKeyboardMarkup(keyboard))
+                await query.message.reply_text(final_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
             else:
                 conn.close()
                 try:

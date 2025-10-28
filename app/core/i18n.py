@@ -19,7 +19,6 @@ TEXTS: Dict[str, Dict[str, str]] = {
 
         # Menu achat
         'btn_search_product': "Rechercher par ID",
-        'btn_browse_categories': "Parcourir catégories",
         'btn_bestsellers': "Meilleures ventes",
         'btn_new': "Nouveautés",
         'btn_buy': "Acheter",
@@ -112,7 +111,6 @@ TEXTS: Dict[str, Dict[str, str]] = {
 
         # Buy menu
         'btn_search_product': "Search by ID",
-        'btn_browse_categories': "Browse categories",
         'btn_bestsellers': "Bestsellers",
         'btn_new': "New",
         'btn_buy': "Buy",

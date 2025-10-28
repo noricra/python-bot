@@ -11,11 +11,11 @@ ERROR_TEMPLATES = {
             'message': 'Ce produit n\'existe plus ou a été supprimé.',
             'actions': [
                 '💡 QUE FAIRE ?',
-                '• Parcourir les catégories',
-                '• Utiliser la recherche',
+                '• Utiliser la recherche par ID',
+                '• Consulter les nouveautés ou best-sellers',
                 '• Contacter le support si le problème persiste'
             ],
-            'buttons': ['browse_categories', 'search_product']
+            'buttons': ['search_product', 'back_main']
         },
 
         'product_load_error': {
@@ -35,11 +35,11 @@ ERROR_TEMPLATES = {
             'message': 'Cette catégorie ne contient pas encore de produits.',
             'actions': [
                 '💡 SUGGESTIONS :',
-                '• Explorer d\'autres catégories',
+                '• Consulter les nouveautés ou best-sellers',
                 '• Revenir plus tard',
                 '• Devenir vendeur et ajouter vos produits'
             ],
-            'buttons': ['browse_categories', 'become_seller']
+            'buttons': ['buy_menu', 'sell_menu']
         },
 
         # Payment errors
@@ -173,11 +173,11 @@ ERROR_TEMPLATES = {
             'message': 'This product no longer exists or has been deleted.',
             'actions': [
                 '💡 WHAT TO DO?',
-                '• Browse categories',
-                '• Use search',
+                '• Use search by ID',
+                '• Check out new or best-sellers',
                 '• Contact support if the issue persists'
             ],
-            'buttons': ['browse_categories', 'search_product']
+            'buttons': ['search_product', 'back_main']
         },
 
         'product_load_error': {
@@ -197,11 +197,11 @@ ERROR_TEMPLATES = {
             'message': 'This category does not contain any products yet.',
             'actions': [
                 '💡 SUGGESTIONS:',
-                '• Explore other categories',
+                '• Check out new or best-sellers',
                 '• Come back later',
                 '• Become a seller and add your products'
             ],
-            'buttons': ['browse_categories', 'become_seller']
+            'buttons': ['buy_menu', 'sell_menu']
         },
 
         # Payment errors
@@ -332,15 +332,17 @@ ERROR_TEMPLATES = {
 
 BUTTON_CALLBACKS = {
     'retry': 'retry_last_action',
-    'browse_categories': 'browse_categories',
     'search_product': 'search_product',
     'support': 'help_support',
-    'become_seller': 'become_seller',
+    'become_seller': 'sell_menu',
+    'buy_menu': 'buy_menu',
+    'sell_menu': 'sell_menu',
+    'back_main': 'back_main',
     'restart_purchase': 'buy_menu',
     'check_status': 'check_payment_status',
-    'my_library': 'library',
+    'my_library': 'library_menu',
     'my_account': 'settings',
-    'main_menu': 'main_menu',
+    'main_menu': 'back_main',
     'help': 'help_menu',
     'retry_download': 'retry_download',
     'login_seller': 'seller_login',
@@ -351,10 +353,12 @@ BUTTON_CALLBACKS = {
 BUTTON_LABELS = {
     'fr': {
         'retry': '🔄 Réessayer',
-        'browse_categories': '📂 Catégories',
         'search_product': '🔍 Rechercher',
         'support': '💬 Support',
         'become_seller': '🏪 Devenir vendeur',
+        'buy_menu': '🛒 Acheter',
+        'sell_menu': '💼 Vendre',
+        'back_main': '🏠 Accueil',
         'restart_purchase': '🔄 Recommencer',
         'check_status': '🔍 Vérifier statut',
         'my_library': '📚 Ma bibliothèque',
@@ -367,10 +371,12 @@ BUTTON_LABELS = {
     },
     'en': {
         'retry': '🔄 Try Again',
-        'browse_categories': '📂 Categories',
         'search_product': '🔍 Search',
         'support': '💬 Support',
         'become_seller': '🏪 Become Seller',
+        'buy_menu': '🛒 Buy',
+        'sell_menu': '💼 Sell',
+        'back_main': '🏠 Home',
         'restart_purchase': '🔄 Restart',
         'check_status': '🔍 Check Status',
         'my_library': '📚 My Library',

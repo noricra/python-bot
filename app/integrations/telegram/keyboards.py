@@ -47,8 +47,7 @@ def main_menu_keyboard(lang: str):
 def buy_menu_keyboard(lang: str):
     """Menu achat - utilise helper centralisé"""
     return [
-        [InlineKeyboardButton(i18n(lang, 'btn_search_product'), callback_data='search_product'),
-         InlineKeyboardButton(i18n(lang, 'btn_browse_categories'), callback_data='browse_categories')],
+        [InlineKeyboardButton(i18n(lang, 'btn_search_product'), callback_data='search_product')],
         [InlineKeyboardButton(i18n(lang, 'btn_bestsellers'), callback_data='category_bestsellers'),
          InlineKeyboardButton(i18n(lang, 'btn_new'), callback_data='category_new')],
         [back_to_main_button(lang)],
