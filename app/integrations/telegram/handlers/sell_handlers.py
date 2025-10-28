@@ -215,21 +215,21 @@ class SellHandlers:
             product_sales_data = []
 
             for order in orders:
-                if order.get('status') == 'completed':
+                if order.get('payment_status') == 'completed':
                     sales_data.append({
                         'date': order.get('created_at', datetime.now()),
-                        'revenue': float(order.get('price_eur', 0))
+                        'revenue': float(order.get('product_price_eur', 0))
                     })
 
             # Données par produit
             products = self.product_repo.get_products_by_seller(seller_id)
             for product in products:
-                product_orders = [o for o in orders if o.get('product_id') == product.get('product_id') and o.get('status') == 'completed']
+                product_orders = [o for o in orders if o.get('product_id') == product.get('product_id') and o.get('payment_status') == 'completed']
                 if product_orders:
                     product_sales_data.append({
                         'product_name': product.get('title', 'Sans nom'),
                         'sales_count': len(product_orders),
-                        'revenue': sum(float(o.get('price_eur', 0)) for o in product_orders)
+                        'revenue': sum(float(o.get('product_price_eur', 0)) for o in product_orders)
                     })
 
             # Générer graphique revenus (si données disponibles)
