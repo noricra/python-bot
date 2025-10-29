@@ -1,4 +1,4 @@
-python-telegram-bot==20.7
+python-telegram-bot==21
 python-dotenv==1.0.1
 requests==2.32.3
 base58==2.1.1

@@ -17,15 +17,20 @@ class EmailService:
         self.smtp_port = settings.SMTP_PORT
         self.smtp_email = settings.SMTP_USERNAME
         self.smtp_password = settings.SMTP_PASSWORD
+        self.from_email = settings.FROM_EMAIL
+        self.from_name = settings.FROM_NAME
         self.smtp_configured = bool(self.smtp_server and self.smtp_email and self.smtp_password)
 
         logger.info(f"EmailService initialized - SMTP configured: {self.smtp_configured}")
         logger.info(f"SMTP Server: {self.smtp_server}:{self.smtp_port}")
         logger.info(f"SMTP Email: {self.smtp_email}")
+        logger.info(f"FROM Email: {self.from_email}")
+        logger.info(f"FROM Name: {self.from_name}")
         if not self.smtp_configured:
             logger.warning("SMTP not fully configured - running in simulation mode")
 
     def send_email(self, to_email: str, subject: str, body: str) -> bool:
+      
         """
         Envoie un email
 
@@ -37,6 +42,10 @@ class EmailService:
         Returns:
             bool: True si envoi réussi
         """
+        import traceback
+        logger.info(f"🕵️ CALLED FROM: {traceback.format_stack()[-2]}")
+        logger.info(f"🔍 DEBUG - From: {self.from_name} <{self.from_email}>")
+        logger.info(f"🔍 DEBUG - Auth: {self.smtp_email}")
         try:
             if not self.smtp_configured:
                 # Mode simulation si SMTP pas configuré
@@ -51,7 +60,7 @@ class EmailService:
 
             # Créer le message
             msg = MIMEMultipart()
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
             msg.attach(MIMEText(body, 'plain', 'utf-8'))
@@ -59,7 +68,7 @@ class EmailService:
             # Connexion et envoi avec gestion d'erreur robuste
             try:
                 with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                    server.set_debuglevel(0)  # Disable debug output
+                    server.set_debuglevel(1)  # Disable debug output
 
                     # Start TLS if using port 587
                     if self.smtp_port == 587:
@@ -405,7 +414,7 @@ L'équipe TechBot Marketplace
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 
@@ -439,7 +448,7 @@ L'équipe TechBot Marketplace
         Returns:
             bool: True si envoi réussi
         """
-        subject = "🔐 Nouvelle connexion à votre compte vendeur UZEUR"
+        subject = " Nouvelle connexion à votre compte vendeur UZEUR"
 
         body = f"""
 <!DOCTYPE html>
@@ -601,7 +610,7 @@ L'équipe TechBot Marketplace
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔐 Connexion Détectée</h1>
+            <h1> Connexion Détectée</h1>
             <p>Votre compte vendeur a été connecté</p>
         </div>
 
@@ -665,7 +674,7 @@ L'équipe TechBot Marketplace
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 
@@ -939,7 +948,7 @@ L'équipe TechBot Marketplace
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 
@@ -1220,7 +1229,7 @@ L'équipe TechBot Marketplace
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 
@@ -1486,7 +1495,7 @@ L'équipe TechBot Marketplace
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 

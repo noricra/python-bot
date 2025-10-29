@@ -31,10 +31,9 @@ def main() -> None:
 
     threading.Thread(target=run_ipn_server, daemon=True).start()
     bot = MarketplaceBot()
-    app = build_application(bot)
-    app.run_polling(drop_pending_updates=True)
+    application = build_application(bot)  # ← CHANGEMENT ICI : app → application
+    application.run_polling(drop_pending_updates=True)  # ← CHANGEMENT ICI : app → application
 
 
 if __name__ == "__main__":
     main()
-

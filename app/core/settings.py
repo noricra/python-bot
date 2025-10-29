@@ -56,6 +56,7 @@ class Settings:
         self.SMTP_USERNAME: Optional[str] = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_EMAIL")  # For authentication (support both env var names)
         self.SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD")
         self.FROM_EMAIL: str = os.getenv("FROM_EMAIL", self.SMTP_USERNAME or "noreply@marketplace.com")
+        self.FROM_NAME: str = os.getenv("FROM_NAME", "Marketplace")
 
         # Payments / NOWPayments
         self.NOWPAYMENTS_API_KEY: Optional[str] = os.getenv("NOWPAYMENTS_API_KEY")
