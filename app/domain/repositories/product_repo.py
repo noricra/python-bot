@@ -20,7 +20,7 @@ class ProductRepository:
                 '''
                 INSERT INTO products
                 (product_id, seller_user_id, title, description, category, price_eur, price_usd, main_file_path, file_size_mb, cover_image_path, thumbnail_path, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''',
                 (
                     product['product_id'],
@@ -48,8 +48,7 @@ class ProductRepository:
                 # If category doesn't exist, create it
                 if cursor.rowcount == 0:
                     cursor.execute(
-                        'INSERT INTO categories (name, products_count) VALUES (?, 1)
-                ON CONFLICT DO NOTHING',
+                        'INSERT INTO categories (name, products_count) VALUES (%s, 1) ON CONFLICT DO NOTHING',
                         (category,)
                     )
 
@@ -207,7 +206,7 @@ class ProductRepository:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
-                "SELECT COUNT(*) FROM products WHERE seller_user_id = ?",
+                "SELECT COUNT(*) FROM products WHERE seller_user_id = %s",
                 (seller_user_id,)
             )
             return cursor.fetchone()[0]
@@ -245,7 +244,7 @@ class ProductRepository:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
-                "SELECT COUNT(*) FROM products WHERE category = ? AND status = 'active'",
+                "SELECT COUNT(*) FROM products WHERE category = %s AND status = 'active'",
                 (category,)
             )
             return cursor.fetchone()[0]
@@ -374,7 +373,7 @@ class ProductRepository:
                 WHERE (title LIKE %s OR description LIKE %s)
                   AND status = 'active'
                 ORDER BY sales_count DESC, created_at DESC
-                LIMIT ?
+                LIMIT %s
             ''', (search_pattern, search_pattern, limit))
             rows = cursor.fetchall()
             return [row for row in rows]

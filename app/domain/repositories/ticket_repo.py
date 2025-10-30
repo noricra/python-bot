@@ -14,8 +14,7 @@ class SupportTicketRepository:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
-                'INSERT INTO support_tickets (user_id, ticket_id, subject, message) VALUES (?, ?, ?, ?)
-                ON CONFLICT DO NOTHING',
+                'INSERT INTO support_tickets (user_id, ticket_id, subject, message) VALUES (%s, %s) ON CONFLICT DO NOTHING',
                 (user_id, ticket_id, subject, message),
             )
             conn.commit()

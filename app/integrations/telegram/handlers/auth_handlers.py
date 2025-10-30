@@ -3,13 +3,12 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.core.i18n import t as i18n
 from app.core.validation import validate_email
-from app.services.password_recovery_service import PasswordRecoveryService
 
 class AuthHandlers:
     def __init__(self, user_repo, email_service):
         self.user_repo = user_repo
         self.email_service = email_service
-        self.recovery_service = PasswordRecoveryService()
+        # Note: Password recovery removed - authentication via email only
 
     async def account_recovery_menu(self, bot, query, lang):
         """Menu de récupération de compte"""

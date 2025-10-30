@@ -17,8 +17,7 @@ class UserRepository:
                 '''
                 INSERT INTO users 
                 (user_id, username, first_name, language_code)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT DO NOTHING
+                VALUES (%s, %s) ON CONFLICT DO NOTHING
                 ''',
                 (user_id, username, first_name, language_code),
             )

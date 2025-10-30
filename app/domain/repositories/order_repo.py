@@ -17,8 +17,7 @@ class OrderRepository:
                 '''
                 INSERT INTO orders
                 (order_id, buyer_user_id, product_id, seller_user_id, product_title, product_price_eur, seller_revenue, crypto_currency, crypto_amount, payment_status, nowpayments_id, payment_address)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT DO NOTHING
+                VALUES (%s, %s) ON CONFLICT DO NOTHING
                 ''',
                 (
                     order['order_id'],
@@ -134,7 +133,7 @@ class OrderRepository:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
-                'SELECT COUNT(*) FROM orders WHERE buyer_user_id = ? AND product_id = ? AND payment_status = "completed"',
+                'SELECT COUNT(*) FROM orders WHERE buyer_user_id = %s AND product_id = %s AND payment_status = "completed"',
                 (buyer_user_id, product_id)
             )
             count = cursor.fetchone()[0]

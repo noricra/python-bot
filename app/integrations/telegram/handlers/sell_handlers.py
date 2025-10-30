@@ -1146,7 +1146,8 @@ class SellHandlers:
         """Rename product image directory from temp to final product_id and UPDATE DATABASE"""
         try:
             import shutil
-            from app.core.database_init import get_postgresql_connection, settings as core_settings
+            from app.core.database_init import get_postgresql_connection
+            from app.core import settings as core_settings
 
             old_dir = os.path.join('data', 'product_images', str(seller_id), temp_product_id)
             new_dir = os.path.join('data', 'product_images', str(seller_id), final_product_id)

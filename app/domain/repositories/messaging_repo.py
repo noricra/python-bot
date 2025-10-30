@@ -2,7 +2,8 @@ import psycopg2
 import psycopg2.extras
 from typing import Optional, List, Dict
 
-from app.core.database_init import get_postgresql_connection, settings as core_settings
+from app.core.database_init import get_postgresql_connection
+from app.core import settings as core_settings
 
 
 class MessagingRepository:
@@ -25,7 +26,7 @@ class MessagingRepository:
             from app.core import settings as core_settings
             ticket_id = generate_ticket_id(core_settings.DATABASE_PATH)
             cursor.execute(
-                'INSERT INTO support_tickets (user_id, ticket_id, subject, message, status, order_id, seller_user_id) VALUES (?, ?, ?, ?, "open", ?, ?)',
+                'INSERT INTO support_tickets (user_id, ticket_id, subject, message, status, order_id, seller_user_id) VALUES (%s, %s, %s, %s, "open", %s, %s)',
                 (buyer_user_id, ticket_id, subject[:100], '', order_id, seller_user_id)
             )
             conn.commit()
@@ -55,8 +56,7 @@ class MessagingRepository:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
-                'INSERT INTO support_messages (ticket_id, sender_user_id, sender_role, message) VALUES (?, ?, ?, ?)
-                ON CONFLICT DO NOTHING',
+                'INSERT INTO support_messages (ticket_id, sender_user_id, sender_role, message) VALUES (%s, %s) ON CONFLICT DO NOTHING',
                 (ticket_id, sender_user_id, sender_role, message[:2000])
             )
             cursor.execute('UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP WHERE ticket_id = %s', (ticket_id,))

@@ -17,7 +17,7 @@ class PayoutRepository:
             cursor.execute(
                 '''
                 INSERT INTO seller_payouts (seller_user_id, order_ids, total_amount_sol, payout_status)
-                VALUES (?, ?, ?, 'pending')
+                VALUES (%s, %s, %s, 'pending')
                 ON CONFLICT DO NOTHING
                 ''',
                 (seller_user_id, json.dumps(order_ids), total_amount_sol),

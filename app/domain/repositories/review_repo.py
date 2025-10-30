@@ -47,9 +47,9 @@ class ReviewRepository:
                     u.username
                 FROM reviews r
                 LEFT JOIN users u ON r.buyer_user_id = u.user_id
-                WHERE r.product_id = ?
+                WHERE r.product_id = %s
                 ORDER BY r.created_at DESC
-                LIMIT ? OFFSET ?
+                LIMIT %s OFFSET %s
             '''
 
             cursor.execute(query, (product_id, limit, offset))
@@ -84,7 +84,7 @@ class ReviewRepository:
             conn = self._get_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-            cursor.execute('SELECT COUNT(*) FROM reviews WHERE product_id = ?', (product_id,))
+            cursor.execute('SELECT COUNT(*) FROM reviews WHERE product_id = %s', (product_id,))
             count = cursor.fetchone()[0]
             conn.close()
 
@@ -109,7 +109,7 @@ class ReviewRepository:
             cursor.execute('''
                 SELECT AVG(rating), COUNT(*)
                 FROM reviews
-                WHERE product_id = ?
+                WHERE product_id = %s
             ''', (product_id,))
 
             avg_rating, total = cursor.fetchone()
@@ -122,7 +122,7 @@ class ReviewRepository:
                 cursor.execute('''
                     SELECT COUNT(*)
                     FROM reviews
-                    WHERE product_id = ? AND rating = ?
+                    WHERE product_id = %s AND rating = %s
                 ''', (product_id, stars))
 
                 count = cursor.fetchone()[0]
@@ -167,8 +167,7 @@ class ReviewRepository:
             cursor.execute('''
                 INSERT INTO reviews
                 (product_id, buyer_user_id, order_id, rating, comment, review_text)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT DO NOTHING
+                VALUES (%s, %s) ON CONFLICT DO NOTHING
             ''', (product_id, buyer_user_id, order_id, rating, comment, review_text))
 
             conn.commit()
@@ -193,7 +192,7 @@ class ReviewRepository:
             cursor.execute('''
                 SELECT COUNT(*)
                 FROM reviews
-                WHERE product_id = ? AND buyer_user_id = ?
+                WHERE product_id = %s AND buyer_user_id = %s
             ''', (product_id, buyer_user_id))
 
             count = cursor.fetchone()[0]
