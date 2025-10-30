@@ -110,22 +110,11 @@ class LibraryHandlers:
 
     async def show_library_carousel(self, bot, query, purchases: list, index: int = 0, lang: str = 'fr') -> None:
         """Carousel visuel pour la bibliothèque (produits achetés)"""
-        try:
-            from telegram import InputMediaPhoto
-            from app.core.image_utils import ImageUtils
-            import os
-            from datetime import datetime
+        from app.integrations.telegram.utils.carousel_helper import CarouselHelper
+        from telegram import InlineKeyboardButton
 
-            if not purchases or index >= len(purchases):
-                await query.edit_message_text("❌ No products found" if lang == 'en' else "❌ Aucun produit trouvé")
-                return
-
-            product = purchases[index]
-
-            # Build caption - Format IDENTIQUE à buy_handlers (mode short)
-            caption = ""
-
-            # Variables
+        # Caption builder for library carousel
+        def build_caption(product, lang):
             title = product['title']
             seller = product.get('seller_name', 'Vendeur')
             price = product['price_eur']
@@ -133,39 +122,23 @@ class LibraryHandlers:
             file_size = product.get('file_size_mb', 0)
             download_count = product.get('download_count', 0)
 
-            # Titre (BOLD uniquement)
-            caption += f"<b>{title}</b>\n"
-
-            # Vendeur (italic)
+            caption = f"<b>{title}</b>\n"
             caption += f"<i>par {seller}</i>\n\n" if lang == 'fr' else f"<i>by {seller}</i>\n\n"
 
-            # Stats adaptées pour library
             stats_text = f"💳 Acheté pour {price:.2f} €"
             if download_count > 0:
                 stats_text += f" • 📥 {download_count} " + ("téléchargements" if lang == 'fr' else "downloads")
-            stats_text += "\n"
-            caption += stats_text
-
-            # Séparateur
+            caption += stats_text + "\n"
             caption += "────────────────\n"
-
-            # Métadonnées (catégorie + taille)
             caption += f"📂 {category} • 📁 {file_size:.1f} MB"
 
-            # Get image or placeholder
-            thumbnail_path = product.get('thumbnail_path')
+            return caption
 
-            if not thumbnail_path or not os.path.exists(thumbnail_path):
-                thumbnail_path = ImageUtils.create_or_get_placeholder(
-                    product_title=product['title'],
-                    category=product.get('category', 'General'),
-                    product_id=product['product_id']
-                )
-
-            # Build keyboard - Actions bibliothèque
+        # Keyboard builder for library carousel
+        def build_keyboard(product, index, total, lang):
             keyboard = []
 
-            # Row 1: Télécharger (action directe)
+            # Row 1: Download
             keyboard.append([
                 InlineKeyboardButton(
                     "📥 Télécharger" if lang == 'fr' else "📥 Download",
@@ -173,26 +146,16 @@ class LibraryHandlers:
                 )
             ])
 
-            # Row 2: Navigation arrows + position (Asymétrique - cohérent avec buy_handlers)
-            nav_row = []
-
-            # Ajouter flèche gauche SI pas au début
-            if index > 0:
-                nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'library_carousel_{index-1}'))
-
-            # Toujours afficher compteur au centre
-            nav_row.append(InlineKeyboardButton(
-                f"{index+1}/{len(purchases)}",
-                callback_data='noop'
-            ))
-
-            # Ajouter flèche droite SI pas à la fin
-            if index < len(purchases) - 1:
-                nav_row.append(InlineKeyboardButton("➡️", callback_data=f'library_carousel_{index+1}'))
-
+            # Row 2: Navigation with carousel helper (asymmetric)
+            nav_row = CarouselHelper.build_navigation_row(
+                index=index,
+                total=total,
+                callback_prefix='library_carousel_',
+                show_empty_buttons=False  # Asymmetric nav
+            )
             keyboard.append(nav_row)
 
-            # Row 3: Avis + Contact vendeur
+            # Row 3: Review + Contact
             keyboard.append([
                 InlineKeyboardButton(
                     "⭐ Laisser un avis" if lang == 'fr' else "⭐ Leave a review",
@@ -204,7 +167,7 @@ class LibraryHandlers:
                 )
             ])
 
-            # Row 4: Back (cohérent avec buy_handlers - sans emoji)
+            # Row 4: Back
             keyboard.append([
                 InlineKeyboardButton(
                     "Accueil" if lang == 'fr' else "Home",
@@ -212,52 +175,19 @@ class LibraryHandlers:
                 )
             ])
 
-            # Send or edit message
-            try:
-                if thumbnail_path and os.path.exists(thumbnail_path):
-                    with open(thumbnail_path, 'rb') as photo_file:
-                        await query.edit_message_media(
-                            media=InputMediaPhoto(
-                                media=photo_file,
-                                caption=caption,
-                                parse_mode='HTML'
-                            ),
-                            reply_markup=InlineKeyboardMarkup(keyboard)
-                        )
-                else:
-                    await query.edit_message_text(
-                        text=caption,
-                        reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='HTML'
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to edit message, sending new: {e}")
-                await query.message.delete()
+            return keyboard
 
-                if thumbnail_path and os.path.exists(thumbnail_path):
-                    with open(thumbnail_path, 'rb') as photo_file:
-                        await bot.application.bot.send_photo(
-                            chat_id=query.message.chat_id,
-                            photo=photo_file,
-                            caption=caption,
-                            reply_markup=InlineKeyboardMarkup(keyboard),
-                            parse_mode='HTML'
-                        )
-                else:
-                    await bot.application.bot.send_message(
-                        chat_id=query.message.chat_id,
-                        text=caption,
-                        reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='HTML'
-                    )
-
-        except Exception as e:
-            logger.error(f"Error in show_library_carousel: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            await query.edit_message_text(
-                "❌ Error displaying product" if lang == 'en' else "❌ Erreur affichage produit"
-            )
+        # Use carousel helper (eliminates duplication)
+        await CarouselHelper.show_carousel(
+            query=query,
+            bot=bot,
+            products=purchases,
+            index=index,
+            caption_builder=build_caption,
+            keyboard_builder=build_keyboard,
+            lang=lang,
+            parse_mode='HTML'
+        )
 
     async def download_product(self, bot, query, context, product_id: str, lang: str):
         """Télécharge un produit acheté"""

@@ -332,48 +332,24 @@ class SellHandlers:
 
     async def show_seller_product_carousel(self, bot, query, products: list, index: int = 0, lang: str = 'fr') -> None:
         """Carousel visuel pour les produits du vendeur (avec boutons Éditer/Activer)"""
-        try:
-            from telegram import InputMediaPhoto
-            from app.core.image_utils import ImageUtils
-            import os
+        from app.integrations.telegram.utils.carousel_helper import CarouselHelper
+        from telegram import InlineKeyboardButton
 
-            if not products or index >= len(products):
-                await query.edit_message_text("❌ No products found" if lang == 'en' else "❌ Aucun produit trouvé")
-                return
-
-            product = products[index]
-
-            # Build caption - UX OPTIMIZED Dashboard Vendeur
+        # Caption builder for seller carousel
+        def build_caption(product, lang):
             status_icon = "✅" if product['status'] == 'active' else "❌"
             status_text = "**ACTIF**" if product['status'] == 'active' else "_Inactif_"
 
             caption = ""
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 0. BREADCRUMB (Contexte vendeur)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             category = product.get('category', '')
             breadcrumb = f"📂 _Mes Produits" + (f" › {category}_" if category else "_")
             caption += f"{breadcrumb}\n\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 1. STATUT + TITRE (GRAS pour maximum visibilité)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             caption += f"{status_icon} **{product['title']}**\n\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 2. PRIX + STATUT
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             caption += f"💰 **{product['price_eur']:.2f} €**  •  {status_text}\n"
             caption += "─────────────────────\n\n"
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 3. PERFORMANCE (Stats importantes pour vendeur)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             caption += "📊 **PERFORMANCE**\n"
             caption += f"• **{product.get('sales_count', 0)}** ventes"
 
-            # Calcul taux conversion si possible
             views = product.get('views_count', 0)
             sales = product.get('sales_count', 0)
             if views > 0 and sales > 0:
@@ -388,34 +364,20 @@ class SellHandlers:
                     caption += f" _({product.get('reviews_count', 0)} avis)_"
             caption += "\n\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 4. DESCRIPTION (Texte utilisateur - GARDER LE MARKDOWN)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             if product.get('description'):
                 desc = product['description']
                 if len(desc) > 160:
                     desc = desc[:160].rsplit(' ', 1)[0] + "..."
                 caption += f"{desc}\n\n"
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 5. INFOS TECHNIQUES
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             caption += f"📂 _{product.get('category', 'N/A')}_  •  📁 {product.get('file_size_mb', 0):.1f} MB"
+            return caption
 
-            # Get image or placeholder
-            thumbnail_path = product.get('thumbnail_path')
-
-            if not thumbnail_path or not os.path.exists(thumbnail_path):
-                thumbnail_path = ImageUtils.create_or_get_placeholder(
-                    product_title=product['title'],
-                    category=product.get('category', 'General'),
-                    product_id=product['product_id']
-                )
-
-            # Build keyboard - Actions vendeur
+        # Keyboard builder for seller carousel
+        def build_keyboard(product, index, total, lang):
             keyboard = []
 
-            # Row 1: Éditer (bouton principal)
+            # Row 1: Edit button
             keyboard.append([
                 InlineKeyboardButton(
                     "✏️ ÉDITER CE PRODUIT" if lang == 'fr' else "✏️ EDIT THIS PRODUCT",
@@ -423,29 +385,18 @@ class SellHandlers:
                 )
             ])
 
-            # Row 2: Navigation arrows
-            nav_row = []
-            if index > 0:
-                nav_row.append(InlineKeyboardButton("⬅️", callback_data=f'seller_carousel_{index-1}'))
-            else:
-                nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
-
-            nav_row.append(InlineKeyboardButton(
-                f"{index+1}/{len(products)}",
-                callback_data='noop'
-            ))
-
-            if index < len(products) - 1:
-                nav_row.append(InlineKeyboardButton("➡️", callback_data=f'seller_carousel_{index+1}'))
-            else:
-                nav_row.append(InlineKeyboardButton(" ", callback_data='noop'))
-
+            # Row 2: Navigation with carousel helper
+            nav_row = CarouselHelper.build_navigation_row(
+                index=index,
+                total=total,
+                callback_prefix='seller_carousel_',
+                show_empty_buttons=True
+            )
             keyboard.append(nav_row)
 
-            # Row 3: Activer/Désactiver + Supprimer
+            # Row 3: Toggle + Delete
             toggle_text = "❌ Désactiver" if product['status'] == 'active' else "✅ Activer"
             toggle_text_en = "❌ Deactivate" if product['status'] == 'active' else "✅ Activate"
-
             keyboard.append([
                 InlineKeyboardButton(
                     toggle_text if lang == 'fr' else toggle_text_en,
@@ -460,57 +411,24 @@ class SellHandlers:
             # Row 4: Back
             keyboard.append([
                 InlineKeyboardButton(
-                    "🔙 Dashboard" if lang == 'en' else "🔙 Dashboard",
+                    "🔙 Dashboard",
                     callback_data='seller_dashboard'
                 )
             ])
 
-            # Send or edit message
-            try:
-                if thumbnail_path and os.path.exists(thumbnail_path):
-                    with open(thumbnail_path, 'rb') as photo_file:
-                        await query.edit_message_media(
-                            media=InputMediaPhoto(
-                                media=photo_file,
-                                caption=caption,
-                                parse_mode='Markdown'
-                            ),
-                            reply_markup=InlineKeyboardMarkup(keyboard)
-                        )
-                else:
-                    await query.edit_message_text(
-                        text=caption,
-                        reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='Markdown'
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to edit message, sending new: {e}")
-                await query.message.delete()
+            return keyboard
 
-                if thumbnail_path and os.path.exists(thumbnail_path):
-                    with open(thumbnail_path, 'rb') as photo_file:
-                        await bot.application.bot.send_photo(
-                            chat_id=query.message.chat_id,
-                            photo=photo_file,
-                            caption=caption,
-                            reply_markup=InlineKeyboardMarkup(keyboard),
-                            parse_mode='Markdown'
-                        )
-                else:
-                    await bot.application.bot.send_message(
-                        chat_id=query.message.chat_id,
-                        text=caption,
-                        reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='Markdown'
-                    )
-
-        except Exception as e:
-            logger.error(f"Error in show_seller_product_carousel: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            await query.edit_message_text(
-                "❌ Error displaying product" if lang == 'en' else "❌ Erreur affichage produit"
-            )
+        # Use carousel helper (eliminates duplication)
+        await CarouselHelper.show_carousel(
+            query=query,
+            bot=bot,
+            products=products,
+            index=index,
+            caption_builder=build_caption,
+            keyboard_builder=build_keyboard,
+            lang=lang,
+            parse_mode='Markdown'
+        )
 
     async def show_my_products(self, bot, query, lang: str, page: int = 0):
         """Affiche produits vendeur avec carousel visuel"""

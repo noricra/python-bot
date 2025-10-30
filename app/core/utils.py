@@ -24,12 +24,8 @@ def escape_markdown(text: str) -> str:
     return escaped
 
 
-def sanitize_filename(name: str) -> str:
-    """Sanitize filename for security"""
-    safe_name = os.path.basename(name or '')
-    allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
-    sanitized = ''.join(ch if ch in allowed else '_' for ch in safe_name)
-    return sanitized or f"file_{int(time.time())}"
+# sanitize_filename supprimé - version unique conservée dans file_utils.py
+# (version file_utils plus robuste: limite 100 chars, settings.ALLOWED_FILENAME_CHARS)
 
 
 def generate_product_id(db_path: str) -> str:
@@ -136,30 +132,5 @@ def generate_ticket_id(db_path: str) -> str:
         raise e
 
 
-def columnize(keyboard):
-    """Convert keyboard to single column format"""
-    return [[button] for row in keyboard for button in row]
-
-
-def get_text(key: str, lang: str = 'fr') -> str:
-    """Textes multilingues - version simplifiée"""
-    translations = {
-        'welcome': {
-            'fr': '🎉 **BIENVENUE SUR THEBESTFORMATIONS**',
-            'en': '🎉 **WELCOME TO THEBESTFORMATIONS**'
-        },
-        'main_menu': {
-            'fr': '🏠 Menu principal',
-            'en': '🏠 Main menu'
-        },
-        'err_temp': {
-            'fr': '❌ Erreur temporaire. Veuillez réessayer.',
-            'en': '❌ Temporary error. Please try again.'
-        }
-    }
-    return translations.get(key, {}).get(lang, key)
-
-
-def tr(lang: str, fr_text: str, en_text: str) -> str:
-    """Quick translation helper"""
-    return fr_text if lang == 'fr' else en_text
+# Fonctions mortes supprimées: columnize, get_text, tr
+# Remplacées par i18n.py centralisé - aucune occurrence trouvée

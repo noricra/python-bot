@@ -98,51 +98,19 @@ class EmailService:
             logger.error(f"Erreur envoi email: {e}")
             return False
 
-    def send_recovery_email(self, to_email: str, recovery_code: str) -> bool:
+    def _build_email_template(self, header_title: str, header_subtitle: str, content_html: str) -> str:
         """
-        Envoie un email de récupération de compte vendeur
+        Construit un template HTML email avec le design UZEUR standard
 
         Args:
-            to_email: Email du vendeur
-            recovery_code: Code de récupération
+            header_title: Titre principal du header (ex: "🎉 Bienvenue sur UZEUR !")
+            header_subtitle: Sous-titre du header (ex: "Votre compte vendeur est actif")
+            content_html: Contenu HTML à insérer dans le body
 
         Returns:
-            bool: True si envoi réussi
+            str: HTML complet avec CSS inline
         """
-        subject = "🔑 Récupération de votre compte vendeur - TechBot Marketplace"
-
-        body = f"""
-Bonjour,
-
-Vous avez demandé la récupération de votre compte vendeur.
-
-Code de récupération: {recovery_code}
-
-Ce code expire dans 1 heure.
-
-Si vous n'avez pas demandé cette récupération, ignorez ce message.
-
-Cordialement,
-L'équipe TechBot Marketplace
-        """
-
-        return self.send_email(to_email, subject, body)
-
-    def send_seller_welcome_email(self, to_email: str, seller_name: str, solana_address: str) -> bool:
-        """
-        Envoie un email de bienvenue au nouveau vendeur (style site2.html)
-
-        Args:
-            to_email: Email du vendeur
-            seller_name: Nom du vendeur
-            solana_address: Adresse Solana pour paiements
-
-        Returns:
-            bool: True si envoi réussi
-        """
-        subject = "🎉 Bienvenue sur UZEUR Marketplace !"
-
-        body = f"""
+        return f"""
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -195,7 +163,7 @@ L'équipe TechBot Marketplace
             padding: 40px 30px;
         }}
 
-        .welcome-box {{
+        .welcome-box, .login-box, .alert-box, .success-box {{
             background: linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(236, 72, 153, 0.05) 100%);
             border-left: 4px solid #8b5cf6;
             padding: 20px;
@@ -203,7 +171,7 @@ L'équipe TechBot Marketplace
             margin-bottom: 30px;
         }}
 
-        .welcome-box h2 {{
+        .welcome-box h2, .login-box h2, .alert-box h2, .success-box h2 {{
             font-size: 24px;
             font-weight: 800;
             color: #1e293b;
@@ -219,6 +187,10 @@ L'équipe TechBot Marketplace
 
         .info-item {{
             margin-bottom: 16px;
+        }}
+
+        .info-item:last-child {{
+            margin-bottom: 0;
         }}
 
         .info-label {{
@@ -315,11 +287,69 @@ L'équipe TechBot Marketplace
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎉 Bienvenue sur UZEUR !</h1>
-            <p>Votre compte vendeur est actif</p>
+            <h1>{header_title}</h1>
+            <p>{header_subtitle}</p>
         </div>
 
         <div class="content">
+            {content_html}
+        </div>
+
+        <div class="footer">
+            <p>© 2025 UZEUR Marketplace</p>
+            <p><a href="https://uzeur.com">uzeur.com</a></p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+    def send_recovery_email(self, to_email: str, recovery_code: str) -> bool:
+        """
+        Envoie un email de récupération de compte vendeur
+
+        Args:
+            to_email: Email du vendeur
+            recovery_code: Code de récupération
+
+        Returns:
+            bool: True si envoi réussi
+        """
+        subject = "🔑 Récupération de votre compte vendeur - TechBot Marketplace"
+
+        body = f"""
+Bonjour,
+
+Vous avez demandé la récupération de votre compte vendeur.
+
+Code de récupération: {recovery_code}
+
+Ce code expire dans 1 heure.
+
+Si vous n'avez pas demandé cette récupération, ignorez ce message.
+
+Cordialement,
+L'équipe TechBot Marketplace
+        """
+
+        return self.send_email(to_email, subject, body)
+
+    def send_seller_welcome_email(self, to_email: str, seller_name: str, solana_address: str) -> bool:
+        """
+        Envoie un email de bienvenue au nouveau vendeur (style site2.html)
+
+        Args:
+            to_email: Email du vendeur
+            seller_name: Nom du vendeur
+            solana_address: Adresse Solana pour paiements
+
+        Returns:
+            bool: True si envoi réussi
+        """
+        subject = "🎉 Bienvenue sur UZEUR Marketplace !"
+
+        # Contenu spécifique à l'email de bienvenue
+        content_html = f"""
             <div class="welcome-box">
                 <h2>Bonjour {seller_name} 👋</h2>
                 <p>Félicitations ! Votre compte vendeur a été créé avec succès. Vous pouvez maintenant commencer à vendre vos produits numériques sur notre marketplace décentralisée.</p>
@@ -378,19 +408,14 @@ L'équipe TechBot Marketplace
                     💡 <strong>Besoin d'aide ?</strong> Contactez le support directement depuis le bot avec /support
                 </p>
             </div>
-        </div>
-
-        <div class="footer">
-            <p><strong>UZEUR Marketplace</strong></p>
-            <p>La marketplace décentralisée pour produits numériques</p>
-            <p style="margin-top: 16px;">
-                <a href="#">Politique de confidentialité</a> • <a href="#">CGV</a>
-            </p>
-        </div>
-    </div>
-</body>
-</html>
         """
+
+        # Utiliser le template builder
+        body = self._build_email_template(
+            header_title="🎉 Bienvenue sur UZEUR !",
+            header_subtitle="Votre compte vendeur est actif",
+            content_html=content_html
+        )
 
         # Envoyer en HTML
         try:
@@ -441,171 +466,8 @@ L'équipe TechBot Marketplace
         """
         subject = "🔐 Nouvelle connexion à votre compte vendeur UZEUR"
 
-        body = f"""
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
-            background: #fafbfc;
-            color: #334155;
-            line-height: 1.6;
-            -webkit-font-smoothing: antialiased;
-        }}
-
-        .container {{
-            max-width: 600px;
-            margin: 40px auto;
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(139, 92, 246, 0.12);
-            overflow: hidden;
-        }}
-
-        .header {{
-            background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 50%, #ec4899 100%);
-            padding: 40px 30px;
-            text-align: center;
-        }}
-
-        .header h1 {{
-            font-size: 32px;
-            font-weight: 900;
-            color: white;
-            margin-bottom: 8px;
-            letter-spacing: -0.02em;
-        }}
-
-        .header p {{
-            font-size: 16px;
-            color: rgba(255, 255, 255, 0.9);
-        }}
-
-        .content {{
-            padding: 40px 30px;
-        }}
-
-        .login-box {{
-            background: linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(236, 72, 153, 0.05) 100%);
-            border-left: 4px solid #8b5cf6;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-        }}
-
-        .login-box h2 {{
-            font-size: 24px;
-            font-weight: 800;
-            color: #1e293b;
-            margin-bottom: 10px;
-        }}
-
-        .info-section {{
-            background: #f3f4f6;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 24px;
-        }}
-
-        .info-item {{
-            margin-bottom: 16px;
-        }}
-
-        .info-item:last-child {{
-            margin-bottom: 0;
-        }}
-
-        .info-label {{
-            font-size: 12px;
-            font-weight: 700;
-            color: #64748b;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 4px;
-        }}
-
-        .info-value {{
-            font-size: 16px;
-            font-weight: 600;
-            color: #1e293b;
-        }}
-
-        .cta-button {{
-            display: inline-block;
-            background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
-            color: white;
-            text-decoration: none;
-            padding: 16px 32px;
-            border-radius: 12px;
-            font-weight: 700;
-            font-size: 16px;
-            text-align: center;
-            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
-            transition: transform 0.2s;
-        }}
-
-        .cta-button:hover {{
-            transform: translateY(-2px);
-        }}
-
-        .security-notice {{
-            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(251, 146, 60, 0.1) 100%);
-            border-left: 4px solid #ef4444;
-            padding: 20px;
-            border-radius: 8px;
-            margin-top: 30px;
-        }}
-
-        .security-notice h3 {{
-            font-size: 16px;
-            font-weight: 700;
-            color: #991b1b;
-            margin-bottom: 8px;
-        }}
-
-        .security-notice p {{
-            font-size: 14px;
-            color: #7c2d12;
-            margin: 0;
-        }}
-
-        .footer {{
-            background: #f3f4f6;
-            padding: 30px;
-            text-align: center;
-            border-top: 1px solid #e2e8f0;
-        }}
-
-        .footer p {{
-            font-size: 14px;
-            color: #64748b;
-            margin-bottom: 8px;
-        }}
-
-        .footer a {{
-            color: #8b5cf6;
-            text-decoration: none;
-            font-weight: 600;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🔐 Connexion Détectée</h1>
-            <p>Votre compte vendeur a été connecté</p>
-        </div>
-
-        <div class="content">
+        # Contenu spécifique à l'email de connexion
+        content_html = f"""
             <div class="login-box">
                 <h2>Bonjour {seller_name} 👋</h2>
                 <p>Une connexion à votre compte vendeur UZEUR a été effectuée avec succès.</p>
@@ -638,19 +500,14 @@ L'équipe TechBot Marketplace
                 <h3>🔒 Sécurité de votre compte</h3>
                 <p>Si vous n'êtes pas à l'origine de cette connexion, contactez immédiatement le support via /support dans le bot.</p>
             </div>
-        </div>
-
-        <div class="footer">
-            <p><strong>UZEUR Marketplace</strong></p>
-            <p>La marketplace décentralisée pour produits numériques</p>
-            <p style="margin-top: 16px;">
-                <a href="#">Politique de confidentialité</a> • <a href="#">CGV</a>
-            </p>
-        </div>
-    </div>
-</body>
-</html>
         """
+
+        # Utiliser le template builder
+        body = self._build_email_template(
+            header_title="🔐 Connexion Détectée",
+            header_subtitle="Votre compte vendeur a été connecté",
+            content_html=content_html
+        )
 
         # Envoyer en HTML
         try:

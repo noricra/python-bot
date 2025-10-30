@@ -894,103 +894,44 @@ Contact support with your Order ID"""
         Carousel navigation with ⬅️ ➡️ buttons + category navigation
         UX Type: Instagram Stories / Amazon Product Slider
         """
-        try:
-            from telegram import InputMediaPhoto
-            import os
+        from app.integrations.telegram.utils.carousel_helper import CarouselHelper
 
-            if not products or index >= len(products):
-                await query.edit_message_text("❌ No products found" if lang == 'en' else "❌ Aucun produit trouvé")
-                return
+        # Caption builder for buy carousel
+        def build_caption(product, lang):
+            return self._build_product_caption(product, mode='short', lang=lang)
 
-            product = products[index]
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # V2: USE HELPER FUNCTIONS (Eliminates duplication)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-            # Build caption using helper (smart truncation to 180 chars)
-            caption = self._build_product_caption(product, mode='short', lang=lang)
-
-            # Get image or placeholder using helper
-            thumbnail_path = self._get_product_image_or_placeholder(product)
-
-            # Get all categories for navigation (V2 SPEC: Category navigation)
+        # Keyboard builder for buy carousel
+        def build_keyboard(product, index, total, lang):
+            # Get all categories for navigation
             conn = bot.get_db_connection()
             cursor = conn.cursor()
             cursor.execute('SELECT name FROM categories ORDER BY products_count DESC')
             all_categories = [row[0] for row in cursor.fetchall()]
             conn.close()
 
-            # Build keyboard using helper with V2 features
+            # Use existing helper
             keyboard_markup = self._build_product_keyboard(
                 product,
                 context='carousel',
                 lang=lang,
                 category_key=category_key,
                 index=index,
-                total_products=len(products),
+                total_products=total,
                 all_categories=all_categories
             )
+            return keyboard_markup.inline_keyboard  # Return keyboard rows
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # DISPLAY: Edit message with photo or send new
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-            try:
-                if thumbnail_path and os.path.exists(thumbnail_path):
-                    # Has image - use edit_message_media
-                    with open(thumbnail_path, 'rb') as photo_file:
-                        await query.edit_message_media(
-                            media=InputMediaPhoto(
-                                media=photo_file,
-                                caption=caption,
-                                parse_mode='HTML'
-                            ),
-                            reply_markup=keyboard_markup
-                        )
-                else:
-                    # No image - fallback to text only
-                    await query.edit_message_text(
-                        text=caption,
-                        reply_markup=keyboard_markup,
-                        parse_mode='HTML'
-                    )
-            except Exception as e:
-                # If edit fails (message too old, etc), send new message
-                logger.warning(f"Failed to edit message, sending new: {e}")
-                await query.message.delete()
-
-                if thumbnail_path and os.path.exists(thumbnail_path):
-                    with open(thumbnail_path, 'rb') as photo_file:
-                        await bot.application.bot.send_photo(
-                            chat_id=query.message.chat_id,
-                            photo=photo_file,
-                            caption=caption,
-                            reply_markup=keyboard_markup,
-                            parse_mode='HTML'
-                        )
-                else:
-                    await bot.application.bot.send_message(
-                        chat_id=query.message.chat_id,
-                        text=caption,
-                        reply_markup=keyboard_markup,
-                        parse_mode='HTML'
-                    )
-
-        except Exception as e:
-            logger.error(f"Error in show_product_carousel: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            # Use user-friendly error message
-            error_data = get_error_message('product_load_error', lang)
-            try:
-                await query.edit_message_text(
-                    text=error_data['text'],
-                    reply_markup=error_data['keyboard'],
-                    parse_mode='Markdown'
-                )
-            except:
-                pass
+        # Use carousel helper (eliminates duplication)
+        await CarouselHelper.show_carousel(
+            query=query,
+            bot=bot,
+            products=products,
+            index=index,
+            caption_builder=build_caption,
+            keyboard_builder=build_keyboard,
+            lang=lang,
+            parse_mode='HTML'
+        )
 
     async def show_category_products(self, bot, query, category_key: str, lang: str, page: int = 0) -> None:
         """
