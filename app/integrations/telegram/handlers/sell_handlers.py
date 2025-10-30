@@ -491,17 +491,17 @@ class SellHandlers:
 
         # Calculer ventes et revenu réels depuis la table orders (source de vérité)
         import psycopg2
-import psycopg2.extras
+        import psycopg2.extras
         from app.core.database_init import get_postgresql_connection
         from app.core import settings as core_settings
-        conn = get_sqlite_connection(core_settings.DATABASE_PATH)
+        conn = get_postgresql_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
             SELECT
                 COUNT(*),
                 COALESCE(SUM(product_price_eur), 0)
             FROM orders
-            WHERE seller_user_id = ? AND payment_status = 'completed'
+            WHERE seller_user_id = %s AND payment_status = 'completed'
         """, (seller_id,))
         total_sales, total_revenue = cursor.fetchone()
         conn.close()
