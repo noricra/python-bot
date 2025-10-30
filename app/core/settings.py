@@ -82,7 +82,7 @@ class Settings:
             ('Outils & Tech', 'Logiciels, automatisation', '🔧')
         ]
 
-        # Crypto display configuration (used by payment_handlers.py)
+        # Crypto display configuration (used by buy_handlers.py for payment crypto selection)
         self.CRYPTO_DISPLAY_INFO: Dict[str, tuple] = {
             'btc': ('₿ Bitcoin', '⚡ 10-30 min'),
             'eth': ('⟠ Ethereum', '⚡ 5-15 min'),
