@@ -231,6 +231,17 @@ class CallbackRouter:
                 await query.answer("Error" if lang == 'en' else "Erreur")
                 return True
 
+        # 🏪 Seller shop view (seller_shop_{seller_user_id})
+        if callback_data.startswith('seller_shop_'):
+            try:
+                seller_user_id = int(callback_data.replace('seller_shop_', ''))
+                await self.bot.buy_handlers.show_seller_shop(self.bot, query, seller_user_id, lang)
+                return True
+            except Exception as e:
+                logger.error(f"Error showing seller shop: {e}")
+                await query.answer("Error" if lang == 'en' else "Erreur")
+                return True
+
         # 🔍 Search results navigation (search_nav_{query}_{index})
         if callback_data.startswith('search_nav_'):
             try:

@@ -22,8 +22,8 @@ class AdminHandlers:
         bot.reset_conflicting_states(user_id)
 
         admin_keyboard = [
-            [InlineKeyboardButton("👥 Users", callback_data='admin_users_menu'),
-             InlineKeyboardButton("📦 Products", callback_data='admin_products_menu')],
+            [InlineKeyboardButton(" Users", callback_data='admin_users_menu'),
+             InlineKeyboardButton(" Products", callback_data='admin_products_menu')],
             [InlineKeyboardButton(i18n(lang, 'admin_payouts'), callback_data='admin_payouts'),
              InlineKeyboardButton(i18n(lang, 'admin_stats'), callback_data='admin_marketplace_stats')],
             [InlineKeyboardButton(i18n(lang, 'admin_back'), callback_data='back_main')]
@@ -37,12 +37,12 @@ class AdminHandlers:
     async def admin_users_menu(self, query, lang):
         """Menu gestion utilisateurs"""
         users_keyboard = [
-            [InlineKeyboardButton("👥 Voir utilisateurs", callback_data='admin_users'),
-             InlineKeyboardButton("🔍 Rechercher user", callback_data='admin_search_user')],
-            [InlineKeyboardButton("❌ Suspendre user", callback_data='admin_suspend_user'),
-             InlineKeyboardButton("✅ Rétablir user", callback_data='admin_restore_user')],
-            [InlineKeyboardButton("📊 Export users", callback_data='admin_export_users')],
-            [InlineKeyboardButton("🔙 Retour admin", callback_data='admin_menu')]
+            [InlineKeyboardButton(" Voir utilisateurs", callback_data='admin_users'),
+             InlineKeyboardButton(" Rechercher user", callback_data='admin_search_user')],
+            [InlineKeyboardButton(" Suspendre user", callback_data='admin_suspend_user'),
+             InlineKeyboardButton(" Rétablir user", callback_data='admin_restore_user')],
+            [InlineKeyboardButton(" Export users", callback_data='admin_export_users')],
+            [InlineKeyboardButton(" Retour admin", callback_data='admin_menu')]
         ]
 
         await query.edit_message_text(
@@ -53,16 +53,16 @@ class AdminHandlers:
     async def admin_products_menu(self, query, lang):
         """Menu gestion produits"""
         products_keyboard = [
-            [InlineKeyboardButton("📦 Voir produits", callback_data='admin_products'),
-             InlineKeyboardButton("🔍 Rechercher produit", callback_data='admin_search_product')],
-            [InlineKeyboardButton("❌ Suspendre produit", callback_data='admin_suspend_product'),
-             InlineKeyboardButton("✅ Rétablir produit", callback_data='admin_restore_product')],
-            [InlineKeyboardButton("📊 Export produits", callback_data='admin_export_products_csv')],
-            [InlineKeyboardButton("🔙 Retour admin", callback_data='admin_menu')]
+            [InlineKeyboardButton(" Voir produits", callback_data='admin_products'),
+             InlineKeyboardButton(" Rechercher produit", callback_data='admin_search_product')],
+            [InlineKeyboardButton(" Suspendre produit", callback_data='admin_suspend_product'),
+             InlineKeyboardButton(" Rétablir produit", callback_data='admin_restore_product')],
+            [InlineKeyboardButton(" Export produits", callback_data='admin_export_products_csv')],
+            [InlineKeyboardButton(" Retour admin", callback_data='admin_menu')]
         ]
 
         await query.edit_message_text(
-            "📦 **GESTION PRODUITS**\n\nChoisissez une action :",
+            " **GESTION PRODUITS**\n\nChoisissez une action :",
             reply_markup=InlineKeyboardMarkup(products_keyboard),
             parse_mode='Markdown')
 
@@ -96,12 +96,12 @@ class AdminHandlers:
                     text += f"... et {len(users) - 30} autres utilisateurs" if lang == 'fr' else f"... and {len(users) - 30} more users"
 
             keyboard = [
-                [InlineKeyboardButton("📊 Export CSV", callback_data='admin_export_users')],
+                [InlineKeyboardButton(" Export CSV", callback_data='admin_export_users')],
                 [InlineKeyboardButton("🔙 Menu Users" if lang == 'fr' else "🔙 Users Menu", callback_data='admin_users_menu')]
             ]
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in admin_users: {e}")
             await query.edit_message_text(
                 f"❌ Erreur lors du chargement des utilisateurs: {str(e)}" if lang == 'fr' else f"❌ Error loading users: {str(e)}",
@@ -120,7 +120,7 @@ class AdminHandlers:
 
             keyboard = [[InlineKeyboardButton("🔙 Products Menu", callback_data='admin_products_menu')]]
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             await query.edit_message_text(f"❌ Erreur: {str(e)}")
 
     async def admin_payouts(self, query, lang):
@@ -137,7 +137,7 @@ class AdminHandlers:
                 [InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]
             ]
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             await query.edit_message_text(f"❌ Erreur: {str(e)}")
 
     async def admin_marketplace_stats(self, query, lang):
@@ -150,18 +150,18 @@ class AdminHandlers:
 
             stats_text = f"""📊 **MARKETPLACE STATS**
 
-👥 Total Users: {total_users}
-🏪 Sellers: {total_sellers}
-📦 Products: {total_products}
-🛒 Orders: {total_orders}
+ Total Users: {total_users}
+ Sellers: {total_sellers}
+ Products: {total_products}
+ Orders: {total_orders}
 
-💰 Total Revenue: {self.order_repo.get_total_revenue():.2f}€"""
+ Total Revenue: {self.order_repo.get_total_revenue():.2f}€"""
 
             await query.edit_message_text(
                 stats_text,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]]),
                 parse_mode='Markdown')
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             await query.edit_message_text(f"❌ Erreur: {str(e)}")
 
     async def admin_search_user_prompt(self, query, lang):
@@ -265,7 +265,7 @@ class AdminHandlers:
 
             # Comprehensive user suspension
             conn = get_sqlite_connection(settings.DATABASE_PATH)
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Store original seller status and suspend
             was_seller = user_data.get('is_seller', False)
@@ -276,12 +276,12 @@ class AdminHandlers:
             cursor.execute('''
                 UPDATE users SET
                     is_seller = FALSE,
-                    seller_name = ?
-                WHERE user_id = ?
+                    seller_name = %s
+                WHERE user_id = %s
             ''', (suspend_marker, user_id))
 
             # Suspend all their products
-            cursor.execute('UPDATE products SET status = "suspended" WHERE seller_user_id = ?', (user_id,))
+            cursor.execute('UPDATE products SET status = "suspended" WHERE seller_user_id = %s', (user_id,))
 
             conn.commit()
             conn.close()
@@ -295,7 +295,7 @@ class AdminHandlers:
 
                     success = smtp_service.send_suspension_notification(user_email, first_name or 'Utilisateur')
                     email_status = "✅ Email de suspension envoyé" if success else "❌ Échec envoi email"
-                except Exception as e:
+                except (psycopg2.Error, Exception) as e:
                     email_status = f"❌ Erreur email: {str(e)}"
             else:
                 email_status = "⚠️ Pas d'email - notification non envoyée"
@@ -310,7 +310,7 @@ class AdminHandlers:
 
         except ValueError:
             await update.message.reply_text("❌ ID utilisateur invalide. Entrez un nombre.")
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             await update.message.reply_text(f"❌ Erreur: {str(e)}")
 
     async def admin_restore_user_prompt(self, bot, query, lang):
@@ -321,7 +321,7 @@ class AdminHandlers:
         # Get list of suspended users
         try:
             conn = get_sqlite_connection(settings.DATABASE_PATH)
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 SELECT user_id, seller_name, email, first_name
                 FROM users
@@ -347,7 +347,7 @@ class AdminHandlers:
                 text,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='admin_users_menu')]]),
                 parse_mode='Markdown')
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error showing suspended users: {e}")
             await query.edit_message_text(
                 "✅ **Rétablir Utilisateur**\n\nEntrez l'ID utilisateur OU email à rétablir :" if lang == 'fr' else "✅ **Restore User**\n\nEnter user ID OR email to restore:",
@@ -386,7 +386,7 @@ class AdminHandlers:
             # 1. Check seller_name for [SUSPENDED] marker
             # 2. Check if there are suspended products for this user
             conn = get_sqlite_connection(settings.DATABASE_PATH)
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Check for suspended products
             cursor.execute('SELECT COUNT(*) FROM products WHERE seller_user_id = ? AND status = "suspended"', (user_id,))
@@ -409,12 +409,12 @@ class AdminHandlers:
             cursor.execute('''
                 UPDATE users SET
                     is_seller = TRUE,
-                    seller_name = ?
-                WHERE user_id = ?
+                    seller_name = %s
+                WHERE user_id = %s
             ''', (original_name, user_id))
 
             # Restore all their products (set back to active)
-            cursor.execute('UPDATE products SET status = "active" WHERE seller_user_id = ? AND status = "suspended"', (user_id,))
+            cursor.execute('UPDATE products SET status = "active" WHERE seller_user_id = %s AND status = "suspended"', (user_id,))
 
             conn.commit()
             conn.close()
@@ -423,11 +423,11 @@ class AdminHandlers:
             first_name = user_data.get('first_name', 'N/A')
 
             await update.message.reply_text(
-                f"✅ **Utilisateur rétabli**\n\n👤 **ID:** `{user_id}`\n📝 **Nom:** {first_name}\n📝 **Username:** @{username}\n\n🔄 **Actions prises:**\n• Statut vendeur rétabli ({suspended_products_count} produits réactivés)\n• Accès marketplace restauré",
+                f"✅ **Utilisateur rétabli**\n\n **ID:** `{user_id}`\n **Nom:** {first_name}\n **Username:** @{username}\n\n🔄 **Actions prises:**\n• Statut vendeur rétabli ({suspended_products_count} produits réactivés)\n• Accès marketplace restauré",
                 parse_mode='Markdown'
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             await update.message.reply_text(f"❌ Erreur: {str(e)}")
 
     async def admin_mark_all_payouts_paid(self, query, lang):
@@ -438,7 +438,7 @@ class AdminHandlers:
                 f"✅ {count} payouts marqués comme payés",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]])
             )
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             await query.edit_message_text(f"❌ Erreur: {str(e)}")
 
     async def admin_export_users(self, query, lang):
@@ -452,7 +452,7 @@ class AdminHandlers:
 
             if not users:
                 await query.edit_message_text(
-                    "👥 Aucun utilisateur à exporter." if lang == 'fr' else "👥 No users to export.",
+                    " Aucun utilisateur à exporter." if lang == 'fr' else " No users to export.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu Admin" if lang == 'fr' else "🔙 Admin Menu", callback_data='admin_menu')]])
                 )
                 return
@@ -492,7 +492,7 @@ class AdminHandlers:
             await query.message.reply_document(
                 document=io.BytesIO(csv_bytes),
                 filename=file_name,
-                caption=f"📊 Export CSV: {len(users)} utilisateurs" if lang == 'fr' else f"📊 CSV Export: {len(users)} users"
+                caption=f" Export CSV: {len(users)} utilisateurs" if lang == 'fr' else f" CSV Export: {len(users)} users"
             )
 
             await query.edit_message_text(
@@ -500,7 +500,7 @@ class AdminHandlers:
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu Admin" if lang == 'fr' else "🔙 Admin Menu", callback_data='admin_menu')]])
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in admin_export_users: {e}")
             await query.edit_message_text(
                 "❌ Erreur lors de la génération du CSV." if lang == 'fr' else "❌ Error generating CSV.",
@@ -518,13 +518,10 @@ class AdminHandlers:
             await query.edit_message_text(
                 export_text,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]]))
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             await query.edit_message_text(f"❌ Erreur: {str(e)}")
 
-    # Alias methods for simplified calls
-    # Wrapper methods removed - duplicates of existing admin_* methods (32 lines removed)
 
-    # Commission system removed - partner system deleted
 
     async def export_products(self, query, lang):
         """Export products to text format"""
@@ -558,7 +555,7 @@ class AdminHandlers:
                 export_text = export_text[:4000] + "..."
 
             keyboard = [
-                [InlineKeyboardButton("📊 Stats détaillées" if lang == 'fr' else "📊 Detailed stats", callback_data='admin_marketplace_stats')],
+                [InlineKeyboardButton(" Stats détaillées" if lang == 'fr' else " Detailed stats", callback_data='admin_marketplace_stats')],
                 [InlineKeyboardButton("🔙 Menu Admin" if lang == 'fr' else "🔙 Admin Menu", callback_data='admin_menu')]
             ]
 
@@ -568,7 +565,7 @@ class AdminHandlers:
                 parse_mode='Markdown'
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in export_products: {e}")
             await query.edit_message_text(
                 "❌ Erreur lors de l'export des produits." if lang == 'fr' else "❌ Error exporting products.",
@@ -592,7 +589,7 @@ class AdminHandlers:
 
             await update.message.reply_text(text)
             bot.reset_user_state(update.effective_user.id)
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             await update.message.reply_text(f"❌ Erreur: {str(e)}")
 
     async def handle_product_search_message(self, bot, update, user_state):
@@ -601,13 +598,13 @@ class AdminHandlers:
         try:
             product = self.product_repo.get_product_by_id(message_text.strip())
             if product:
-                text = f"📦 **Product Found**\n\nID: {product['product_id']}\nTitle: {product['title']}\nStatus: {product['status']}"
+                text = f" **Product Found**\n\nID: {product['product_id']}\nTitle: {product['title']}\nStatus: {product['status']}"
             else:
                 text = "❌ Produit non trouvé"
 
             await update.message.reply_text(text)
             bot.reset_user_state(update.effective_user.id)
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             await update.message.reply_text(f"❌ Erreur: {str(e)}")
 
     async def handle_product_suspend_message(self, bot, update, user_state):
@@ -637,18 +634,18 @@ class AdminHandlers:
                                 reason=reason,
                                 can_appeal=True
                             )
-                except Exception as email_error:
+                except (psycopg2.Error, Exception) as email_error:
                     logger.error(f"Erreur envoi email suspension produit: {email_error}")
 
             # Message de confirmation avec la raison
             if success:
-                text = f"✅ **Produit suspendu**\n\n📋 Raison: {reason}\n🆔 Produit: {product_id}"
+                text = f"✅ **Produit suspendu**\n\n Raison: {reason}\n Produit: {product_id}"
             else:
                 text = "❌ Erreur suspension"
 
             await update.message.reply_text(text, parse_mode='Markdown')
             bot.reset_user_state(update.effective_user.id)
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             await update.message.reply_text(f"❌ Erreur: {str(e)}")
             bot.reset_user_state(update.effective_user.id)
 
@@ -682,15 +679,15 @@ class AdminHandlers:
             if success:
                 text = (
                     f"✅ **Produit rétabli avec succès!**\n\n"
-                    f"📦 **{product['title']}**\n"
-                    f"🆔 {product_id}\n"
-                    f"💰 {product['price_eur']}€\n\n"
+                    f" **{product['title']}**\n"
+                    f" {product_id}\n"
+                    f" {product['price_eur']}€\n\n"
                     f"Le produit est maintenant visible sur la marketplace."
                 ) if lang == 'fr' else (
                     f"✅ **Product restored successfully!**\n\n"
-                    f"📦 **{product['title']}**\n"
-                    f"🆔 {product_id}\n"
-                    f"💰 {product['price_eur']}€\n\n"
+                    f" **{product['title']}**\n"
+                    f" {product_id}\n"
+                    f" {product['price_eur']}€\n\n"
                     f"The product is now visible on the marketplace."
                 )
 
@@ -700,7 +697,7 @@ class AdminHandlers:
                     if seller and seller.get('email'):
                         # TODO: Créer email de notification de rétablissement si souhaité
                         pass
-                except Exception as email_error:
+                except (psycopg2.Error, Exception) as email_error:
                     logger.error(f"Erreur notification vendeur restoration: {email_error}")
             else:
                 text = "❌ Erreur lors du rétablissement." if lang == 'fr' else "❌ Error restoring product."
@@ -708,7 +705,7 @@ class AdminHandlers:
             await update.message.reply_text(text, parse_mode='Markdown')
             bot.reset_user_state(update.effective_user.id)
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in process_admin_restore_product: {e}")
             await update.message.reply_text(
                 f"❌ Erreur: {str(e)}" if lang == 'fr' else f"❌ Error: {str(e)}"
@@ -726,7 +723,7 @@ class AdminHandlers:
 
             if not products:
                 await query.edit_message_text(
-                    "📦 Aucun produit à exporter." if lang == 'fr' else "📦 No products to export.",
+                    " Aucun produit à exporter." if lang == 'fr' else " No products to export.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu Admin" if lang == 'fr' else "🔙 Admin Menu", callback_data='admin_menu')]])
                 )
                 return
@@ -769,7 +766,7 @@ class AdminHandlers:
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu Admin" if lang == 'fr' else "🔙 Admin Menu", callback_data='admin_menu')]])
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in admin_export_products_csv: {e}")
             await query.edit_message_text(
                 "❌ Erreur lors de la génération du CSV." if lang == 'fr' else "❌ Error generating CSV.",

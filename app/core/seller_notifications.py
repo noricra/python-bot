@@ -51,27 +51,27 @@ class SellerNotifications:
             notification_text = f"""
 🎉 **NOUVELLE VENTE !**
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📦 **Produit:** {product_title}
-🆔 **ID:** `{product_id}`
+ **Produit:** {product_title}
+ **ID:** `{product_id}`
 
-💰 **Montant:** {amount_eur:.2f} €
-💳 **Crypto:** {crypto_code}
+ **Montant:** {amount_eur:.2f} €
+ **Crypto:** {crypto_code}
 
-👤 **Acheteur:** {buyer_name}
-📅 **Date:** {datetime.now().strftime('%d/%m/%Y %H:%M')}
+ **Acheteur:** {buyer_name}
+ **Date:** {datetime.now().strftime('%d/%m/%Y %H:%M')}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 💡 **Le paiement est en cours de vérification**
 Vous serez notifié dès confirmation blockchain.
 """
 
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("📊 Voir Analytics", callback_data='analytics_dashboard')],
-                [InlineKeyboardButton("💰 Mes Ventes", callback_data='my_wallet')],
-                [InlineKeyboardButton("🏠 Dashboard", callback_data='seller_dashboard')]
+                [InlineKeyboardButton(" Voir Analytics", callback_data='analytics_dashboard')],
+                [InlineKeyboardButton(" Mes Ventes", callback_data='my_sales')],
+                [InlineKeyboardButton(" Dashboard", callback_data='seller_dashboard')]
             ])
 
             # Envoyer notification
@@ -127,29 +127,29 @@ Vous serez notifié dès confirmation blockchain.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📦 **Produit:** {product_title}
-👤 **Acheteur:** {buyer_name}
+ **Produit:** {product_title}
+ **Acheteur:** {buyer_name}
 
-💰 **Montant total:** {amount_eur:.2f} €
-💵 **Votre revenu:** {seller_revenue:.2f} € _(après frais 5%)_
+ **Montant total:** {amount_eur:.2f} €
+ **Votre revenu:** {seller_revenue:.2f} € _(après frais 5%)_
 
-💳 **Crypto:** {crypto_code}
+ **Crypto:** {crypto_code}
 """
 
             if tx_hash:
                 notification_text += f"🔗 **TX Hash:** `{tx_hash[:16]}...`\n"
 
             notification_text += f"""
-📅 **Confirmé le:** {datetime.now().strftime('%d/%m/%Y à %H:%M')}
+ **Confirmé le:** {datetime.now().strftime('%d/%m/%Y à %H:%M')}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🎊 **Le produit a été automatiquement livré à l'acheteur !**
+ **Le produit a été automatiquement livré à l'acheteur !**
 """
 
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("💰 Voir Portefeuille", callback_data='my_wallet')],
-                [InlineKeyboardButton("📊 Analytics", callback_data='analytics_dashboard')]
+                [InlineKeyboardButton(" Voir Mes Revenus", callback_data='my_revenue')],
+                [InlineKeyboardButton(" Analytics", callback_data='analytics_dashboard')]
             ])
 
             await bot.application.bot.send_message(
@@ -203,18 +203,18 @@ Vous serez notifié dès confirmation blockchain.
             notification_text = f"""
 💬 **NOUVEL AVIS !**
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📦 **Produit:** {product_title}
+ **Produit:** {product_title}
 
 {stars} **{rating}/5**
 
-👤 **{reviewer_name}** a écrit :
+ **{reviewer_name}** a écrit :
 _{review_snippet}_
 
-📅 **{datetime.now().strftime('%d/%m/%Y à %H:%M')}**
+ **{datetime.now().strftime('%d/%m/%Y à %H:%M')}**
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
             keyboard = InlineKeyboardMarkup([
@@ -275,17 +275,17 @@ _{review_snippet}_
             notification_text = f"""
 {emoji} **RÉSUMÉ QUOTIDIEN**
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📅 **{datetime.now().strftime('%d %B %Y')}**
+ **{datetime.now().strftime('%d %B %Y')}**
 
-💰 **Revenus:** {revenue_today:.2f} €
-🛒 **Ventes:** {sales_today}
-👁️ **Vues produits:** {views_today}
+ **Revenus:** {revenue_today:.2f} €
+ **Ventes:** {sales_today}
+ **Vues produits:** {views_today}
 
-🏆 **Produit star:** {top_product}
+ **Produit star:** {top_product}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 💡 **Conseil du jour:**
 """
@@ -300,7 +300,7 @@ _{review_snippet}_
 
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("📊 Voir Analytics Complet", callback_data='analytics_dashboard')],
-                [InlineKeyboardButton("💰 Portefeuille", callback_data='my_wallet')]
+                [InlineKeyboardButton("💰 Mes Revenus", callback_data='my_revenue')]
             ])
 
             await bot.application.bot.send_message(
@@ -371,11 +371,11 @@ _{review_snippet}_
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📦 **{product_title}**
+ **{product_title}**
 
 🎊 Félicitations ! Votre produit vient d'atteindre **{milestone_value} {milestone_type}** !
 
-💡 **Continuez sur cette lancée :**
+ **Continuez sur cette lancée :**
 • Ajoutez des avis clients
 • Créez des produits complémentaires
 • Optimisez votre description
@@ -400,63 +400,3 @@ _{review_snippet}_
         except Exception as e:
             logger.error(f"❌ Error sending milestone notification: {e}")
 
-    @staticmethod
-    async def notify_low_stock_warning(bot, seller_id: int, product_data: Dict, remaining_stock: int):
-        """
-        Notification : Stock faible (si applicable)
-
-        Args:
-            bot: Bot instance
-            seller_id: Seller user ID
-            product_data: Product information
-            remaining_stock: Number of items left
-        """
-        try:
-            conn = bot.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT telegram_id FROM telegram_mappings
-                WHERE seller_user_id = ? AND is_active = 1
-                LIMIT 1
-            ''', (seller_id,))
-            result = cursor.fetchone()
-            conn.close()
-
-            if not result:
-                return
-
-            telegram_id = result[0]
-            product_title = product_data.get('title', 'Produit')
-
-            notification_text = f"""
-⚠️ **ALERTE STOCK FAIBLE**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📦 **{product_title}**
-
-🔢 **Stock restant:** {remaining_stock} unités
-
-💡 **Action recommandée:**
-• Réapprovisionner rapidement
-• Ou désactiver le produit si épuisé
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
-
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("✏️ Modifier Produit", callback_data=f'edit_product_{product_data.get("product_id")}')],
-                [InlineKeyboardButton("📦 Mes Produits", callback_data='my_products')]
-            ])
-
-            await bot.application.bot.send_message(
-                chat_id=telegram_id,
-                text=notification_text,
-                parse_mode='Markdown',
-                reply_markup=keyboard
-            )
-
-            logger.info(f"✅ Low stock warning sent to seller {seller_id}")
-
-        except Exception as e:
-            logger.error(f"❌ Error sending low stock warning: {e}")

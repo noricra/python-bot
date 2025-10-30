@@ -154,7 +154,7 @@ class PaymentService:
                 'address': payment_address,
                 'amount': exact_crypto_amount,
                 'currency': payment_data.get('pay_currency', '').upper(),
-                'network': self._get_network_info(payment_data.get('pay_currency', '')),
+                'network': payment_data.get('pay_currency', '').upper(),
                 'expires_at': payment_data.get('created_at', ''),  # Add expiration logic if needed
                 'payment_id': payment_data.get('payment_id', ''),
                 'order_id': payment_data.get('order_id', '')
@@ -201,21 +201,6 @@ class PaymentService:
             logger.error(f"Error generating QR code: {e}")
             return ""
 
-    def _get_network_info(self, currency: str) -> str:
-        """Get network information for cryptocurrency"""
-        network_map = {
-            'btc': 'Bitcoin',
-            'eth': 'Ethereum',
-            'usdt': 'Ethereum (ERC-20)',
-            'usdc': 'Ethereum (ERC-20)',
-            'ltc': 'Litecoin',
-            'bch': 'Bitcoin Cash',
-            'xrp': 'Ripple',
-            'ada': 'Cardano',
-            'dot': 'Polkadot',
-            'sol': 'Solana'
-        }
-        return network_map.get(currency.lower(), currency.upper())
 
     def get_available_currencies(self) -> List[str]:
         try:

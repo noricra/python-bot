@@ -4,7 +4,7 @@ Product Service - Business logic for product operations
 import re
 import logging
 from typing import Dict, Any, Optional, List
-from app.core import get_sqlite_connection
+from app.core.database_init import get_postgresql_connection
 
 logger = logging.getLogger(__name__)
 
@@ -25,20 +25,20 @@ class ProductService:
         try:
             conn = get_sqlite_connection(self.db_path)
             conn.row_factory = lambda cursor, row: {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('''
                 SELECT p.*, u.seller_name, u.seller_rating, u.seller_bio
                 FROM products p
                 JOIN users u ON p.seller_user_id = u.user_id
-                WHERE p.product_id = ? AND p.status = 'active'
+                WHERE p.product_id = %s AND p.status = 'active'
             ''', (product_id,))
 
             product = cursor.fetchone()
             conn.close()
             return product
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error getting product with seller info: {e}")
             return None
 
@@ -46,16 +46,16 @@ class ProductService:
         """Increment product view count"""
         try:
             conn = get_sqlite_connection(self.db_path)
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute(
-                'UPDATE products SET views_count = views_count + 1 WHERE product_id = ?',
+                'UPDATE products SET views_count = views_count + 1 WHERE product_id = %s',
                 (product_id,)
             )
             success = cursor.rowcount > 0
             conn.commit()
             conn.close()
             return success
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error incrementing views: {e}")
             return False
 
@@ -64,22 +64,22 @@ class ProductService:
         try:
             conn = get_sqlite_connection(self.db_path)
             conn.row_factory = lambda cursor, row: {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('''
                 SELECT p.*, u.seller_name
                 FROM products p
                 JOIN users u ON p.seller_user_id = u.user_id
-                WHERE p.category = ? AND p.status = 'active'
+                WHERE p.category = %s AND p.status = 'active'
                 ORDER BY p.created_at DESC
-                LIMIT ?
+                LIMIT %s
             ''', (category, limit))
 
             products = cursor.fetchall()
             conn.close()
             return products
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error searching products by category: {e}")
             return []
 
@@ -116,7 +116,7 @@ class ProductService:
 
             return product_id if success else None
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error creating product: {e}")
             return None
 
@@ -125,22 +125,22 @@ class ProductService:
         try:
             conn = get_sqlite_connection(self.db_path)
             conn.row_factory = lambda cursor, row: {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('''
                 SELECT p.product_id, p.title, o.completed_at
                 FROM orders o
                 JOIN products p ON o.product_id = p.product_id
-                WHERE o.buyer_user_id = ? AND o.payment_status = 'completed'
+                WHERE o.buyer_user_id = %s AND o.payment_status = 'completed'
                 ORDER BY o.completed_at DESC
-                LIMIT ?
+                LIMIT %s
             ''', (user_id, limit))
 
             purchases = cursor.fetchall()
             conn.close()
             return purchases
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error getting user purchases: {e}")
             return []
 
@@ -148,7 +148,7 @@ class ProductService:
         """Check if user has purchased a specific product"""
         try:
             conn = get_sqlite_connection(self.db_path)
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 SELECT COUNT(*)
                 FROM orders
@@ -159,7 +159,7 @@ class ProductService:
             conn.close()
             return count > 0
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error checking purchase: {e}")
             return False
 
@@ -167,12 +167,12 @@ class ProductService:
         """Get product file information for download"""
         try:
             conn = get_sqlite_connection(self.db_path)
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 SELECT p.main_file_path, p.title
                 FROM orders o
                 JOIN products p ON o.product_id = p.product_id
-                WHERE o.buyer_user_id = ? AND o.product_id = ? AND o.payment_status = 'completed'
+                WHERE o.buyer_user_id = %s AND o.product_id = %s AND o.payment_status = 'completed'
             ''', (user_id, product_id))
 
             result = cursor.fetchone()
@@ -185,6 +185,6 @@ class ProductService:
                 }
             return None
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error getting file info: {e}")
             return None

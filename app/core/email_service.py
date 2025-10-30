@@ -304,36 +304,6 @@ class EmailService:
 </html>
 """
 
-    def send_recovery_email(self, to_email: str, recovery_code: str) -> bool:
-        """
-        Envoie un email de récupération de compte vendeur
-
-        Args:
-            to_email: Email du vendeur
-            recovery_code: Code de récupération
-
-        Returns:
-            bool: True si envoi réussi
-        """
-        subject = "🔑 Récupération de votre compte vendeur - TechBot Marketplace"
-
-        body = f"""
-Bonjour,
-
-Vous avez demandé la récupération de votre compte vendeur.
-
-Code de récupération: {recovery_code}
-
-Ce code expire dans 1 heure.
-
-Si vous n'avez pas demandé cette récupération, ignorez ce message.
-
-Cordialement,
-L'équipe TechBot Marketplace
-        """
-
-        return self.send_email(to_email, subject, body)
-
     def send_seller_welcome_email(self, to_email: str, seller_name: str, solana_address: str) -> bool:
         """
         Envoie un email de bienvenue au nouveau vendeur (style site2.html)
@@ -357,19 +327,19 @@ L'équipe TechBot Marketplace
 
             <div class="info-section">
                 <div class="info-item">
-                    <div class="info-label">📧 Email de notification</div>
+                    <div class="info-label"> Email de notification</div>
                     <div class="info-value">{to_email}</div>
                 </div>
 
                 <div class="info-item">
-                    <div class="info-label">💰 Adresse Solana (Payouts)</div>
+                    <div class="info-label"> Adresse Solana (Payouts)</div>
                     <div class="info-value">{solana_address}</div>
                 </div>
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
-                <a href="https://t.me/YourBotUsername" class="cta-button">
-                    🚀 Accéder au Dashboard
+                <a href="https://t.me/uzeur_bot" class="cta-button">
+                     Accéder au Dashboard
                 </a>
             </div>
 
@@ -405,14 +375,14 @@ L'équipe TechBot Marketplace
 
             <div style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px; text-align: center;">
                 <p style="font-size: 14px; color: #64748b; margin: 0;">
-                    💡 <strong>Besoin d'aide ?</strong> Contactez le support directement depuis le bot avec /support
+                     <strong>Besoin d'aide ?</strong> Contactez le support directement depuis le bot avec /support
                 </p>
             </div>
         """
 
         # Utiliser le template builder
         body = self._build_email_template(
-            header_title="🎉 Bienvenue sur UZEUR !",
+            header_title=" Bienvenue sur UZEUR !",
             header_subtitle="Votre compte vendeur est actif",
             content_html=content_html
         )
@@ -464,7 +434,7 @@ L'équipe TechBot Marketplace
         Returns:
             bool: True si envoi réussi
         """
-        subject = "🔐 Nouvelle connexion à votre compte vendeur UZEUR"
+        subject = " Nouvelle connexion à votre compte vendeur UZEUR"
 
         # Contenu spécifique à l'email de connexion
         content_html = f"""
@@ -475,36 +445,36 @@ L'équipe TechBot Marketplace
 
             <div class="info-section">
                 <div class="info-item">
-                    <div class="info-label">📧 Email du compte</div>
+                    <div class="info-label"> Email du compte</div>
                     <div class="info-value">{to_email}</div>
                 </div>
 
                 <div class="info-item">
-                    <div class="info-label">🕐 Date et heure de connexion</div>
+                    <div class="info-label"> Date et heure de connexion</div>
                     <div class="info-value">{login_time}</div>
                 </div>
 
                 <div class="info-item">
-                    <div class="info-label">📱 Plateforme</div>
-                    <div class="info-value">Telegram Bot</div>
+                    <div class="info-label"> Plateforme</div>
+                    <div class="info-value">UZEUR </div>
                 </div>
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
-                <a href="https://t.me/YourBotUsername" class="cta-button">
-                    🏪 Accéder au Dashboard
+                <a href="https://t.me/uzeur_bot" class="cta-button">
+                     Accéder au Dashboard
                 </a>
             </div>
 
             <div class="security-notice">
-                <h3>🔒 Sécurité de votre compte</h3>
+                <h3> Sécurité de votre compte</h3>
                 <p>Si vous n'êtes pas à l'origine de cette connexion, contactez immédiatement le support via /support dans le bot.</p>
             </div>
         """
 
         # Utiliser le template builder
         body = self._build_email_template(
-            header_title="🔐 Connexion Détectée",
+            header_title=" Connexion Détectée",
             header_subtitle="Votre compte vendeur a été connecté",
             content_html=content_html
         )
@@ -746,24 +716,24 @@ L'équipe TechBot Marketplace
 
             <div class="info-section">
                 <div class="info-item">
-                    <div class="info-label">📦 Produit concerné</div>
+                    <div class="info-label"> Produit concerné</div>
                     <div class="info-value">{product_title}</div>
                 </div>
 
                 <div class="info-item">
-                    <div class="info-label">📧 Compte vendeur</div>
+                    <div class="info-label"> Compte vendeur</div>
                     <div class="info-value">{to_email}</div>
                 </div>
             </div>
 
             <div class="reason-box">
-                <h3>🔍 Raison de la suspension :</h3>
+                <h3> Raison de la suspension :</h3>
                 <p>{reason}</p>
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
-                <a href="https://t.me/YourBotUsername" class="cta-button">
-                    🏪 Accéder au Dashboard
+                <a href="https://t.me/uzeur_bot" class="cta-button">
+                     Accéder au Dashboard
                 </a>
             </div>
 
@@ -830,30 +800,30 @@ L'équipe TechBot Marketplace
         Returns:
             bool: True si envoi réussi
         """
-        subject = "🔒 Votre compte a été suspendu - UZEUR Marketplace"
+        subject = " Votre compte a été suspendu - UZEUR Marketplace"
 
         duration_info = """
             <div class="info-item">
-                <div class="info-label">⏱️ Durée de la suspension</div>
+                <div class="info-label">⏱ Durée de la suspension</div>
                 <div class="info-value" style="color: #dc2626;">PERMANENTE</div>
             </div>
         """ if is_permanent else f"""
             <div class="info-item">
-                <div class="info-label">⏱️ Durée de la suspension</div>
+                <div class="info-label">⏱ Durée de la suspension</div>
                 <div class="info-value">{duration}</div>
             </div>
         """
 
         appeal_section = """
             <div style="text-align: center; margin: 30px 0;">
-                <a href="https://t.me/YourBotUsername" class="cta-button">
-                    📞 Contacter le Support
+                <a href="https://t.me/uzeur_bot" class="cta-button">
+                     Contacter le Support
                 </a>
             </div>
 
             <div style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px; text-align: center;">
                 <p style="font-size: 14px; color: #64748b; margin: 0;">
-                    💡 <strong>Faire appel ?</strong> Contactez le support via /support pour soumettre votre dossier
+                     <strong>Faire appel ?</strong> Contactez le support via /support pour soumettre votre dossier
                 </p>
             </div>
         """ if not is_permanent else """
@@ -1036,7 +1006,7 @@ L'équipe TechBot Marketplace
 
             <div class="info-section">
                 <div class="info-item">
-                    <div class="info-label">📧 Compte concerné</div>
+                    <div class="info-label"> Compte concerné</div>
                     <div class="info-value">{to_email}</div>
                 </div>
 
@@ -1044,7 +1014,7 @@ L'équipe TechBot Marketplace
             </div>
 
             <div class="reason-box">
-                <h3>🔍 Raison de la suspension :</h3>
+                <h3> Raison de la suspension :</h3>
                 <p>{reason}</p>
             </div>
 
@@ -1305,7 +1275,7 @@ L'équipe TechBot Marketplace
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
-                <a href="https://t.me/YourBotUsername" class="cta-button">
+                <a href="https://t.me/uzeur_bot" class="cta-button">
                     📬 Lire le Message Complet
                 </a>
             </div>
@@ -1361,4 +1331,370 @@ L'équipe TechBot Marketplace
         except Exception as e:
             logger.error(f"Erreur envoi email réponse support: {e}")
             logger.info(f"📧 Email réponse support simulé (fallback) - To: {to_email}")
+            return True
+
+    def send_sale_confirmation_email(self, to_email: str, seller_name: str, product_title: str, buyer_name: str, sale_amount: str, sale_date: str) -> bool:
+        """
+        Envoie un email de confirmation de vente au vendeur
+
+        Args:
+            to_email: Email du vendeur
+            seller_name: Nom du vendeur
+            product_title: Titre du produit vendu
+            buyer_name: Nom de l'acheteur
+            sale_amount: Montant de la vente (ex: "50.00 USDT")
+            sale_date: Date de la vente (ex: "26/10/2025 à 14:30")
+
+        Returns:
+            bool: True si envoi réussi
+        """
+        subject = "Nouvelle vente sur UZEUR Marketplace!"
+
+        content_html = f"""
+            <div class="success-box">
+                <h2>Félicitations {seller_name}!</h2>
+                <p>Vous avez réalisé une nouvelle vente sur UZEUR Marketplace.</p>
+            </div>
+
+            <div class="info-section">
+                <div class="info-item">
+                    <div class="info-label"> Produit vendu</div>
+                    <div class="info-value">{product_title}</div>
+                </div>
+
+                <div class="info-item">
+                    <div class="info-label"> Acheteur</div>
+                    <div class="info-value">{buyer_name}</div>
+                </div>
+
+                <div class="info-item">
+                    <div class="info-label"> Montant</div>
+                    <div class="info-value">{sale_amount}</div>
+                </div>
+
+                <div class="info-item">
+                    <div class="info-label"> Date de vente</div>
+                    <div class="info-value">{sale_date}</div>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="https://t.me/uzeur_bot" class="cta-button">
+                     Voir mes ventes
+                </a>
+            </div>
+
+            <div style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px; text-align: center;">
+                <p style="font-size: 14px; color: #64748b; margin: 0;">
+                     Le paiement sera automatiquement transféré vers votre wallet après confirmation
+                </p>
+            </div>
+        """
+
+        body = self._build_email_template(
+            header_title=" Nouvelle Vente!",
+            header_subtitle="Un client a acheté votre produit",
+            content_html=content_html
+        )
+
+        try:
+            if not self.smtp_configured:
+                logger.info(f"📧 Email confirmation vente simulé - To: {to_email}")
+                print(f"📧 Sale confirmation to {seller_name} ({to_email})")
+                print(f"   Product: {product_title}, Amount: {sale_amount}")
+                return True
+
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            msg = MIMEMultipart('alternative')
+            msg['From'] = self.smtp_email
+            msg['To'] = to_email
+            msg['Subject'] = subject
+
+            html_part = MIMEText(body, 'html', 'utf-8')
+            msg.attach(html_part)
+
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                if self.smtp_port == 587:
+                    server.starttls()
+                server.login(self.smtp_email, self.smtp_password)
+                server.send_message(msg)
+                logger.info(f"📧 Email confirmation vente envoyé - To: {to_email}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Erreur envoi email confirmation vente: {e}")
+            logger.info(f"📧 Email confirmation vente simulé (fallback) - To: {to_email}")
+            return True
+
+    def send_payment_received_email(self, to_email: str, seller_name: str, payout_amount: str, payout_address: str, transaction_date: str) -> bool:
+        """
+        Envoie un email de confirmation de paiement reçu au vendeur
+
+        Args:
+            to_email: Email du vendeur
+            seller_name: Nom du vendeur
+            payout_amount: Montant du payout (ex: "45.00 USDT")
+            payout_address: Adresse de paiement (wallet)
+            transaction_date: Date de la transaction (ex: "26/10/2025 à 14:30")
+
+        Returns:
+            bool: True si envoi réussi
+        """
+        subject = " Paiement reçu - UZEUR Marketplace"
+
+        content_html = f"""
+            <div class="success-box">
+                <h2>Bonjour {seller_name},</h2>
+                <p>Votre paiement a été transféré avec succès vers votre wallet.</p>
+            </div>
+
+            <div class="info-section">
+                <div class="info-item">
+                    <div class="info-label"> Montant reçu</div>
+                    <div class="info-value">{payout_amount}</div>
+                </div>
+
+                <div class="info-item">
+                    <div class="info-label"> Adresse de réception</div>
+                    <div class="info-value" style="word-break: break-all;">{payout_address}</div>
+                </div>
+
+                <div class="info-item">
+                    <div class="info-label"> Date du transfert</div>
+                    <div class="info-value">{transaction_date}</div>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="https://t.me/uzeur_bot" class="cta-button">
+                     Voir l'historique des payouts
+                </a>
+            </div>
+
+            <div style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px; text-align: center;">
+                <p style="font-size: 14px; color: #064e3b; margin: 0;">
+                     Vérifiez votre wallet pour confirmer la réception des fonds
+                </p>
+            </div>
+        """
+
+        body = self._build_email_template(
+            header_title=" Paiement Reçu",
+            header_subtitle="Votre payout a été transféré",
+            content_html=content_html
+        )
+
+        try:
+            if not self.smtp_configured:
+                logger.info(f"📧 Email paiement reçu simulé - To: {to_email}")
+                print(f"📧 Payment received to {seller_name} ({to_email})")
+                print(f"   Amount: {payout_amount}, Wallet: {payout_address[:20]}...")
+                return True
+
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            msg = MIMEMultipart('alternative')
+            msg['From'] = self.smtp_email
+            msg['To'] = to_email
+            msg['Subject'] = subject
+
+            html_part = MIMEText(body, 'html', 'utf-8')
+            msg.attach(html_part)
+
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                if self.smtp_port == 587:
+                    server.starttls()
+                server.login(self.smtp_email, self.smtp_password)
+                server.send_message(msg)
+                logger.info(f"📧 Email paiement reçu envoyé - To: {to_email}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Erreur envoi email paiement reçu: {e}")
+            logger.info(f"📧 Email paiement reçu simulé (fallback) - To: {to_email}")
+            return True
+
+    def send_product_added_email(self, to_email: str, seller_name: str, product_title: str, product_price: str, product_id: str) -> bool:
+        """
+        Envoie un email de confirmation d'ajout de produit
+
+        Args:
+            to_email: Email du vendeur
+            seller_name: Nom du vendeur
+            product_title: Titre du produit ajouté
+            product_price: Prix du produit (ex: "50.00 USDT")
+            product_id: ID du produit
+
+        Returns:
+            bool: True si envoi réussi
+        """
+        subject = " Produit ajouté avec succès - UZEUR Marketplace"
+
+        content_html = f"""
+            <div class="success-box">
+                <h2>Bravo {seller_name}!</h2>
+                <p>Votre produit a été ajouté avec succès sur la marketplace.</p>
+            </div>
+
+            <div class="info-section">
+                <div class="info-item">
+                    <div class="info-label"> Nom du produit</div>
+                    <div class="info-value">{product_title}</div>
+                </div>
+
+                <div class="info-item">
+                    <div class="info-label"> Prix</div>
+                    <div class="info-value">{product_price}</div>
+                </div>
+
+                <div class="info-item">
+                    <div class="info-label"> ID produit</div>
+                    <div class="info-value">{product_id}</div>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="https://t.me/uzeur_bot" class="cta-button">
+                     Voir mon catalogue
+                </a>
+            </div>
+
+            <div style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px; text-align: center;">
+                <p style="font-size: 14px; color: #64748b; margin: 0;">
+                     Votre produit est maintenant visible par tous les acheteurs
+                </p>
+            </div>
+        """
+
+        body = self._build_email_template(
+            header_title=" Produit Ajouté",
+            header_subtitle="Votre produit est en ligne",
+            content_html=content_html
+        )
+
+        try:
+            if not self.smtp_configured:
+                logger.info(f"📧 Email produit ajouté simulé - To: {to_email}")
+                print(f"📧 Product added notification to {seller_name} ({to_email})")
+                print(f"   Product: {product_title}, Price: {product_price}")
+                return True
+
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            msg = MIMEMultipart('alternative')
+            msg['From'] = self.smtp_email
+            msg['To'] = to_email
+            msg['Subject'] = subject
+
+            html_part = MIMEText(body, 'html', 'utf-8')
+            msg.attach(html_part)
+
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                if self.smtp_port == 587:
+                    server.starttls()
+                server.login(self.smtp_email, self.smtp_password)
+                server.send_message(msg)
+                logger.info(f"📧 Email produit ajouté envoyé - To: {to_email}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Erreur envoi email produit ajouté: {e}")
+            logger.info(f"📧 Email produit ajouté simulé (fallback) - To: {to_email}")
+            return True
+
+    def send_product_removed_email(self, to_email: str, seller_name: str, product_title: str, product_id: str, reason: str = "à votre demande") -> bool:
+        """
+        Envoie un email de confirmation de suppression de produit
+
+        Args:
+            to_email: Email du vendeur
+            seller_name: Nom du vendeur
+            product_title: Titre du produit supprimé
+            product_id: ID du produit
+            reason: Raison de la suppression
+
+        Returns:
+            bool: True si envoi réussi
+        """
+        subject = " Produit supprimé - UZEUR Marketplace"
+
+        content_html = f"""
+            <div class="alert-box">
+                <h2>Bonjour {seller_name},</h2>
+                <p>Votre produit a été supprimé de la marketplace.</p>
+            </div>
+
+            <div class="info-section">
+                <div class="info-item">
+                    <div class="info-label"> Produit supprimé</div>
+                    <div class="info-value">{product_title}</div>
+                </div>
+
+                <div class="info-item">
+                    <div class="info-label"> ID produit</div>
+                    <div class="info-value">{product_id}</div>
+                </div>
+
+                <div class="info-item">
+                    <div class="info-label"> Raison</div>
+                    <div class="info-value">{reason}</div>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="https://t.me/uzeur_bot" class="cta-button">
+                     Voir mon catalogue
+                </a>
+            </div>
+
+            <div style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px; text-align: center;">
+                <p style="font-size: 14px; color: #64748b; margin: 0;">
+                     Ce produit n'est plus visible par les acheteurs
+                </p>
+            </div>
+        """
+
+        body = self._build_email_template(
+            header_title=" Produit Supprimé",
+            header_subtitle="Le produit a été retiré du catalogue",
+            content_html=content_html
+        )
+
+        try:
+            if not self.smtp_configured:
+                logger.info(f"📧 Email produit supprimé simulé - To: {to_email}")
+                print(f"📧 Product removed notification to {seller_name} ({to_email})")
+                print(f"   Product: {product_title}, Reason: {reason}")
+                return True
+
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            msg = MIMEMultipart('alternative')
+            msg['From'] = self.smtp_email
+            msg['To'] = to_email
+            msg['Subject'] = subject
+
+            html_part = MIMEText(body, 'html', 'utf-8')
+            msg.attach(html_part)
+
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                if self.smtp_port == 587:
+                    server.starttls()
+                server.login(self.smtp_email, self.smtp_password)
+                server.send_message(msg)
+                logger.info(f"📧 Email produit supprimé envoyé - To: {to_email}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Erreur envoi email produit supprimé: {e}")
+            logger.info(f"📧 Email produit supprimé simulé (fallback) - To: {to_email}")
             return True

@@ -64,9 +64,15 @@ class Settings:
         self.IPN_HOST: str = os.getenv("IPN_HOST", "0.0.0.0")
         self.IPN_PORT: int = int(os.getenv("IPN_PORT", "8000"))
 
+        # Backblaze B2 Object Storage
+        self.B2_KEY_ID: Optional[str] = os.getenv("B2_KEY_ID")
+        self.B2_APPLICATION_KEY: Optional[str] = os.getenv("B2_APPLICATION_KEY")
+        self.B2_BUCKET_NAME: str = os.getenv("B2_BUCKET_NAME", "uzeur-marketplace")
+        self.B2_ENDPOINT: str = os.getenv("B2_ENDPOINT", "https://s3.us-west-004.backblazeb2.com")
+
         # Storage and paths
-        self.UPLOADS_DIR: str = os.getenv("UPLOADS_DIR", "uploads")
-        self.DATABASE_PATH: str = os.getenv("DATABASE_PATH", "marketplace_database.db")
+        self.UPLOADS_DIR: str = os.getenv("UPLOADS_DIR", "uploads")  # Local temp storage for images
+        # Product files stored on Backblaze B2, only cover images kept locally
 
         # Admin Configuration
         self.ADMIN_USER_IDS = [int(x.strip()) for x in os.getenv('ADMIN_USER_IDS', '123456789').split(',') if x.strip()]
@@ -99,12 +105,10 @@ class Settings:
 
         # State management constants (used by bot_mlt.py for clearing states)
         self.CONFLICTING_STATES: List[str] = [
-            'login_wait_email', 'login_wait_code', 'waiting_for_email',
-            'waiting_for_recovery_code', 'waiting_new_password', 'creating_ticket',
             'waiting_for_product_id', 'adding_product', 'editing_product',
             'editing_product_price', 'editing_product_title', 'editing_product_description',
-            'editing_seller_name', 'editing_seller_bio', 'creating_seller', 'waiting_seller_email',
-            'waiting_seller_password', 'editing_settings', 'searching_user', 'searching_product',
+            'editing_seller_name', 'editing_seller_bio', 'creating_seller',
+            'editing_settings', 'searching_user', 'searching_product',
             'suspending_product', 'suspending_user', 'restoring_user', 'admin_search_user',
             'admin_search_product', 'admin_suspend_product'
         ]

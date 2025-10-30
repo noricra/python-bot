@@ -1,6 +1,7 @@
 """Review Repository - Handles review data access"""
 
-import sqlite3
+import psycopg2
+import psycopg2.extras
 from typing import List, Dict, Optional
 from app.core.utils import logger
 
@@ -29,7 +30,7 @@ class ReviewRepository:
         """
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             query = '''
                 SELECT
@@ -73,7 +74,7 @@ class ReviewRepository:
 
             return reviews
 
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"Error getting product reviews: {e}")
             return []
 
@@ -81,7 +82,7 @@ class ReviewRepository:
         """Get total number of reviews for a product"""
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('SELECT COUNT(*) FROM reviews WHERE product_id = ?', (product_id,))
             count = cursor.fetchone()[0]
@@ -89,7 +90,7 @@ class ReviewRepository:
 
             return count
 
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"Error getting review count: {e}")
             return 0
 
@@ -102,7 +103,7 @@ class ReviewRepository:
         """
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Get average and count
             cursor.execute('''
@@ -135,7 +136,7 @@ class ReviewRepository:
                 'rating_distribution': distribution
             }
 
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"Error getting rating summary: {e}")
             return {
                 'average_rating': 0.0,
@@ -161,12 +162,13 @@ class ReviewRepository:
         """
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('''
                 INSERT INTO reviews
                 (product_id, buyer_user_id, order_id, rating, comment, review_text)
                 VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT DO NOTHING
             ''', (product_id, buyer_user_id, order_id, rating, comment, review_text))
 
             conn.commit()
@@ -178,7 +180,7 @@ class ReviewRepository:
         except sqlite3.IntegrityError:
             logger.warning(f"Review already exists for buyer {buyer_user_id} on product {product_id}")
             return False
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"Error adding review: {e}")
             return False
 
@@ -186,7 +188,7 @@ class ReviewRepository:
         """Check if user has already reviewed this product"""
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('''
                 SELECT COUNT(*)
@@ -199,6 +201,6 @@ class ReviewRepository:
 
             return count > 0
 
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"Error checking review existence: {e}")
             return False

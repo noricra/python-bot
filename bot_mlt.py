@@ -8,7 +8,8 @@ Version 2.0 - Marketplace décentralisée avec wallets
 import os
 import sys
 import logging
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import requests
 import json
 import hashlib
@@ -63,21 +64,21 @@ TOKEN = core_settings.TELEGRAM_TOKEN
 NOWPAYMENTS_API_KEY = core_settings.NOWPAYMENTS_API_KEY
 NOWPAYMENTS_IPN_SECRET = core_settings.NOWPAYMENTS_IPN_SECRET
 ADMIN_USER_ID = core_settings.ADMIN_USER_ID
-ADMIN_EMAIL = core_settings.ADMIN_EMAIL
+#ADMIN_EMAIL = core_settings.ADMIN_EMAIL
 SMTP_SERVER = core_settings.SMTP_SERVER
 SMTP_PORT = core_settings.SMTP_PORT
 SMTP_EMAIL = core_settings.SMTP_USERNAME
 SMTP_PASSWORD = core_settings.SMTP_PASSWORD
 
 # Configuration marketplace
-MAX_FILE_SIZE_MB = core_settings.MAX_FILE_SIZE_MB
-SUPPORTED_FILE_TYPES = core_settings.SUPPORTED_FILE_TYPES
+#MAX_FILE_SIZE_MB = core_settings.MAX_FILE_SIZE_MB
+#SUPPORTED_FILE_TYPES = core_settings.SUPPORTED_FILE_TYPES
 
 # Configuration crypto
-MARKETPLACE_CONFIG = core_settings.MARKETPLACE_CONFIG
+#MARKETPLACE_CONFIG = core_settings.MARKETPLACE_CONFIG
 
 # Platform commission (fixed 5%)
-PLATFORM_COMMISSION_RATE = core_settings.PLATFORM_COMMISSION_RATE
+#PLATFORM_COMMISSION_RATE = core_settings.PLATFORM_COMMISSION_RATE
 
 # Configuration logging
 logger = logging.getLogger(__name__)
@@ -202,13 +203,13 @@ class MarketplaceBot:
         """
         try:
             conn = get_sqlite_connection(self.db_path)
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # 1. Désactiver tous les comptes de ce telegram_id
             cursor.execute('''
                 UPDATE telegram_mappings
                 SET is_active = 0
-                WHERE telegram_id = ?
+                WHERE telegram_id = %s
             ''', (from_user_id,))
 
             # 2. Insérer ou activer le compte
@@ -225,7 +226,7 @@ class MarketplaceBot:
             conn.close()
 
             logger.info(f"✅ Activated account: Telegram {from_user_id} → Seller {to_user_id}")
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error updating user mapping: {e}")
 
     def get_seller_id(self, telegram_id: int) -> int:
@@ -239,12 +240,12 @@ class MarketplaceBot:
         """
         try:
             conn = get_sqlite_connection(self.db_path)
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Try to get active account first
             cursor.execute('''
                 SELECT seller_user_id FROM telegram_mappings
-                WHERE telegram_id = ? AND is_active = 1
+                WHERE telegram_id = %s AND is_active = 1
                 ORDER BY last_login DESC
                 LIMIT 1
             ''', (telegram_id,))
@@ -257,7 +258,7 @@ class MarketplaceBot:
             # No active account, get the most recent one (backward compatibility)
             cursor.execute('''
                 SELECT seller_user_id FROM telegram_mappings
-                WHERE telegram_id = ?
+                WHERE telegram_id = %s
                 ORDER BY last_login DESC
                 LIMIT 1
             ''', (telegram_id,))
@@ -269,7 +270,7 @@ class MarketplaceBot:
             else:
                 return telegram_id  # No mapping, use telegram_id directly
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error getting seller_id for telegram_id {telegram_id}: {e}")
             return telegram_id  # Fallback to telegram_id
 
@@ -287,7 +288,7 @@ class MarketplaceBot:
         """
         try:
             conn = get_sqlite_connection(self.db_path)
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('''
                 SELECT
@@ -300,7 +301,7 @@ class MarketplaceBot:
                     tm.last_login
                 FROM telegram_mappings tm
                 JOIN users u ON tm.seller_user_id = u.user_id
-                WHERE tm.telegram_id = ?
+                WHERE tm.telegram_id = %s
                 ORDER BY tm.is_active DESC, tm.last_login DESC
             ''', (telegram_id,))
 
@@ -317,7 +318,7 @@ class MarketplaceBot:
             conn.close()
             return accounts
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error getting user accounts: {e}")
             return []
 
@@ -329,12 +330,12 @@ class MarketplaceBot:
         """
         try:
             conn = get_sqlite_connection(self.db_path)
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Vérifier que le compte existe pour ce telegram_id
             cursor.execute('''
                 SELECT 1 FROM telegram_mappings
-                WHERE telegram_id = ? AND seller_user_id = ?
+                WHERE telegram_id = %s AND seller_user_id = %s
             ''', (telegram_id, target_seller_id))
 
             if not cursor.fetchone():
@@ -346,14 +347,14 @@ class MarketplaceBot:
             cursor.execute('''
                 UPDATE telegram_mappings
                 SET is_active = 0
-                WHERE telegram_id = ?
+                WHERE telegram_id = %s
             ''', (telegram_id,))
 
             # Activer le compte cible
             cursor.execute('''
                 UPDATE telegram_mappings
                 SET is_active = 1, last_login = CURRENT_TIMESTAMP
-                WHERE telegram_id = ? AND seller_user_id = ?
+                WHERE telegram_id = %s AND seller_user_id = %s
             ''', (telegram_id, target_seller_id))
 
             conn.commit()
@@ -362,7 +363,7 @@ class MarketplaceBot:
             logger.info(f"✅ Switched to account {target_seller_id} for telegram {telegram_id}")
             return True
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error switching account: {e}")
             return False
 
@@ -404,13 +405,13 @@ class MarketplaceBot:
         """Crée automatiquement un payout vendeur après confirmation paiement"""
         try:
             conn = self.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Récupérer infos commande
             cursor.execute('''
                 SELECT seller_user_id, product_price_eur
                 FROM orders 
-                WHERE order_id = ? AND payment_status = 'completed'
+                WHERE order_id = %s AND payment_status = 'completed'
             ''', (order_id,))
 
             result = cursor.fetchone()
@@ -436,7 +437,7 @@ class MarketplaceBot:
             conn.close()
             return payout_id is not None
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Erreur auto payout: {e}")
             return False
 
@@ -455,7 +456,7 @@ class MarketplaceBot:
                 logger.warning(f"Callback non routé: {query.data}")
                 await self._handle_unknown_callback(query)
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Erreur button_handler: {e}")
             await self._handle_callback_error(query, e)
 
@@ -551,12 +552,13 @@ class MarketplaceBot:
             try:
                 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
                 conn = self.get_db_connection()
-                cursor = conn.cursor()
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
                 # Add message to ticket
                 cursor.execute('''
                     INSERT INTO support_messages (ticket_id, sender_user_id, sender_role, message, created_at)
                     VALUES (?, ?, 'buyer', ?, CURRENT_TIMESTAMP)
+                ON CONFLICT DO NOTHING
                 ''', (ticket_id, user_id, message_text))
 
                 conn.commit()
@@ -589,7 +591,7 @@ class MarketplaceBot:
                     ]]),
                     parse_mode='Markdown'
                 )
-            except Exception as e:
+            except (psycopg2.Error, Exception) as e:
                 logger.error(f"Error sending ticket message: {e}")
                 await update.message.reply_text("❌ Error" if lang == 'en' else "❌ Erreur")
         # === ÉDITION PRODUIT ===
@@ -600,8 +602,8 @@ class MarketplaceBot:
                 new_title = message_text.strip()[:100]
                 try:
                     conn = self.get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute('UPDATE products SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND seller_user_id = ?', (new_title, product_id, user_id))
+                    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                    cursor.execute('UPDATE products SET title = %s, updated_at = CURRENT_TIMESTAMP WHERE product_id = %s AND seller_user_id = %s', (new_title, product_id, user_id))
                     conn.commit()
                     conn.close()
                     # Nettoyer uniquement le contexte d'édition produit
@@ -610,7 +612,7 @@ class MarketplaceBot:
                         state.pop(k, None)
                     # État mis à jour via StateManager (pas besoin de réassigner)
                     await update.message.reply_text("✅ Titre mis à jour.")
-                except Exception as e:
+                except (psycopg2.Error, Exception) as e:
                     logger.error(f"Erreur maj titre produit: {e}")
                     await update.message.reply_text("❌ Erreur mise à jour titre.")
             elif step == 'edit_price_input':
@@ -654,8 +656,8 @@ class MarketplaceBot:
                 if len(new_title) < 3:
                     raise ValueError("Titre trop court")
                 conn = self.get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('UPDATE products SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND seller_user_id = ?', (new_title, product_id, user_id))
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute('UPDATE products SET title = %s, updated_at = CURRENT_TIMESTAMP WHERE product_id = %s AND seller_user_id = %s', (new_title, product_id, user_id))
                 conn.commit()
                 conn.close()
                 state = self.state_manager.get_state(user_id)
@@ -669,7 +671,7 @@ class MarketplaceBot:
                         InlineKeyboardButton(i18n(lang, 'btn_back_dashboard'), callback_data='seller_dashboard')
                     ]])
                 )
-            except Exception as e:
+            except (psycopg2.Error, Exception) as e:
                 logger.error(f"Erreur maj titre produit: {e}")
                 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
                 from app.core.i18n import t as i18n
@@ -693,15 +695,15 @@ class MarketplaceBot:
                 if len(new_name) < 2:
                     raise ValueError("Nom trop court")
                 conn = self.get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('UPDATE users SET seller_name = ? WHERE user_id = ?', (new_name, user_id))
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute('UPDATE users SET seller_name = %s WHERE user_id = %s', (new_name, user_id))
                 conn.commit()
                 conn.close()
                 state = self.state_manager.get_state(user_id)
                 state.pop('editing_seller_name', None)
                 self.state_manager.update_state(user_id, **state)
                 await update.message.reply_text("✅ Nom de vendeur mis à jour avec succès !")
-            except Exception as e:
+            except (psycopg2.Error, Exception) as e:
                 logger.error(f"Erreur maj nom vendeur: {e}")
                 await update.message.reply_text("❌ Nom invalide (minimum 2 caractères) ou erreur mise à jour.")
         elif user_state.get('editing_seller_bio'):
@@ -710,15 +712,15 @@ class MarketplaceBot:
                 if len(new_bio) < 10:
                     raise ValueError("Bio trop courte")
                 conn = self.get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('UPDATE users SET seller_bio = ? WHERE user_id = ?', (new_bio, user_id))
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute('UPDATE users SET seller_bio = %s WHERE user_id = %s', (new_bio, user_id))
                 conn.commit()
                 conn.close()
                 state = self.state_manager.get_state(user_id)
                 state.pop('editing_seller_bio', None)
                 self.state_manager.update_state(user_id, **state)
                 await update.message.reply_text("✅ Biographie vendeur mise à jour avec succès !")
-            except Exception as e:
+            except (psycopg2.Error, Exception) as e:
                 logger.error(f"Erreur maj bio vendeur: {e}")
                 await update.message.reply_text("❌ Biographie invalide (minimum 10 caractères) ou erreur mise à jour.")
 
@@ -819,7 +821,7 @@ class MarketplaceBot:
             logger.info(f"✅ DOCUMENT ACCEPTED - Delegating to process_file_upload")
             await self.sell_handlers.process_file_upload(self, update, update.message.document)
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error handling document upload: {e}")
             await update.message.reply_text("❌ Erreur lors du traitement du fichier.")
 
@@ -856,7 +858,7 @@ class MarketplaceBot:
                     # Ignore photos sent in other contexts (could be in chat, support, etc.)
                     logger.info(f"Photo ignored - User not in product creation mode")
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error handling photo upload: {e}")
             import traceback
             logger.error(traceback.format_exc())

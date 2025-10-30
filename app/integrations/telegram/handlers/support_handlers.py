@@ -97,9 +97,9 @@ class SupportHandlers:
         thread = "\n".join([f"[{m['created_at']}] {m['sender_role']}: {m['message']}" for m in reversed(messages)])
         keyboard = [[
             InlineKeyboardButton("↩️ Répondre", callback_data=f'reply_ticket_{ticket_id}'),
-            InlineKeyboardButton("🚀 Escalader", callback_data=f'escalate_ticket_{ticket_id}')
+            InlineKeyboardButton(" Escalader", callback_data=f'escalate_ticket_{ticket_id}')
         ]]
-        await query.edit_message_text(f"🧵 Thread ticket `{ticket_id}`:\n\n{thread}", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text(f" Thread ticket `{ticket_id}`:\n\n{thread}", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def reply_ticket_prepare(self, bot, query, ticket_id: str) -> None:
         bot.reset_conflicting_states(query.from_user.id, keep={'waiting_reply_ticket_id'})
@@ -112,7 +112,7 @@ class SupportHandlers:
         if not ok:
             await query.edit_message_text("❌ Impossible d'escalader ce ticket.")
             return
-        await query.edit_message_text("🚀 Ticket escaladé au support.")
+        await query.edit_message_text(" Ticket escaladé au support.")
 
     async def admin_tickets(self, bot, query) -> None:
         if core_settings.ADMIN_USER_ID is None or query.from_user.id != core_settings.ADMIN_USER_ID:
@@ -120,9 +120,9 @@ class SupportHandlers:
             return
         rows = MessagingService(bot.db_path).list_recent_tickets(10)
         if not rows:
-            await query.edit_message_text("🎫 Aucun ticket.")
+            await query.edit_message_text(" Aucun ticket.")
             return
-        text = "🎫 Tickets récents:\n\n"
+        text = " Tickets récents:\n\n"
         keyboard = []
         for t in rows:
             text += f"• {t['ticket_id']} — {t['subject']} — {t['status']}\n"
@@ -193,13 +193,13 @@ A: **Étape 1:** Menu "Acheter" > Parcourir catégories ou rechercher par ID
 **Q: Dois-je fournir mes données personnelles ?**
 A: **NON. Aucun KYC requis.** Plateforme axée sur la confidentialité.
 
-📚 **VENDRE VOS PRODUITS**
+ **VENDRE VOS PRODUITS**
 
 **Q: Avantages vendeur ?**
-A: 💎 **0% de commission** - Recevez 100% du prix de vente
-   🚫 **Aucun KYC requis** - Plateforme axée sur la confidentialité
-   💰 **Paiements crypto directs** - Contrôle total de vos gains
-   🌍 **Portée internationale** - Vendez partout sans restrictions
+A:  **0% de commission** - Recevez 100% du prix de vente
+    **Aucun KYC requis** - Plateforme axée sur la confidentialité
+    **Paiements crypto directs** - Contrôle total de vos gains
+    **Portée internationale** - Vendez partout sans restrictions
 
 **Q: Comment devenir vendeur ?**
 A: Menu "Vendre" > Compte vendeur > Adresse Solana > Publier
@@ -214,7 +214,7 @@ A: Système de tickets 24/7."""
         else:
             faq_text = """📋 **FAQ - Frequently Asked Questions**
 
-🛒 **BUYING A PRODUCT**
+ **BUYING A PRODUCT**
 
 **Q: How to buy? (Beginner's guide)**
 A: **Step 1:** Menu "Buy" > Browse categories or search by ID
@@ -229,13 +229,13 @@ A: **Step 1:** Menu "Buy" > Browse categories or search by ID
 **Q: Do I need to provide personal data?**
 A: **NO. No KYC required.** Privacy-focused platform.
 
-📚 **SELLING YOUR PRODUCTS**
+ **SELLING YOUR PRODUCTS**
 
 **Q: Seller advantages?**
-A: 💎 **0% commission** - Receive 100% of sale price
-   🚫 **No KYC required** - Privacy-focused platform
-   💰 **Direct crypto payments** - Full control of your earnings
-   🌍 **Global reach** - Sell anywhere without restrictions
+A:  **0% commission** - Receive 100% of sale price
+    **No KYC required** - Privacy-focused platform
+    **Direct crypto payments** - Full control of your earnings
+    **Global reach** - Sell anywhere without restrictions
 
 **Q: How to become a seller?**
 A: Menu "Sell" > Seller account > Solana address > Publish
@@ -250,10 +250,10 @@ A: 24/7 ticket system."""
 
         keyboard = [
             [
-                InlineKeyboardButton("📬 Mes tickets" if lang == 'fr' else "📬 My Tickets", callback_data='my_tickets')
+                InlineKeyboardButton(" Mes tickets" if lang == 'fr' else " My Tickets", callback_data='my_tickets')
             ],
             [
-                InlineKeyboardButton("🎫 Créer un ticket" if lang == 'fr' else "🎫 Create ticket", callback_data='create_ticket')
+                InlineKeyboardButton(" Créer un ticket" if lang == 'fr' else " Create ticket", callback_data='create_ticket')
             ],
             [
                 back_to_main_button(lang)
@@ -281,15 +281,15 @@ A: 24/7 ticket system."""
 
         if not tickets:
             await query.edit_message_text(
-                "📭 Aucun ticket trouvé." if lang == 'fr' else "📭 No tickets found.",
+                " Aucun ticket trouvé." if lang == 'fr' else " No tickets found.",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🎫 Créer un ticket" if lang == 'fr' else "🎫 Create ticket", callback_data='create_ticket'),
+                    InlineKeyboardButton(" Créer un ticket" if lang == 'fr' else " Create ticket", callback_data='create_ticket'),
                     back_to_main_button(lang)
                 ]])
             )
             return
 
-        text = "🎫 Vos tickets:" if lang == 'fr' else "🎫 Your tickets:"
+        text = " Vos tickets:" if lang == 'fr' else " Your tickets:"
         keyboard = []
         for ticket in tickets[:5]:
             text += f"\n• {ticket['ticket_id']} - {ticket['status']}"

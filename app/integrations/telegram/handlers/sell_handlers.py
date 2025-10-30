@@ -162,18 +162,35 @@ class SellHandlers:
         products = self.product_repo.get_products_by_seller(seller_id)
 
         # Calculer revenu réel depuis la table orders (source de vérité)
-        import sqlite3
-        from app.core import get_sqlite_connection
+        import psycopg2
+        import psycopg2.extras
+        from app.core.database_init import get_postgresql_connection
         from app.core import settings as core_settings
-        conn = get_sqlite_connection(core_settings.DATABASE_PATH)
-        cursor = conn.cursor()
+        conn = get_postgresql_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
             SELECT COALESCE(SUM(product_price_eur), 0)
             FROM orders
-            WHERE seller_user_id = ? AND payment_status = 'completed'
+            WHERE seller_user_id = %s AND payment_status = 'completed'
         """, (seller_id,))
         total_revenue = cursor.fetchone()[0]
+
+        # Calculate total storage used (in MB)
+        cursor.execute("""
+            SELECT COALESCE(SUM(file_size_mb), 0)
+            FROM products
+            WHERE seller_user_id = %s
+        """, (seller_id,))
+        storage_used_mb = cursor.fetchone()[0]
         conn.close()
+
+        # Storage limit: 100MB
+        storage_limit_mb = 100
+        storage_percentage = (storage_used_mb / storage_limit_mb) * 100 if storage_limit_mb > 0 else 0
+
+        # Storage indicator
+        storage_bar = "🟩" * int(storage_percentage // 10) + "⬜" * (10 - int(storage_percentage // 10))
+        storage_text = f"\n\n📦 **Stockage:** {storage_used_mb:.1f} / {storage_limit_mb} MB\n{storage_bar} {storage_percentage:.0f}%"
 
         # Message texte simple
         dashboard_text = i18n(lang, 'dashboard_welcome').format(
@@ -181,6 +198,7 @@ class SellHandlers:
             products_count=len(products),
             revenue=f"{total_revenue:.2f}€"
         )
+        dashboard_text += storage_text
 
         # Simplified layout: 6 lignes → 4 lignes (SELLER_WORKFLOW_SPEC)
         keyboard = [
@@ -241,7 +259,7 @@ class SellHandlers:
                         caption="📈 **Revenus des 7 derniers jours**",
                         parse_mode='Markdown'
                     )
-                except Exception as e:
+                except (psycopg2.Error, Exception) as e:
                     logger.error(f"Error generating revenue chart: {e}")
 
             # Générer graphique produits (si données disponibles)
@@ -253,7 +271,7 @@ class SellHandlers:
                         caption="🏆 **Top 5 Produits par Revenus**",
                         parse_mode='Markdown'
                     )
-                except Exception as e:
+                except (psycopg2.Error, Exception) as e:
                     logger.error(f"Error generating products chart: {e}")
 
             # Si pas de données
@@ -271,7 +289,7 @@ class SellHandlers:
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in seller_analytics_visual: {e}")
             await query.message.reply_text(
                 "❌ Erreur lors de la génération des graphiques.\n\n"
@@ -346,7 +364,7 @@ class SellHandlers:
             caption += f"{breadcrumb}\n\n"
             caption += f"{status_icon} **{product['title']}**\n\n"
             caption += f"💰 **{product['price_eur']:.2f} €**  •  {status_text}\n"
-            caption += "─────────────────────\n\n"
+            caption += "────────────────\n\n"
             caption += "📊 **PERFORMANCE**\n"
             caption += f"• **{product.get('sales_count', 0)}** ventes"
 
@@ -472,11 +490,12 @@ class SellHandlers:
         products = self.product_repo.get_products_by_seller(seller_id)
 
         # Calculer ventes et revenu réels depuis la table orders (source de vérité)
-        import sqlite3
-        from app.core import get_sqlite_connection
+        import psycopg2
+import psycopg2.extras
+        from app.core.database_init import get_postgresql_connection
         from app.core import settings as core_settings
         conn = get_sqlite_connection(core_settings.DATABASE_PATH)
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
             SELECT
                 COUNT(*),
@@ -638,7 +657,7 @@ class SellHandlers:
                         solana_address=solana_address
                     )
                     logger.info(f"📧 Email de bienvenue envoyé à {user_state['email']}")
-                except Exception as e:
+                except (psycopg2.Error, Exception) as e:
                     logger.error(f"Erreur envoi email bienvenue: {e}")
                     # Continue même si l'email échoue
 
@@ -669,7 +688,7 @@ class SellHandlers:
                         ]]),
                         parse_mode='Markdown'
                     )
-                except Exception as e:
+                except (psycopg2.Error, Exception) as e:
                     logger.error(f"Timeout sending success message: {e}")
                     await update.message.reply_text("✅ Compte créé ! /start")
             else:
@@ -728,7 +747,7 @@ class SellHandlers:
                 login_time=login_time
             )
             logger.info(f"📧 Email de connexion envoyé à {email}")
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Erreur envoi email connexion: {e}")
             # Continue même si l'email échoue
 
@@ -1025,7 +1044,7 @@ class SellHandlers:
             else:
                 await update.message.reply_text("❌ Erreur lors du traitement de l'image")
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error processing cover image: {e}")
             await update.message.reply_text("❌ Erreur lors du traitement de l'image")
 
@@ -1045,7 +1064,7 @@ class SellHandlers:
                 await update.message.reply_text("❌ Fichier trop volumineux (max 10MB)")
                 return
 
-            # Télécharger et sauvegarder le fichier
+            # Télécharger et sauvegarder le fichier TEMPORAIREMENT
             file_info = await document.get_file()
             filename = await bot.save_uploaded_file(file_info, document.file_name)
 
@@ -1053,8 +1072,7 @@ class SellHandlers:
                 await update.message.reply_text("❌ Erreur lors de la sauvegarde du fichier")
                 return
 
-            # Ajouter le fichier aux données produit
-            product_data['file_path'] = filename
+            # Ajouter le fichier aux données produit (temporaire, sera uploadé sur B2)
             product_data['file_name'] = document.file_name
             product_data['file_size'] = document.file_size
 
@@ -1071,6 +1089,20 @@ class SellHandlers:
                         product_id,
                         product_data
                     )
+
+                # Upload file to Backblaze B2
+                from app.core.file_utils import upload_product_file_to_b2, get_product_file_path
+                local_file_path = get_product_file_path(filename)
+                b2_url = await upload_product_file_to_b2(local_file_path, product_id)
+
+                if b2_url:
+                    # Update product with B2 URL
+                    from app.domain.repositories.product_repo import ProductRepository
+                    product_repo = ProductRepository()
+                    product_repo.update_product_file_url(product_id, b2_url)
+                    logger.info(f"✅ Product file uploaded to B2: {product_id}")
+                else:
+                    logger.warning(f"⚠️ Failed to upload to B2, file kept locally: {product_id}")
 
                 # Succès - réinitialiser l'état et rediriger
                 bot.reset_user_state_preserve_login(telegram_id)
@@ -1090,7 +1122,7 @@ class SellHandlers:
                                 product_price=product_data['price_eur']
                             )
                             logger.info(f"📧 Email premier produit envoyé à {user_data['email']}")
-                except Exception as e:
+                except (psycopg2.Error, Exception) as e:
                     logger.error(f"Erreur envoi email premier produit: {e}")
 
                 success_msg = f"✅ **Produit créé avec succès!**\n\n**ID:** {product_id}\n**Titre:** {product_data['title']}\n**Prix:** {product_data['price_eur']}€"
@@ -1106,7 +1138,7 @@ class SellHandlers:
             else:
                 await update.message.reply_text("❌ Erreur lors de la création du produit")
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error processing file upload: {e}")
             await update.message.reply_text("❌ Erreur lors du traitement du fichier")
 
@@ -1114,7 +1146,7 @@ class SellHandlers:
         """Rename product image directory from temp to final product_id and UPDATE DATABASE"""
         try:
             import shutil
-            from app.core import get_sqlite_connection, settings as core_settings
+            from app.core.database_init import get_postgresql_connection, settings as core_settings
 
             old_dir = os.path.join('data', 'product_images', str(seller_id), temp_product_id)
             new_dir = os.path.join('data', 'product_images', str(seller_id), final_product_id)
@@ -1140,13 +1172,13 @@ class SellHandlers:
                 # 🔧 CRITICAL FIX: Update paths in DATABASE
                 if new_cover_path or new_thumbnail_path:
                     conn = get_sqlite_connection(core_settings.DATABASE_PATH)
-                    cursor = conn.cursor()
+                    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                     try:
                         cursor.execute(
                             '''
                             UPDATE products
-                            SET cover_image_path = ?, thumbnail_path = ?
-                            WHERE product_id = ?
+                            SET cover_image_path = %s, thumbnail_path = %s
+                            WHERE product_id = %s
                             ''',
                             (new_cover_path, new_thumbnail_path, final_product_id)
                         )
@@ -1161,7 +1193,7 @@ class SellHandlers:
                 logger.info(f"✅ Renamed product images: {temp_product_id} -> {final_product_id}")
             else:
                 logger.warning(f"⚠️ Old directory not found: {old_dir}")
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error renaming product images: {e}")
 
     async def process_seller_settings(self, bot, update, message_text: str):
@@ -1206,11 +1238,11 @@ class SellHandlers:
         user_id = query.from_user.id
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 SELECT total_amount_sol, payout_status, created_at
                 FROM seller_payouts
-                WHERE seller_user_id = ?
+                WHERE seller_user_id = %s
                 ORDER BY created_at DESC
                 LIMIT 10
             ''', (user_id,))
@@ -1232,7 +1264,7 @@ class SellHandlers:
                 parse_mode='Markdown'
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Erreur payout history: {e}")
             await query.edit_message_text(
                 "❌ Erreur chargement historique." if lang == 'fr' else "❌ Error loading history.",
@@ -1306,7 +1338,7 @@ class SellHandlers:
                 InlineKeyboardMarkup(keyboard)
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_product_menu: {e}")
             keyboard_error = InlineKeyboardMarkup([[
                 InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
@@ -1372,7 +1404,7 @@ class SellHandlers:
                     keyboard
                 )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in confirm_delete_product: {e}")
             await query.edit_message_text(
                 "❌ Erreur lors de la suppression." if lang == 'fr' else "❌ Deletion error.",
@@ -1439,7 +1471,7 @@ class SellHandlers:
                     ]])
                 )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_product_field: {e}")
             await safe_transition_to_text(
                 query,
@@ -1482,7 +1514,7 @@ class SellHandlers:
                 ]])
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_seller_name: {e}")
             await query.edit_message_text(
                 "❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.",
@@ -1524,7 +1556,7 @@ class SellHandlers:
                 ]])
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_seller_bio: {e}")
             await query.edit_message_text(
                 "❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.",
@@ -1552,7 +1584,7 @@ class SellHandlers:
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='seller_settings')]])
             )
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_seller_email: {e}")
             await query.edit_message_text("❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]]))
 
@@ -1575,7 +1607,7 @@ class SellHandlers:
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='seller_settings')]])
             )
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_solana_address: {e}")
             await query.edit_message_text("❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]]))
 
@@ -1629,7 +1661,7 @@ class SellHandlers:
                 ]])
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_product_price_prompt: {e}")
             await safe_transition_to_text(
                 query,
@@ -1663,7 +1695,7 @@ class SellHandlers:
                 ]])
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_product_title_prompt: {e}")
             await safe_transition_to_text(
                 query,
@@ -1706,7 +1738,7 @@ class SellHandlers:
                     ]])
                 )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in toggle_product_status: {e}")
             await safe_transition_to_text(
                 query,
@@ -1755,7 +1787,7 @@ class SellHandlers:
                 )
                 return False
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Erreur maj titre produit: {e}")
             # CORRECTION: Réinitialiser l'état même en cas d'erreur
             bot.state_manager.reset_state(user_id, keep={'lang'})
@@ -1805,7 +1837,7 @@ class SellHandlers:
         except ValueError as e:
             await update.message.reply_text(i18n(lang, 'err_invalid_price'))
             return False
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Erreur maj prix produit: {e}")
             await update.message.reply_text(i18n(lang, 'err_price_update_error'))
             return False
@@ -1861,7 +1893,7 @@ class SellHandlers:
                 )
                 return False
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Erreur maj description produit: {e}")
             bot.state_manager.reset_state(user_id, keep={'lang'})
             await update.message.reply_text(
@@ -1875,7 +1907,7 @@ class SellHandlers:
         
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
             # Récupérer les tickets liés aux produits du vendeur
             cursor.execute('''
@@ -1890,7 +1922,7 @@ class SellHandlers:
                 FROM tickets t
                 LEFT JOIN users u ON t.creator_user_id = u.user_id
                 LEFT JOIN products p ON t.product_id = p.product_id
-                WHERE p.seller_user_id = ?
+                WHERE p.seller_user_id = %s
                 ORDER BY t.created_at DESC
                 LIMIT 20
             ''', (seller_id,))
@@ -1956,7 +1988,7 @@ class SellHandlers:
                 parse_mode='Markdown'
             )
             
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error showing seller messages: {e}")
             await query.edit_message_text(
                 "❌ Error loading messages." if lang == 'en' else "❌ Erreur de chargement.",

@@ -1,43 +1,45 @@
-import sqlite3
+import psycopg2
+import psycopg2.extras
 from typing import Optional, Dict, List
 
-from app.core import get_sqlite_connection, settings as core_settings
+from app.core.database_init import get_postgresql_connection
 
 
 class SupportTicketRepository:
-    def __init__(self, database_path: Optional[str] = None) -> None:
-        self.database_path = database_path or core_settings.DATABASE_PATH
+    def __init__(self) -> None:
+        pass
 
     def create_ticket(self, user_id: int, ticket_id: str, subject: str, message: str) -> bool:
-        conn = get_sqlite_connection(self.database_path)
-        cursor = conn.cursor()
+        conn = get_postgresql_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
-                'INSERT INTO support_tickets (user_id, ticket_id, subject, message) VALUES (?, ?, ?, ?)',
+                'INSERT INTO support_tickets (user_id, ticket_id, subject, message) VALUES (?, ?, ?, ?)
+                ON CONFLICT DO NOTHING',
                 (user_id, ticket_id, subject, message),
             )
             conn.commit()
             return True
-        except sqlite3.Error:
+        except psycopg2.Error:
             conn.rollback()
             return False
         finally:
             conn.close()
 
     def list_user_tickets(self, user_id: int, limit: int = 10) -> List[Dict]:
-        conn = get_sqlite_connection(self.database_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        conn = get_postgresql_connection()
+        # PostgreSQL uses RealDictCursor
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             # Include tickets where user is creator OR seller (recipient)
             cursor.execute(
                 '''SELECT * FROM support_tickets
-                   WHERE user_id = ? OR seller_user_id = ?
-                   ORDER BY created_at DESC LIMIT ?''',
+                   WHERE user_id = %s OR seller_user_id = %s
+                   ORDER BY created_at DESC LIMIT %s''',
                 (user_id, user_id, limit),
             )
             return [dict(r) for r in cursor.fetchall()]
-        except sqlite3.Error:
+        except psycopg2.Error:
             return []
         finally:
             conn.close()

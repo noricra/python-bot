@@ -79,17 +79,18 @@ class BuyHandlers:
                 badge_line = " | ".join(badges)
                 caption += f"{badge_line}\n\n"
 
+            # Seller bio display (only shown in seller shop view)
+            seller_bio = product.get('seller_bio_display')
+            if seller_bio:
+                caption += f"🏪 <b>{seller}</b>\n"
+                caption += f"<i>{seller_bio}</i>\n\n"
+                caption += "────────────────\n\n"
+
             # Titre (BOLD uniquement)
             caption += f"<b>{title}</b>\n"
 
             # Vendeur (texte normal, pas de bold ni italique)
             caption += f"<i>par {seller}</i>\n\n" if lang == 'fr' else f"<i>by {seller}</i>\n\n"
-
-            # Prix (BOLD uniquement, pas d'emoji)
-            #caption += f"<b>{price:.2f} €</b>\n"
-
-            # Séparateur #1
-            #caption += "────────────────\n"
 
             # Stats avec labels texte complets
             stats_text = f"⭐ {rating:.1f}/5 ({reviews_count})" if lang == 'fr' else f"⭐ {rating:.1f}/5 ({reviews_count})"
@@ -103,12 +104,7 @@ class BuyHandlers:
             # Métadonnées (catégorie + taille)
             caption += f"📂 {category} • 📁 {file_size:.1f} MB"
 
-            
-
-            # Message recherche ID (gardé pour visibilité)
-            #search_hint = "🔍 Vous avez un ID ? Entrez-le" if lang == 'fr' else "🔍 Have an ID ? Enter it directly "
-            #caption += search_hint
-
+        
         elif mode == 'full':
             # V2 REDESIGN: Card Complète (Détails) - Design épuré avec description
 
@@ -138,11 +134,6 @@ class BuyHandlers:
             # Vendeur (texte normal, pas de bold ni italique)
             caption += f"<i>par {seller}</i>\n\n" if lang == 'fr' else f"<i>by {seller}</i>\n\n"
 
-            # Prix (BOLD uniquement, pas d'emoji)
-            #caption += f"<b>{price:.2f} €</b>\n"
-
-            # Séparateur #1
-            #caption += "────────────────\n"
 
             # Stats avec labels texte complets
             stats_text = f"⭐ {rating:.1f}/5 ({reviews_count})" if lang == 'fr' else f"⭐ {rating:.1f}/5 ({reviews_count})"
@@ -157,6 +148,11 @@ class BuyHandlers:
 
             # Métadonnées (catégorie + taille)
             caption += f"📂 {category} • 📁 {file_size:.1f} MB\n"
+
+            # Product ID
+            product_id = product.get('product_id', '')
+            if product_id:
+                caption += f"🔖 ID: <code>{product_id}</code>\n"
 
             # Séparateur #2
             caption += "────────────────\n"
@@ -340,13 +336,21 @@ class BuyHandlers:
                                    callback_data=preview_callback)
             ])
 
-            # Row 3: Réduire (back to carousel - V2 NEW FEATURE)
+            # Row 3: View seller shop
+            seller_user_id = product.get('seller_user_id')
+            if seller_user_id:
+                keyboard.append([
+                    InlineKeyboardButton("🏪 Boutique vendeur" if lang == 'fr' else "🏪 Seller shop",
+                                       callback_data=f'seller_shop_{seller_user_id}')
+                ])
+
+            # Row 4: Réduire (back to carousel - V2 NEW FEATURE)
             if category_key is not None and index is not None:
                 keyboard.append([
                     InlineKeyboardButton("Résumé" if lang == 'fr' else "Summary",
                                        callback_data=f'collapse_{product_id}_{category_key}_{index}')
                 ])
-                # Row 4: Précédent (back to carousel with context)
+                # Row 5: Précédent (back to carousel with context)
                 keyboard.append([
                     InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                        callback_data=f'carousel_{category_key}_{index}')
@@ -395,7 +399,7 @@ class BuyHandlers:
         # V2: Load first category and show carousel immediately
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Get first category (ordered by products_count DESC = most popular)
             cursor.execute('SELECT name FROM categories ORDER BY products_count DESC LIMIT 1')
@@ -426,7 +430,7 @@ class BuyHandlers:
 
                 keyboard = InlineKeyboardMarkup([
                     [InlineKeyboardButton(
-                        "🏪 Devenir vendeur" if lang == 'fr' else "🏪 Become a seller",
+                        " Devenir vendeur" if lang == 'fr' else " Become a seller",
                         callback_data='sell_menu'
                     )],
                     [InlineKeyboardButton(
@@ -440,7 +444,7 @@ class BuyHandlers:
                     reply_markup=keyboard,
                     parse_mode='Markdown'
                 )
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in buy_menu V2: {e}")
             await query.edit_message_text(
                 "❌ Error loading products" if lang == 'en' else "❌ Erreur chargement produits",
@@ -510,6 +514,7 @@ class BuyHandlers:
     def _build_crypto_selection_text(self, title: str, price_eur: float, lang: str = 'fr') -> str:
         """
         Génère le texte de sélection crypto avec prix et frais détaillés (Format HTML)
+        Utilise settings.CRYPTO_DISPLAY_INFO pour centraliser les infos crypto
 
         Args:
             title: Titre du produit
@@ -519,12 +524,29 @@ class BuyHandlers:
         Returns:
             Texte formaté pour la sélection crypto (HTML)
         """
+        from app.core.settings import settings
+
         # Calcul des frais (2.78% de frais NowPayments)
         fees = round(price_eur * 0.0278, 2)
         total = round(price_eur + fees, 2)
 
+        # Construire la liste des cryptos depuis settings.CRYPTO_DISPLAY_INFO
+        crypto_lines = []
+        priority_order = ['btc', 'eth', 'sol', 'usdc', 'usdt']  # Ordre d'affichage
+
+        for crypto_code in priority_order:
+            if crypto_code in settings.CRYPTO_DISPLAY_INFO:
+                display_name, time_info = settings.CRYPTO_DISPLAY_INFO[crypto_code]
+                # Extraire le nom sans emoji et le temps
+                name_clean = display_name.split()[1] if ' ' in display_name else display_name
+                time_clean = time_info.replace('⚡ ', '')
+
+                crypto_lines.append(f"<b>{name_clean}</b> - {time_clean}")
+
+        crypto_list_text = '\n'.join(crypto_lines)
+
         if lang == 'fr':
-            return f"""💳 <b>CHOISISSEZ VOTRE CRYPTO</b>
+            return f""" <b>CHOISISSEZ VOTRE CRYPTO</b>
 
 <b>{title}</b>
 
@@ -535,11 +557,7 @@ class BuyHandlers:
 
 <b>Délais de confirmation :</b>
 
-<b>Bitcoin (BTC)</b> - ~30min
-<b>Ethereum (ETH)</b> - ~5min
-<b>Solana (SOL)</b> - ~1min
-<b>USDC</b> - ~5min
-<b>USDT</b> - ~5min
+{crypto_list_text}
 
 ────────────────
 💡 <b>Recommandé : Solana</b> (le plus rapide)"""
@@ -555,11 +573,7 @@ class BuyHandlers:
 
 <b>Time for confirmation:</b>
 
-<b>Bitcoin (BTC)</b> - ~30min
-<b>Ethereum (ETH)</b> - ~5min
-<b>Solana (SOL)</b> - ~1min
-<b>USDC</b> - ~5min
-<b>USDT</b> - ~5min
+{crypto_list_text}
 
 ────────────────
 💡 <b>Recommended: Solana</b> (fastest)"""
@@ -797,7 +811,7 @@ Contact support with your Order ID"""
             # Transition from photo message (details page) to text
             await safe_transition_to_text(query, text, InlineKeyboardMarkup(keyboard))
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error showing product reviews: {e}")
             import traceback
             logger.error(traceback.format_exc())
@@ -825,10 +839,10 @@ Contact support with your Order ID"""
         try:
             # Get all products in category
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 SELECT * FROM products
-                WHERE category = ? AND status = 'active'
+                WHERE category = %s AND status = 'active'
                 ORDER BY created_at DESC
             ''', (category_key,))
 
@@ -848,7 +862,7 @@ Contact support with your Order ID"""
             # Show carousel at saved index
             await self.show_product_carousel(bot, query, category_key, products, index, lang)
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error collapsing details: {e}")
             await safe_transition_to_text(
                 query,
@@ -873,7 +887,7 @@ Contact support with your Order ID"""
             # Show first product of target category
             await self.show_category_products(bot, query, target_category, lang, page=0)
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error navigating categories: {e}")
             await safe_transition_to_text(
                 query,
@@ -904,7 +918,7 @@ Contact support with your Order ID"""
         def build_keyboard(product, index, total, lang):
             # Get all categories for navigation
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('SELECT name FROM categories ORDER BY products_count DESC')
             all_categories = [row[0] for row in cursor.fetchall()]
             conn.close()
@@ -964,7 +978,7 @@ Contact support with your Order ID"""
             # Launch carousel mode starting at index 0
             await self.show_product_carousel(bot, query, category_key, products, index=0, lang=lang)
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error showing category products: {e}")
             # Use user-friendly error message
             error_data = get_error_message('product_load_error', lang)
@@ -1063,7 +1077,7 @@ Contact support with your Order ID"""
                     reply_markup=keyboard_markup,
                     parse_mode='HTML'
                 )
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error displaying product details V2: {e}")
             # Final fallback
             await query.edit_message_text(
@@ -1294,17 +1308,17 @@ Contact support with your Order ID"""
                 await query.message.reply_text("🔍 Vérification en cours...")
             else:
                 await query.edit_message_text("🔍 Vérification en cours...")
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error updating message: {e}")
             # Fallback: send new message
             await query.message.reply_text("🔍 Vérification en cours...")
 
         conn = bot.get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
-            cursor.execute('SELECT * FROM orders WHERE order_id = ?', (order_id, ))
+            cursor.execute('SELECT * FROM orders WHERE order_id = %s', (order_id, ))
             order = cursor.fetchone()
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             conn.close()
             return
 
@@ -1350,28 +1364,28 @@ Contact support with your Order ID"""
                         SET payment_status = 'completed',
                             completed_at = CURRENT_TIMESTAMP,
                             file_delivered = TRUE
-                        WHERE order_id = ?
+                        WHERE order_id = %s
                     ''', (order_id, ))
 
                     cursor.execute(
                         '''
                         UPDATE products
                         SET sales_count = sales_count + 1
-                        WHERE product_id = ?
+                        WHERE product_id = %s
                     ''', (order[3], ))
 
                     cursor.execute(
                         '''
                         UPDATE users
                         SET total_sales = total_sales + 1,
-                            total_revenue = total_revenue + ?
-                        WHERE user_id = ?
+                            total_revenue = total_revenue + %s
+                        WHERE user_id = %s
                     ''', (order[7], order[4]))
 
                     # Partner commission removed - referral system deleted
 
                     conn.commit()
-                except Exception as e:
+                except (psycopg2.Error, Exception) as e:
                     conn.rollback()
                     conn.close()
                     return
@@ -1381,7 +1395,7 @@ Contact support with your Order ID"""
                 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 try:
                     # Get product data and buyer info for notification
-                    cursor.execute('SELECT * FROM products WHERE product_id = ?', (order[3],))
+                    cursor.execute('SELECT * FROM products WHERE product_id = %s', (order[3],))
                     product_row = cursor.fetchone()
 
                     if product_row:
@@ -1410,7 +1424,7 @@ Contact support with your Order ID"""
 
                 try:
                     payout_created = await bot.auto_create_seller_payout(order_id)
-                except Exception as e:
+                except (psycopg2.Error, Exception) as e:
                     payout_created = False
 
                 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1419,21 +1433,19 @@ Contact support with your Order ID"""
                 file_sent = False
                 try:
                     # Check if file was already delivered (by IPN webhook)
-                    cursor.execute('SELECT file_delivered FROM orders WHERE order_id = ?', (order_id,))
+                    cursor.execute('SELECT file_delivered FROM orders WHERE order_id = %s', (order_id,))
                     already_delivered = cursor.fetchone()
 
                     if already_delivered and already_delivered[0]:
                         logger.info(f"File already delivered for order {order_id} (likely by IPN webhook)")
                         file_sent = True  # Mark as sent so we show correct message
                     else:
-                        # Get product file path
-                        cursor.execute('SELECT title, main_file_path FROM products WHERE product_id = ?', (order[3],))
+                        # Get product file URL (from B2)
+                        cursor.execute('SELECT title, main_file_url FROM products WHERE product_id = %s', (order[3],))
                         product_file = cursor.fetchone()
 
                         if product_file and product_file[1]:
-                            product_title, file_path = product_file
-                            from app.core.file_utils import get_product_file_path
-                            full_file_path = get_product_file_path(file_path)
+                            product_title, file_url = product_file
 
                             # Send success message first
                             success_text = f"""🎉 **FÉLICITATIONS !**
@@ -1445,28 +1457,44 @@ Contact support with your Order ID"""
 
                             await self._safe_edit_message(query, success_text, None)
 
-                            # Send the file
+                            # Download file from B2 and send it
                             try:
-                                with open(full_file_path, 'rb') as file:
-                                    await query.message.reply_document(
-                                        document=file,
-                                        caption=f"📚 **{product_title}**\n\n✅ Téléchargement réussi !\n\n💡 Conservez ce fichier précieusement.",
-                                        parse_mode='Markdown'
-                                    )
-                                    file_sent = True
+                                from app.core.file_utils import download_product_file_from_b2
 
-                                    # Mark as delivered and update download count
-                                    cursor.execute('''UPDATE orders
-                                                     SET file_delivered = TRUE,
-                                                         download_count = download_count + 1
-                                                     WHERE order_id = ?''', (order_id,))
-                                    conn.commit()
+                                # Download from B2 to temp location
+                                local_path = await download_product_file_from_b2(file_url, order[3])
 
-                                    logger.info(f"✅ Formation sent via manual check to user {query.from_user.id} for order {order_id}")
+                                if local_path and os.path.exists(local_path):
+                                    # Send the file
+                                    with open(local_path, 'rb') as file:
+                                        await query.message.reply_document(
+                                            document=file,
+                                            caption=f"📚 **{product_title}**\n\n✅ Téléchargement réussi !\n\n💡 Conservez ce fichier précieusement.",
+                                            parse_mode='Markdown'
+                                        )
+                                        file_sent = True
+
+                                        # Mark as delivered and update download count
+                                        cursor.execute('''UPDATE orders
+                                                         SET file_delivered = TRUE,
+                                                             download_count = download_count + 1
+                                                         WHERE order_id = %s''', (order_id,))
+                                        conn.commit()
+
+                                        logger.info(f"✅ Formation sent via manual check to user {query.from_user.id} for order {order_id}")
+
+                                    # Clean up temp file
+                                    try:
+                                        os.remove(local_path)
+                                        logger.info(f"🗑️ Temp file cleaned up: {local_path}")
+                                    except Exception as cleanup_error:
+                                        logger.warning(f"⚠️ Could not clean up temp file: {cleanup_error}")
+                                else:
+                                    logger.error(f"❌ Failed to download file from B2: {file_url}")
                             except FileNotFoundError:
-                                logger.error(f"File not found: {full_file_path}")
+                                logger.error(f"File not found after B2 download")
                             except Exception as file_error:
-                                logger.error(f"Error sending file: {file_error}")
+                                logger.error(f"Error downloading/sending file from B2: {file_error}")
                 except Exception as delivery_error:
                     logger.error(f"Error in automatic file delivery: {delivery_error}")
                 finally:
@@ -1646,7 +1674,7 @@ Contact support with your Order ID"""
             # Gérer transition depuis carousel (message avec photo) - HTML pour bold
             await safe_transition_to_text(query, text, InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error buying product: {e}")
             keyboard_error = InlineKeyboardMarkup([[
                 InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='back_main')
@@ -1703,11 +1731,11 @@ Contact support with your Order ID"""
                 return
 
             # Store order in database
-            from app.core import get_sqlite_connection
+            from app.core.database_init import get_postgresql_connection
             from app.core.settings import settings
 
             conn = get_sqlite_connection(settings.DATABASE_PATH)
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 INSERT INTO orders (order_id, buyer_user_id, seller_user_id, product_id,
                                   product_title, product_price_eur, payment_id, payment_currency,
@@ -1744,7 +1772,7 @@ Contact support with your Order ID"""
             # Display comprehensive payment info with QR code
             await self._display_payment_details(query, payment_data, title, price_eur, price_usd, order_id, product_id, crypto_code, lang)
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error processing crypto payment: {e}")
             await query.edit_message_text(
                 i18n(lang, 'err_payment_creation'),
@@ -1831,7 +1859,7 @@ Contact support with your Order ID"""
                                 media_preview_sent = True
                             else:
                                 logger.warning(f"[PDF Preview] PDF has no pages")
-                        except Exception as e:
+                        except (psycopg2.Error, Exception) as e:
                             logger.error(f"[PDF Preview] Error: {e}")
 
                     # ═══════════════════════════════════════
@@ -1884,7 +1912,7 @@ Contact support with your Order ID"""
                                 media_preview_sent = True
                             else:
                                 logger.warning(f"[Video Preview] Thumbnail not generated")
-                        except Exception as e:
+                        except (psycopg2.Error, Exception) as e:
                             logger.error(f"[Video Preview] Error: {e}")
 
                     # ═══════════════════════════════════════
@@ -1921,11 +1949,11 @@ Contact support with your Order ID"""
                             # Send archive preview (no text - archive previews will just show buttons)
                             logger.info(f"[Archive Preview] Preview sent successfully!")
                             media_preview_sent = True
-                        except Exception as e:
+                        except (psycopg2.Error, Exception) as e:
                             logger.error(f"[Archive Preview] Error: {e}")
                 else:
                     logger.warning(f"[Preview] File does not exist: {full_path}")
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"[Preview] General error: {e}")
 
         # Delete message if no media preview was sent
@@ -1967,14 +1995,15 @@ Contact support with your Order ID"""
 
             # Create mock order in database
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Insert order
             order_id = f"ord_{user_id}_{product_id}_{int(datetime.now().timestamp())}"
             cursor.execute('''
-                INSERT OR REPLACE INTO orders
+                INSERT INTO orders
                 (order_id, buyer_user_id, product_id, payment_status, created_at)
                 VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT DO NOTHING
             ''', (order_id, user_id, product_id, 'completed', datetime.now().isoformat()))
 
             conn.commit()
@@ -1996,7 +2025,7 @@ Contact support with your Order ID"""
                 parse_mode='Markdown'
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error marking as paid: {e}")
             await query.edit_message_text(
                 "❌ Erreur lors de la confirmation du paiement." if lang == 'fr' else "❌ Payment confirmation error.",
@@ -2071,7 +2100,7 @@ Contact support with your Order ID"""
 
                     return
 
-                except Exception as e:
+                except (psycopg2.Error, Exception) as e:
                     logger.error(f"Error sending QR code: {e}")
                     # Fall back to text-only message
 
@@ -2082,7 +2111,7 @@ Contact support with your Order ID"""
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error displaying payment details: {e}")
             # Basic fallback message
             await query.edit_message_text(
@@ -2101,10 +2130,71 @@ Contact support with your Order ID"""
                 await query.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
             else:
                 await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in _safe_edit_message: {e}")
             # Fallback: send new message
             try:
                 await query.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
             except Exception as fallback_error:
                 logger.error(f"Fallback message failed: {fallback_error}")
+
+    async def show_seller_shop(self, bot, query, seller_user_id: int, lang: str = 'fr') -> None:
+        """
+        Show all products from a specific seller in a carousel view
+
+        Args:
+            bot: Bot instance
+            query: CallbackQuery
+            seller_user_id: Seller's user ID
+            lang: Language code
+        """
+        from app.domain.repositories.user_repo import UserRepository
+
+        # Get seller info
+        user_repo = UserRepository()
+        seller = user_repo.get_user(seller_user_id)
+
+        if not seller:
+            await query.edit_message_text(
+                "❌ Vendeur introuvable" if lang == 'fr' else "❌ Seller not found",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Retour" if lang == 'fr' else "Back", callback_data='back_main')
+                ]])
+            )
+            return
+
+        # Get all products from this seller
+        products = self.product_repo.get_products_by_seller(seller_user_id)
+        active_products = [p for p in products if p.get('status') == 'active']
+
+        if not active_products:
+            seller_name = seller.get('seller_name', 'Ce vendeur')
+            await query.edit_message_text(
+                f"🏪 **{seller_name}**\n\n❌ Aucun produit disponible actuellement" if lang == 'fr'
+                else f"🏪 **{seller_name}**\n\n❌ No products available currently",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Retour" if lang == 'fr' else "Back", callback_data='back_main')
+                ]]),
+                parse_mode='Markdown'
+            )
+            return
+
+        # Show first product in seller's shop using carousel
+        # Create a pseudo-category for the seller's shop
+        seller_category = f"seller_{seller_user_id}"
+
+        # Add seller bio to caption if available
+        seller_bio = seller.get('seller_bio')
+        if seller_bio:
+            # Prepend seller bio to the first product
+            active_products[0]['seller_bio_display'] = seller_bio
+
+        # Display seller's products in carousel
+        await self.show_product_carousel(
+            bot=bot,
+            query=query,
+            category_key=seller_category,
+            products=active_products,
+            index=0,
+            lang=lang
+        )

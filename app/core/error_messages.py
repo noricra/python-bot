@@ -66,16 +66,16 @@ ERROR_TEMPLATES = {
             'buttons': ['check_status', 'support']
         },
 
-        'insufficient_balance': {
-            'title': '💰 SOLDE INSUFFISANT',
-            'message': 'Votre portefeuille n\'a pas assez de fonds pour cette transaction.',
+        'payment_failed': {
+            'title': '❌ PAIEMENT ÉCHOUÉ',
+            'message': 'Le paiement n\'a pas pu être traité.',
             'actions': [
                 '💡 QUE FAIRE ?',
-                '• Recharger votre portefeuille crypto',
-                '• Vérifier l\'adresse de destination',
-                '• Prendre en compte les frais de réseau'
+                '• Vérifier que vous avez suffisamment de fonds',
+                '• Essayer avec une autre méthode de paiement',
+                '• Contacter le support si le problème persiste'
             ],
-            'buttons': ['retry', 'help']
+            'buttons': ['retry', 'support']
         },
 
         # File/Download errors
@@ -228,16 +228,16 @@ ERROR_TEMPLATES = {
             'buttons': ['check_status', 'support']
         },
 
-        'insufficient_balance': {
-            'title': '💰 INSUFFICIENT BALANCE',
-            'message': 'Your wallet does not have enough funds for this transaction.',
+        'payment_failed': {
+            'title': '❌ PAYMENT FAILED',
+            'message': 'The payment could not be processed.',
             'actions': [
                 '💡 WHAT TO DO?',
-                '• Reload your crypto wallet',
-                '• Verify the destination address',
-                '• Account for network fees'
+                '• Verify you have sufficient funds',
+                '• Try with another payment method',
+                '• Contact support if the issue persists'
             ],
-            'buttons': ['retry', 'help']
+            'buttons': ['retry', 'support']
         },
 
         # File/Download errors

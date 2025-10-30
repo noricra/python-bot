@@ -102,7 +102,7 @@ class LibraryHandlers:
                 "❌ Error loading library." if lang == 'en' else "❌ Erreur de chargement de la bibliothèque.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
-                        "🏠 Home" if lang == 'en' else "🏠 Accueil",
+                        " Home" if lang == 'en' else " Accueil",
                         callback_data='back_main'
                     )
                 ]])
@@ -141,7 +141,7 @@ class LibraryHandlers:
             # Row 1: Download
             keyboard.append([
                 InlineKeyboardButton(
-                    "📥 Télécharger" if lang == 'fr' else "📥 Download",
+                    " Télécharger" if lang == 'fr' else " Download",
                     callback_data=f'download_product_{product["product_id"]}'
                 )
             ])
@@ -158,11 +158,11 @@ class LibraryHandlers:
             # Row 3: Review + Contact
             keyboard.append([
                 InlineKeyboardButton(
-                    "⭐ Laisser un avis" if lang == 'fr' else "⭐ Leave a review",
+                    " Laisser un avis" if lang == 'fr' else " Leave a review",
                     callback_data=f'review_product_{product["product_id"]}'
                 ),
                 InlineKeyboardButton(
-                    "💬 Contacter vendeur" if lang == 'fr' else "💬 Contact seller",
+                    " Contacter vendeur" if lang == 'fr' else " Contact seller",
                     callback_data=f'contact_seller_{product["product_id"]}'
                 )
             ])
@@ -215,7 +215,7 @@ class LibraryHandlers:
                     "❌ Product not purchased or not found." if lang == 'en' else "❌ Produit non acheté ou introuvable.",
                     InlineKeyboardMarkup([[
                         InlineKeyboardButton(
-                            "📚 My Library" if lang == 'en' else "📚 Ma Bibliothèque",
+                            " My Library" if lang == 'en' else " Ma Bibliothèque",
                             callback_data='library_menu'
                         )
                     ]])
@@ -245,11 +245,11 @@ class LibraryHandlers:
                     "❌ File not found on server. Contact support." if lang == 'en' else "❌ Fichier introuvable sur le serveur. Contactez le support.",
                     InlineKeyboardMarkup([[
                         InlineKeyboardButton(
-                            "💬 Support" if lang == 'en' else "💬 Support",
+                            " Support" if lang == 'en' else " Support",
                             callback_data='support_menu'
                         ),
                         InlineKeyboardButton(
-                            "🔙 Back" if lang == 'en' else "🔙 Retour",
+                            " Back" if lang == 'en' else " Retour",
                             callback_data='library_menu'
                         )
                     ]])
@@ -260,7 +260,7 @@ class LibraryHandlers:
             try:
                 await safe_transition_to_text(
                     query,
-                    "📥 Preparing download..." if lang == 'en' else "📥 Préparation du téléchargement..."
+                    " Preparing download..." if lang == 'en' else " Préparation du téléchargement..."
                 )
             except:
                 pass
@@ -279,7 +279,7 @@ class LibraryHandlers:
                 "✅ Téléchargement terminé !" if lang == 'fr' else "✅ Download complete!",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
-                        "📚 Retour à ma bibliothèque" if lang == 'fr' else "📚 Back to my library",
+                        " Retour à ma bibliothèque" if lang == 'fr' else " Back to my library",
                         callback_data='library_menu'
                     )
                 ]])
@@ -390,7 +390,7 @@ class LibraryHandlers:
                 "❌ Error saving rating." if lang == 'en' else "❌ Erreur d'enregistrement.",
                 InlineKeyboardMarkup([[
                     InlineKeyboardButton(
-                        "🔙 Back" if lang == 'en' else "🔙 Retour",
+                        " Back" if lang == 'en' else " Retour",
                         callback_data='library_menu'
                     )
                 ]])
@@ -536,11 +536,11 @@ class LibraryHandlers:
                 "✅ **Review published!**\n\nThank you for your feedback!" if lang == 'en' else "✅ **Avis publié !**\n\nMerci pour votre retour !",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
-                        "📦 View Product" if lang == 'en' else "📦 Voir Produit",
+                        " View Product" if lang == 'en' else " Voir Produit",
                         callback_data='library_menu'
                     ),
                     InlineKeyboardButton(
-                        "📚 My Library" if lang == 'en' else "📚 Ma Bibliothèque",
+                        " My Library" if lang == 'en' else " Ma Bibliothèque",
                         callback_data='library_menu'
                     )
                 ]]),
@@ -581,7 +581,7 @@ class LibraryHandlers:
                     "❌ Product not found." if lang == 'en' else "❌ Produit introuvable.",
                     InlineKeyboardMarkup([[
                         InlineKeyboardButton(
-                            "🔙 Back" if lang == 'en' else "🔙 Retour",
+                            " Back" if lang == 'en' else " Retour",
                             callback_data='library_menu'
                         )
                     ]])
@@ -593,12 +593,12 @@ class LibraryHandlers:
             safe_title = escape_markdown(product_title or "Product")
 
             text = (
-                f"💬 **CONTACT SELLER**\n\n"
+                f" **CONTACT SELLER**\n\n"
                 f"**Seller:** {safe_seller}\n"
                 f"**Product:** {safe_title}\n\n"
                 "Click the button below to open a private chat with the seller."
                 if lang == 'en' else
-                f"💬 **CONTACTER LE VENDEUR**\n\n"
+                f" **CONTACTER LE VENDEUR**\n\n"
                 f"**Vendeur:** {safe_seller}\n"
                 f"**Produit:** {safe_title}\n\n"
                 "Cliquez sur le bouton ci-dessous pour ouvrir un chat privé avec le vendeur."
@@ -633,7 +633,7 @@ class LibraryHandlers:
                 "❌ Error." if lang == 'en' else "❌ Erreur.",
                 InlineKeyboardMarkup([[
                     InlineKeyboardButton(
-                        "🔙 Back" if lang == 'en' else "🔙 Retour",
+                        " Back" if lang == 'en' else " Retour",
                         callback_data='library_menu'
                     )
                 ]])

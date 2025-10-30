@@ -1,10 +1,11 @@
 """
 Seller Service - Business logic for seller account management
 """
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import logging
 from typing import Dict, Any, Optional
-from app.core import get_sqlite_connection
+from app.core.database_init import get_postgresql_connection
 from app.core.validation import validate_solana_address
 
 logger = logging.getLogger(__name__)
@@ -55,8 +56,8 @@ class SellerService:
 
             # Check if email belongs to a suspended user
             conn = get_sqlite_connection(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('SELECT user_id, seller_name FROM users WHERE email = ? AND seller_name LIKE "[SUSPENDED]%"', (email,))
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute('SELECT user_id, seller_name FROM users WHERE email = %s AND seller_name LIKE "[SUSPENDED]%"', (email,))
             suspended_user = cursor.fetchone()
 
             if suspended_user:
@@ -65,7 +66,7 @@ class SellerService:
                 return {'success': False, 'error': 'Cet email appartient à un compte suspendu. Contactez le support.'}
 
             # Check if email already in use by another seller
-            cursor.execute('SELECT user_id FROM users WHERE email = ? AND user_id != ?', (email, user_id))
+            cursor.execute('SELECT user_id FROM users WHERE email = %s AND user_id != %s', (email, user_id))
             existing_email = cursor.fetchone()
             if existing_email:
                 conn.close()
@@ -79,14 +80,14 @@ class SellerService:
                 cursor.execute('''
                     UPDATE users
                     SET is_seller = TRUE,
-                        seller_name = ?,
+                        seller_name = %s,
                         seller_bio = NULL,
-                        email = ?,
-                        seller_solana_address = ?,
+                        email = %s,
+                        seller_solana_address = %s,
                         password_salt = NULL,
                         password_hash = NULL,
                         recovery_code_hash = NULL
-                    WHERE user_id = ?
+                    WHERE user_id = %s
                 ''', (seller_name, email, solana_address, user_id))
 
                 if cursor.rowcount > 0:
@@ -98,12 +99,12 @@ class SellerService:
                     conn.close()
                     return {'success': False, 'error': 'Échec mise à jour'}
 
-            except sqlite3.Error as e:
+            except psycopg2.Error as e:
                 logger.error(f"❌ Database error creating simplified seller: {e}")
                 conn.close()
                 return {'success': False, 'error': 'Erreur interne'}
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error creating simplified seller account: {e}")
             return {'success': False, 'error': str(e)}
 
@@ -135,8 +136,8 @@ class SellerService:
 
             # Check if email belongs to a suspended user
             conn = get_sqlite_connection(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('SELECT user_id, seller_name FROM users WHERE email = ? AND seller_name LIKE "[SUSPENDED]%"', (email,))
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute('SELECT user_id, seller_name FROM users WHERE email = %s AND seller_name LIKE "[SUSPENDED]%"', (email,))
             suspended_user = cursor.fetchone()
 
             if suspended_user:
@@ -151,7 +152,7 @@ class SellerService:
             pwd_hash = hash_password(raw_password, salt)
 
             conn = get_sqlite_connection(self.db_path)
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             try:
                 # Ensure user exists in database
@@ -172,12 +173,12 @@ class SellerService:
                     conn.close()
                     return {'success': False, 'error': 'Échec mise à jour'}
 
-            except sqlite3.Error as e:
+            except psycopg2.Error as e:
                 logger.error(f"❌ Database error creating seller: {e}")
                 conn.close()
                 return {'success': False, 'error': 'Erreur interne'}
 
-        except Exception as e:
+        except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error creating seller account: {e}")
             return {'success': False, 'error': str(e)}
 
@@ -192,9 +193,10 @@ class SellerService:
                 cursor.execute('''
                     INSERT INTO users (user_id, username, first_name, language_code)
                     VALUES (?, ?, ?, ?)
+                ON CONFLICT DO NOTHING
                 ''', (user_id, f'user_{user_id}', 'Unknown', 'fr'))
                 logger.debug(f"✅ Created base user record for {user_id}")
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"❌ Error ensuring user exists: {e}")
             raise
 
@@ -206,18 +208,18 @@ class SellerService:
             cursor.execute('''
                 UPDATE users
                 SET is_seller = TRUE,
-                    seller_name = ?,
-                    seller_bio = ?,
-                    email = ?,
-                    seller_solana_address = ?,
+                    seller_name = %s,
+                    seller_bio = %s,
+                    email = %s,
+                    seller_solana_address = %s,
                     recovery_code_hash = NULL,
-                    password_salt = ?,
-                    password_hash = ?
-                WHERE user_id = ?
+                    password_salt = %s,
+                    password_hash = %s
+                WHERE user_id = %s
             ''', (seller_name, seller_bio, email, solana_address, salt, pwd_hash, user_id))
 
             return cursor.rowcount > 0
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"❌ Error updating user as seller: {e}")
             raise
 
@@ -231,12 +233,12 @@ class SellerService:
         """
         try:
             conn = get_sqlite_connection(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('SELECT is_seller FROM users WHERE user_id = ?', (user_id,))
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute('SELECT is_seller FROM users WHERE user_id = %s', (user_id,))
             row = cursor.fetchone()
             conn.close()
             return bool(row and row[0])
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"❌ Error authenticating seller: {e}")
             return False
 
@@ -244,8 +246,8 @@ class SellerService:
         """Validate seller password"""
         try:
             conn = get_sqlite_connection(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('SELECT password_salt, password_hash, is_seller FROM users WHERE user_id = ?', (user_id,))
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute('SELECT password_salt, password_hash, is_seller FROM users WHERE user_id = %s', (user_id,))
             row = cursor.fetchone()
             conn.close()
 
@@ -260,7 +262,7 @@ class SellerService:
             computed_hash = hash_password(password, stored_salt)
             return computed_hash == stored_hash
 
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"❌ Error validating seller password: {e}")
             return False
 
@@ -268,21 +270,21 @@ class SellerService:
         """Get seller information"""
         try:
             conn = get_sqlite_connection(self.db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+            # PostgreSQL uses RealDictCursor
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('''
                 SELECT seller_name, seller_bio,
                        seller_rating, total_sales, total_revenue, email
                 FROM users
-                WHERE user_id = ? AND is_seller = TRUE
+                WHERE user_id = %s AND is_seller = TRUE
             ''', (user_id,))
 
             row = cursor.fetchone()
             conn.close()
 
-            return dict(row) if row else None
-        except sqlite3.Error as e:
+            return row if row else None
+        except psycopg2.Error as e:
             logger.error(f"❌ Error getting seller info: {e}")
             return None
 
