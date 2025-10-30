@@ -1,3 +1,14 @@
+"""
+Payout Service - Business logic for payout operations
+
+NOTE: La plupart des méthodes sont des wrappers directs vers PayoutRepository.
+Ceci est intentionnel pour :
+1. Cohérence architecture (tous handlers utilisent Services, pas Repos directement)
+2. Future extensibilité (validation, logging, caching peuvent être ajoutés ici)
+3. Isolation couche données (si on change DB/ORM, seuls repos changent)
+
+Seule méthode avec logique business réelle: mark_all_payouts_paid()
+"""
 from typing import Optional, List, Tuple
 
 from app.domain.repositories.payout_repo import PayoutRepository
