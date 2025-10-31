@@ -9,6 +9,8 @@ import time
 from typing import Optional, Dict, List
 from datetime import datetime
 from io import BytesIO
+import psycopg2
+import psycopg2.extras
 
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -38,9 +40,9 @@ class BuyHandlers:
             return f"{num/1000:.1f}k"
         return str(num)
 
-    def _build_buy_button_label(self, price_eur: float, lang: str = 'fr') -> str:
+    def _build_buy_button_label(self, price_usd: float, lang: str = 'fr') -> str:
         """Génère le label du bouton buy (réutilisable partout)"""
-        return f"💳 ACHETER - {price_eur}€ 💳" if lang == 'fr' else f"💳 BUY - {price_eur}€ 💳"
+        return f"💳 ACHETER - ${price_usd:.2f} 💳 💳" if lang == 'fr' else f"💳 BUY - ${price_usd:.2f} 💳 💳"
 
     def _build_product_caption(self, product: Dict, mode: str = 'short', lang: str = 'fr') -> str:
         """
@@ -61,7 +63,7 @@ class BuyHandlers:
 
             category = product.get('category', 'Produits')
             title = product['title']
-            price = product['price_eur']
+            price = product['price_usd']
             seller = product.get('seller_name', 'Vendeur')
             rating = product.get('rating', 0)
             reviews_count = product.get('reviews_count', 0)
@@ -110,7 +112,7 @@ class BuyHandlers:
 
             category = product.get('category', 'Produits')
             title = product['title']
-            price = product['price_eur']
+            price = product['price_usd']
             seller = product.get('seller_name', 'Vendeur')
             rating = product.get('rating', 0)
             reviews_count = product.get('reviews_count', 0)
@@ -236,7 +238,7 @@ class BuyHandlers:
             buy_callback = f'buy_product_{product_id}'
 
         # Utiliser la fonction helper réutilisable
-        buy_label = self._build_buy_button_label(product['price_eur'], lang)
+        buy_label = self._build_buy_button_label(product['price_usd'], lang)
 
         keyboard.append([
             InlineKeyboardButton(buy_label, callback_data=buy_callback)
@@ -511,14 +513,14 @@ class BuyHandlers:
     # PAYMENT TEXT BUILDERS (Centralized & Modifiable)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    def _build_crypto_selection_text(self, title: str, price_eur: float, lang: str = 'fr') -> str:
+    def _build_crypto_selection_text(self, title: str, price_usd: float, lang: str = 'fr') -> str:
         """
         Génère le texte de sélection crypto avec prix et frais détaillés (Format HTML)
         Utilise settings.CRYPTO_DISPLAY_INFO pour centraliser les infos crypto
 
         Args:
             title: Titre du produit
-            price_eur: Prix en euros
+            price_usd: Prix en euros
             lang: Langue (fr/en)
 
         Returns:
@@ -527,8 +529,8 @@ class BuyHandlers:
         from app.core.settings import settings
 
         # Calcul des frais (2.78% de frais NowPayments)
-        fees = round(price_eur * 0.0278, 2)
-        total = round(price_eur + fees, 2)
+        fees = round(price_usd * 0.0278, 2)
+        total = round(price_usd + fees, 2)
 
         # Construire la liste des cryptos depuis settings.CRYPTO_DISPLAY_INFO
         crypto_lines = []
@@ -550,7 +552,7 @@ class BuyHandlers:
 
 <b>{title}</b>
 
-<b>Prix :</b> {price_eur}€
+<b>Prix :</b> {price_usd}
 <b>Frais de gestion :</b> {fees}€
 ────────────────
 <b>Total :</b> {total}€
@@ -566,7 +568,7 @@ class BuyHandlers:
 
 <b>{title}</b>
 
-<b>Price:</b> €{price_eur}
+<b>Price:</b> €{price_usd}
 <b>Processing fee:</b> €{fees}
 ────────────────
 <b>Total:</b> €{total}
@@ -578,7 +580,7 @@ class BuyHandlers:
 ────────────────
 💡 <b>Recommended: Solana</b> (fastest)"""
 
-    def _build_payment_confirmation_text(self, title: str, price_eur: float, price_usd: float,
+    def _build_payment_confirmation_text(self, title: str, price_usd: float, price_usd: float,
                                          exact_amount: str, crypto_code: str, payment_address: str,
                                          order_id: str, network: str = None, lang: str = 'fr') -> str:
         """
@@ -586,7 +588,7 @@ class BuyHandlers:
 
         Args:
             title: Titre du produit
-            price_eur: Prix en euros
+            price_usd: Prix en euros
             price_usd: Prix en USD
             exact_amount: Montant exact en crypto
             crypto_code: Code de la crypto (BTC, ETH, SOL, etc.)
@@ -602,8 +604,8 @@ class BuyHandlers:
         network_display = network or crypto_upper
 
         # Calcul des frais (2.78%)
-        fees = round(price_eur * 0.0278, 2)
-        total_eur = round(price_eur + fees, 2)
+        fees = round(price_usd * 0.0278, 2)
+        total_eur = round(price_usd + fees, 2)
 
         if lang == 'fr':
             return f"""<b>{title}</b>
@@ -763,7 +765,7 @@ Contact support with your Order ID"""
 
             keyboard.append([
                 InlineKeyboardButton(
-                    f"💳 ACHETER - {product['price_eur']}€ 💳" if lang == 'fr' else f"💳 BUY - {product['price_eur']}€ 💳",
+                    f"💳 ACHETER - {product['price_usd']}€ 💳" if lang == 'fr' else f"💳 BUY - {product['price_usd']}€ 💳",
                     callback_data=buy_callback
                 )
             ])
@@ -1195,7 +1197,7 @@ Contact support with your Order ID"""
         keyboard = []
 
         # Ligne 1: Bouton Acheter (en premier comme recherche par ID)
-        buy_label = self._build_buy_button_label(product['price_eur'], lang)
+        buy_label = self._build_buy_button_label(product['price_usd'], lang)
         keyboard.append([
             InlineKeyboardButton(
                 buy_label,
@@ -1413,7 +1415,7 @@ Contact support with your Order ID"""
                             seller_id=product_row[4],  # seller_user_id
                             product_data=product_data,
                             buyer_name=buyer_name,
-                            amount_eur=order[7],  # price_eur
+                            amount_eur=order[7],  # price_usd
                             crypto_code=order[8],  # payment_currency
                             tx_hash=payment_status.get('payment_hash')
                         )
@@ -1604,10 +1606,10 @@ Contact support with your Order ID"""
 
             # Show crypto selection menu
             title = product.get('title', 'Produit')
-            price_eur = product.get('price_eur', 0)
+            price_usd = product.get('price_usd', 0)
 
             # Utiliser la fonction centralisée de génération de texte
-            text = self._build_crypto_selection_text(title, price_eur, lang)
+            text = self._build_crypto_selection_text(title, price_usd, lang)
 
             # V2 SPEC: Layout crypto en grille 2x2 + 1 (ÉTAPE 2)
             keyboard = []
@@ -1706,8 +1708,8 @@ Contact support with your Order ID"""
 
             user_id = query.from_user.id
             title = product.get('title', 'Produit')
-            price_eur = product.get('price_eur', 0)
-            price_usd = price_eur * self.payment_service.get_exchange_rate()
+            price_usd = product.get('price_usd', 0)
+            price_usd = price_usd * self.payment_service.get_exchange_rate()
 
             # Create order in database
             order_id = f"TBO-{user_id}-{int(time.time())}"
@@ -1738,11 +1740,11 @@ Contact support with your Order ID"""
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 INSERT INTO orders (order_id, buyer_user_id, seller_user_id, product_id,
-                                  product_title, product_price_eur, payment_id, payment_currency,
+                                  product_title, product_price_usd, payment_id, payment_currency,
                                   payment_status, created_at, nowpayments_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (order_id, user_id, product.get('seller_user_id'), product_id, title,
-                  price_eur, payment_data.get('payment_id'), crypto_code, 'waiting',
+                  price_usd, payment_data.get('payment_id'), crypto_code, 'waiting',
                   int(time.time()), payment_data.get('payment_id')))
             conn.commit()
             conn.close()
@@ -1761,7 +1763,7 @@ Contact support with your Order ID"""
                         'title': title
                     },
                     buyer_name=buyer_name,
-                    amount_eur=price_eur,
+                    amount_eur=price_usd,
                     crypto_code=crypto_code
                 )
                 logger.info(f"✅ New purchase notification sent to seller for order {order_id}")
@@ -1770,7 +1772,7 @@ Contact support with your Order ID"""
                 # Don't fail the purchase if notification fails
 
             # Display comprehensive payment info with QR code
-            await self._display_payment_details(query, payment_data, title, price_eur, price_usd, order_id, product_id, crypto_code, lang)
+            await self._display_payment_details(query, payment_data, title, price_usd, price_usd, order_id, product_id, crypto_code, lang)
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error processing crypto payment: {e}")
@@ -1975,7 +1977,7 @@ Contact support with your Order ID"""
             back_callback = f'product_{product_id}'
 
         # Utiliser la fonction helper réutilisable
-        buy_label = self._build_buy_button_label(product['price_eur'], lang)
+        buy_label = self._build_buy_button_label(product['price_usd'], lang)
 
         keyboard = [
             [InlineKeyboardButton(buy_label, callback_data=buy_callback)],
@@ -2034,7 +2036,7 @@ Contact support with your Order ID"""
                 ]])
             )
 
-    async def _display_payment_details(self, query, payment_data, title, price_eur, price_usd, order_id, product_id, crypto_code, lang):
+    async def _display_payment_details(self, query, payment_data, title, price_usd, price_usd, order_id, product_id, crypto_code, lang):
         """Display comprehensive payment details with QR code and exact amounts"""
         try:
             # Get payment details
@@ -2048,7 +2050,7 @@ Contact support with your Order ID"""
             # Utiliser la fonction centralisée de génération de texte
             text = self._build_payment_confirmation_text(
                 title=title,
-                price_eur=price_eur,
+                price_usd=price_usd,
                 price_usd=price_usd,
                 exact_amount=formatted_amount,
                 crypto_code=crypto_code,
