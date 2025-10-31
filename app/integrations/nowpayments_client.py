@@ -57,10 +57,20 @@ class NowPaymentsClient:
         if not self.api_key:
             logger.error("NOWPAYMENTS_API_KEY manquant!")
             return None
+
+        # For stablecoins (USDT, USDC), use them as price_currency to avoid conversion errors
+        pay_curr_lower = pay_currency.lower()
+        stablecoins = ['usdt', 'usdttrc20', 'usdterc20', 'usdtbep20', 'usdc', 'usdcerc20', 'usdctrc20']
+
+        if pay_curr_lower in stablecoins:
+            price_currency = pay_curr_lower
+        else:
+            price_currency = "usd"
+
         payload = {
             "price_amount": float(amount_usd),
-            "price_currency": "usd",
-            "pay_currency": pay_currency.lower(),
+            "price_currency": price_currency,
+            "pay_currency": pay_curr_lower,
             "order_id": order_id,
             "order_description": description,
         }
