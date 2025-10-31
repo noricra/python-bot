@@ -15,8 +15,8 @@ from app.domain.repositories.payout_repo import PayoutRepository
 
 
 class PayoutService:
-    def __init__(self, database_path: Optional[str] = None) -> None:
-        self.repo = PayoutRepository(database_path)
+    def __init__(self) -> None:
+        self.repo = PayoutRepository()
 
     def create_payout(self, seller_user_id: int, order_ids: List[str], total_amount_sol: float) -> Optional[int]:
         return self.repo.insert_payout(seller_user_id, order_ids, total_amount_sol)

@@ -5,6 +5,8 @@ from typing import Dict, Any, Callable
 from telegram import CallbackQuery, InputMediaPhoto
 import logging
 import os
+import psycopg2
+import psycopg2.extras
 
 logger = logging.getLogger(__name__)
 
@@ -274,7 +276,7 @@ class CallbackRouter:
                     keyboard = []
 
                     # Ligne 1: Bouton Acheter
-                    buy_label = self.bot.buy_handlers._build_buy_button_label(product['price_eur'], lang)
+                    buy_label = self.bot.buy_handlers._build_buy_button_label(product['price_usd'], lang)
                     keyboard.append([
                         InlineKeyboardButton(buy_label, callback_data=f'buy_product_{product["product_id"]}')
                     ])
@@ -297,14 +299,14 @@ class CallbackRouter:
                     keyboard_markup = InlineKeyboardMarkup(keyboard)
 
                     # Get image
-                    thumbnail_path = self.bot.buy_handlers._get_product_image_or_placeholder(product)
+                    thumbnail_url = self.bot.buy_handlers._get_product_image_or_placeholder(product)
 
                     # Update message
-                    if thumbnail_path and os.path.exists(thumbnail_path):
+                    if thumbnail_url and os.path.exists(thumbnail_url):
                         try:
                             await query.edit_message_media(
                                 media=InputMediaPhoto(
-                                    media=open(thumbnail_path, 'rb'),
+                                    media=open(thumbnail_url, 'rb'),
                                     caption=caption_with_header,
                                     parse_mode='HTML'
                                 ),
@@ -347,8 +349,8 @@ class CallbackRouter:
                         p.product_id,
                         p.title,
                         p.description,
-                        p.price_eur,
-                        p.thumbnail_path,
+                        p.price_usd,
+                        p.thumbnail_url,
                         p.category,
                         p.file_size_mb,
                         COALESCE(u.seller_name, u.first_name) as seller_name,
@@ -357,8 +359,8 @@ class CallbackRouter:
                     FROM orders o
                     JOIN products p ON o.product_id = p.product_id
                     JOIN users u ON p.seller_user_id = u.user_id
-                    WHERE o.buyer_user_id = ? AND o.payment_status = 'completed'
-                    GROUP BY p.product_id, p.title, p.description, p.price_eur, p.thumbnail_path, p.category, p.file_size_mb, u.seller_name
+                    WHERE o.buyer_user_id = %s AND o.payment_status = 'completed'
+                    GROUP BY p.product_id, p.title, p.description, p.price_usd, p.thumbnail_url, p.category, p.file_size_mb, u.seller_name
                     ORDER BY MAX(o.completed_at) DESC
                 ''', (user_id,))
                 purchases_raw = cursor.fetchall()
@@ -368,16 +370,16 @@ class CallbackRouter:
                 purchases = []
                 for row in purchases_raw:
                     purchases.append({
-                        'product_id': row[0],
-                        'title': row[1],
-                        'description': row[2],
-                        'price_eur': row[3],
-                        'thumbnail_path': row[4],
-                        'category': row[5],
-                        'file_size_mb': row[6],
-                        'seller_name': row[7],
-                        'completed_at': row[8],
-                        'download_count': row[9]
+                        'product_id': row['product_id'],
+                        'title': row['title'],
+                        'description': row['description'],
+                        'price_eur': row['price_usd'],
+                        'thumbnail_url': row['thumbnail_url'],
+                        'category': row['category'],
+                        'file_size_mb': row['file_size_mb'],
+                        'seller_name': row['seller_name'],
+                        'completed_at': row['completed_at'],
+                        'download_count': row['download_count']
                     })
 
                 if purchases:
@@ -711,14 +713,6 @@ class CallbackRouter:
             await self.bot.library_handlers.contact_seller(self.bot, query, product_id, lang)
             return True
 
-        # Message seller (creates support ticket)
-        if callback_data.startswith('message_seller_'):
-            parts = callback_data.replace('message_seller_', '').split('_')
-            if len(parts) >= 2:
-                seller_user_id = int(parts[0])
-                product_id = '_'.join(parts[1:])
-                await self.bot.library_handlers.message_seller(self.bot, query, seller_user_id, product_id, lang)
-            return True
 
         return False
 

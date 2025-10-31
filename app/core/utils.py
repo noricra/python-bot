@@ -4,7 +4,7 @@ Core Utilities - Helper functions extracted from bot_mlt.py
 import os
 import time
 import random
-import sqlite3
+import psycopg2
 import logging
 from datetime import datetime
 from typing import Optional, Dict
@@ -28,12 +28,13 @@ def escape_markdown(text: str) -> str:
 # (version file_utils plus robuste: limite 100 chars, settings.ALLOWED_FILENAME_CHARS)
 
 
-def generate_product_id(db_path: str) -> str:
+def generate_product_id() -> str:
     """Generate unique product ID using counter-based system"""
-    from app.core import get_sqlite_connection
+    from app.core.database_init import get_postgresql_connection
+    import psycopg2.extras
 
-    conn = get_sqlite_connection(db_path)
-    cursor = conn.cursor()
+    conn = get_postgresql_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
         # Ensure counters table exists
@@ -46,8 +47,9 @@ def generate_product_id(db_path: str) -> str:
 
         # Get and increment product counter
         cursor.execute('''
-            INSERT OR IGNORE INTO id_counters (counter_type, current_value)
+            INSERT INTO id_counters (counter_type, current_value)
             VALUES ('product', 0)
+            ON CONFLICT (counter_type) DO NOTHING
         ''')
 
         cursor.execute('''
@@ -61,7 +63,7 @@ def generate_product_id(db_path: str) -> str:
             WHERE counter_type = 'product'
         ''')
 
-        counter = cursor.fetchone()[0]
+        counter = cursor.fetchone()['current_value']
 
         # Format: TBF-{hex_timestamp}-{counter:06d}
         timestamp_hex = hex(int(time.time()))[2:].upper()  # Remove '0x' prefix
@@ -73,19 +75,20 @@ def generate_product_id(db_path: str) -> str:
         logger.info(f"Generated product ID: {product_id}")
         return product_id
 
-    except sqlite3.Error as e:
+    except psycopg2.Error as e:
         conn.rollback()
         conn.close()
         logger.error(f"Error generating product ID: {e}")
         raise e
 
 
-def generate_ticket_id(db_path: str) -> str:
+def generate_ticket_id() -> str:
     """Generate unique ticket ID using counter-based system"""
-    from app.core import get_sqlite_connection
+    from app.core.database_init import get_postgresql_connection
+    import psycopg2.extras
 
-    conn = get_sqlite_connection(db_path)
-    cursor = conn.cursor()
+    conn = get_postgresql_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
         # Ensure counters table exists
@@ -98,8 +101,9 @@ def generate_ticket_id(db_path: str) -> str:
 
         # Get and increment ticket counter
         cursor.execute('''
-            INSERT OR IGNORE INTO id_counters (counter_type, current_value)
+            INSERT INTO id_counters (counter_type, current_value)
             VALUES ('ticket', 0)
+            ON CONFLICT (counter_type) DO NOTHING
         ''')
 
         cursor.execute('''
@@ -113,7 +117,7 @@ def generate_ticket_id(db_path: str) -> str:
             WHERE counter_type = 'ticket'
         ''')
 
-        counter = cursor.fetchone()[0]
+        counter = cursor.fetchone()['current_value']
 
         # Format: TKT-{hex_timestamp}-{counter:06d}
         timestamp_hex = hex(int(time.time()))[2:].upper()  # Remove '0x' prefix
@@ -125,7 +129,7 @@ def generate_ticket_id(db_path: str) -> str:
         logger.info(f"Generated ticket ID: {ticket_id}")
         return ticket_id
 
-    except sqlite3.Error as e:
+    except psycopg2.Error as e:
         conn.rollback()
         conn.close()
         logger.error(f"Error generating ticket ID: {e}")

@@ -27,8 +27,8 @@ def hash_password(password: str, salt: str) -> str:
 class SellerService:
     """Service for seller account operations"""
 
-    def __init__(self, db_path: str = None):
-        self.db_path = db_path
+    def __init__(self):
+        pass
 
     def create_seller_account_simple(self, user_id: int, seller_name: str,
                                     email: str, solana_address: str) -> Dict[str, Any]:
@@ -55,9 +55,9 @@ class SellerService:
                     return {'success': False, 'error': 'Adresse Solana invalide'}
 
             # Check if email belongs to a suspended user
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cursor.execute('SELECT user_id, seller_name FROM users WHERE email = %s AND seller_name LIKE "[SUSPENDED]%"', (email,))
+            cursor.execute('SELECT user_id, seller_name FROM users WHERE email = %s AND seller_name LIKE %s', (email, '[SUSPENDED]%'))
             suspended_user = cursor.fetchone()
 
             if suspended_user:
@@ -85,8 +85,7 @@ class SellerService:
                         email = %s,
                         seller_solana_address = %s,
                         password_salt = NULL,
-                        password_hash = NULL,
-                        recovery_code_hash = NULL
+                        password_hash = NULL
                     WHERE user_id = %s
                 ''', (seller_name, email, solana_address, user_id))
 
@@ -135,9 +134,9 @@ class SellerService:
                 return {'success': False, 'error': 'Email invalide'}
 
             # Check if email belongs to a suspended user
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cursor.execute('SELECT user_id, seller_name FROM users WHERE email = %s AND seller_name LIKE "[SUSPENDED]%"', (email,))
+            cursor.execute('SELECT user_id, seller_name FROM users WHERE email = %s AND seller_name LIKE %s', (email, '[SUSPENDED]%'))
             suspended_user = cursor.fetchone()
 
             if suspended_user:
@@ -151,7 +150,7 @@ class SellerService:
             salt = generate_salt()
             pwd_hash = hash_password(raw_password, salt)
 
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             try:
@@ -187,12 +186,12 @@ class SellerService:
     def _ensure_user_exists(self, cursor, user_id: int):
         """Ensure user exists in database, create if not"""
         try:
-            cursor.execute('SELECT COUNT(*) FROM users WHERE user_id = ?', (user_id,))
-            if cursor.fetchone()[0] == 0:
+            cursor.execute('SELECT COUNT(*) as count FROM users WHERE user_id = %s', (user_id,))
+            if cursor.fetchone()['count'] == 0:
                 # Create user first
                 cursor.execute('''
                     INSERT INTO users (user_id, username, first_name, language_code)
-                    VALUES (?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s)
                 ON CONFLICT DO NOTHING
                 ''', (user_id, f'user_{user_id}', 'Unknown', 'fr'))
                 logger.debug(f"✅ Created base user record for {user_id}")
@@ -212,7 +211,6 @@ class SellerService:
                     seller_bio = %s,
                     email = %s,
                     seller_solana_address = %s,
-                    recovery_code_hash = NULL,
                     password_salt = %s,
                     password_hash = %s
                 WHERE user_id = %s
@@ -232,12 +230,12 @@ class SellerService:
         Secure recovery is done via email + code.
         """
         try:
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('SELECT is_seller FROM users WHERE user_id = %s', (user_id,))
             row = cursor.fetchone()
             conn.close()
-            return bool(row and row[0])
+            return bool(row and row['is_seller'])
         except psycopg2.Error as e:
             logger.error(f"❌ Error authenticating seller: {e}")
             return False
@@ -245,16 +243,16 @@ class SellerService:
     def validate_seller_password(self, user_id: int, password: str) -> bool:
         """Validate seller password"""
         try:
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('SELECT password_salt, password_hash, is_seller FROM users WHERE user_id = %s', (user_id,))
             row = cursor.fetchone()
             conn.close()
 
-            if not row or not row[2]:  # not a seller
+            if not row or not row['is_seller']:  # not a seller
                 return False
 
-            stored_salt, stored_hash = row[0], row[1]
+            stored_salt, stored_hash = row['password_salt'], row['password_hash']
             if not stored_salt or not stored_hash:
                 return False
 
@@ -269,7 +267,7 @@ class SellerService:
     def get_seller_info(self, user_id: int) -> Optional[Dict[str, Any]]:
         """Get seller information"""
         try:
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             # PostgreSQL uses RealDictCursor
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 

@@ -97,10 +97,81 @@ def build_application(bot_instance) -> Application:
                 parse_mode='Markdown'
             )
 
+    async def shop_command_wrapper(update, context):
+        """View a seller's complete shop: /shop @username or /shop <user_id>"""
+        # Extract seller identifier from command
+        if not context.args or len(context.args) == 0:
+            await update.message.reply_text(
+                "🛍️ **Voir la boutique d'un vendeur**\n\n"
+                "Utilisez: `/shop @username` ou `/shop <user_id>`\n\n"
+                "Exemple:\n"
+                "• `/shop @johnvendeur`\n"
+                "• `/shop 123456789`",
+                parse_mode='Markdown'
+            )
+            return
+
+        seller_identifier = context.args[0]
+
+        # Import required modules
+        from app.domain.repositories.user_repo import UserRepository
+        from app.domain.repositories.product_repo import ProductRepository
+
+        user_repo = UserRepository()
+        product_repo = ProductRepository()
+
+        # Find seller by username or ID
+        seller = None
+        if seller_identifier.startswith('@'):
+            username = seller_identifier[1:]  # Remove @
+            # Search by username (need to add this method if not exists)
+            from app.core.database_init import get_postgresql_connection
+            import psycopg2.extras
+            conn = get_postgresql_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute('SELECT * FROM users WHERE username = %s AND is_seller = TRUE', (username,))
+            seller = cursor.fetchone()
+            conn.close()
+        else:
+            try:
+                seller_id = int(seller_identifier)
+                seller = user_repo.get_user(seller_id)
+                if seller and not seller.get('is_seller'):
+                    seller = None  # Not a seller
+            except ValueError:
+                pass
+
+        if not seller:
+            await update.message.reply_text(
+                "❌ Vendeur introuvable ou utilisateur non vendeur.",
+                parse_mode='Markdown'
+            )
+            return
+
+        # Get seller's products
+        products = product_repo.get_products_by_seller(seller['user_id'])
+
+        seller_name = seller.get('seller_name') or seller.get('first_name') or "Vendeur"
+        seller_bio = seller.get('seller_bio') or "Aucune bio"
+
+        # Call the buy_handlers method to show seller shop
+        class MockQuery:
+            def __init__(self, user):
+                self.from_user = user
+            async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
+                await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+
+        mock_query = MockQuery(update.effective_user)
+        lang = bot_instance.get_user_language(update.effective_user.id)
+
+        # Use existing view_seller_shop method or create inline display
+        await bot_instance.buy_handlers.view_seller_shop(bot_instance, mock_query, seller['user_id'], lang)
+
     application.add_handler(CommandHandler("achat", achat_command_wrapper))
     application.add_handler(CommandHandler("vendre", vendre_command_wrapper))
     application.add_handler(CommandHandler("library", library_command_wrapper))
     application.add_handler(CommandHandler("stats", stats_command_wrapper))
+    application.add_handler(CommandHandler("shop", shop_command_wrapper))
     # Use callback router for button handling
     async def callback_handler_wrapper(update, context):
         query = update.callback_query
@@ -133,6 +204,7 @@ def build_application(bot_instance) -> Application:
                 ("vendre", "💼 Vendre mes produits"),
                 ("library", "📚 Ma bibliothèque"),
                 ("stats", "📊 Mes statistiques vendeur"),
+                ("shop", "🛍️ Voir boutique vendeur"),
                 ("help", "❓ Aide"),
                 ("support", "💬 Support"),
             ]

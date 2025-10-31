@@ -33,8 +33,8 @@ class LibraryHandlers:
                     p.product_id,
                     p.title,
                     p.description,
-                    p.price_eur,
-                    p.thumbnail_path,
+                    p.price_usd,
+                    p.thumbnail_url,
                     p.category,
                     p.file_size_mb,
                     COALESCE(u.seller_name, u.first_name) as seller_name,
@@ -43,8 +43,8 @@ class LibraryHandlers:
                 FROM orders o
                 JOIN products p ON o.product_id = p.product_id
                 JOIN users u ON p.seller_user_id = u.user_id
-                WHERE o.buyer_user_id = ? AND o.payment_status = 'completed'
-                GROUP BY p.product_id, p.title, p.description, p.price_eur, p.thumbnail_path, p.category, p.file_size_mb, u.seller_name
+                WHERE o.buyer_user_id = %s AND o.payment_status = 'completed'
+                GROUP BY p.product_id, p.title, p.description, p.price_usd, p.thumbnail_url, p.category, p.file_size_mb, u.seller_name
                 ORDER BY MAX(o.completed_at) DESC
             ''', (user_id,))
             purchases_raw = cursor.fetchall()
@@ -81,16 +81,16 @@ class LibraryHandlers:
             purchases = []
             for row in purchases_raw:
                 purchases.append({
-                    'product_id': row[0],
-                    'title': row[1],
-                    'description': row[2],
-                    'price_eur': row[3],
-                    'thumbnail_path': row[4],
-                    'category': row[5],
-                    'file_size_mb': row[6],
-                    'seller_name': row[7],
-                    'completed_at': row[8],
-                    'download_count': row[9]
+                    'product_id': row['product_id'],
+                    'title': row['title'],
+                    'description': row['description'],
+                    'price_usd': row['price_usd'],
+                    'thumbnail_url': row['thumbnail_url'],
+                    'category': row['category'],
+                    'file_size_mb': row['file_size_mb'],
+                    'seller_name': row['seller_name'],
+                    'completed_at': row['completed_at'],
+                    'download_count': row['download_count']
                 })
 
             # Launch carousel mode starting at index 0
@@ -117,7 +117,7 @@ class LibraryHandlers:
         def build_caption(product, lang):
             title = product['title']
             seller = product.get('seller_name', 'Vendeur')
-            price = product['price_eur']
+            price = product['price_usd']
             category = product.get('category', 'Produits')
             file_size = product.get('file_size_mb', 0)
             download_count = product.get('download_count', 0)
@@ -125,7 +125,7 @@ class LibraryHandlers:
             caption = f"<b>{title}</b>\n"
             caption += f"<i>par {seller}</i>\n\n" if lang == 'fr' else f"<i>by {seller}</i>\n\n"
 
-            stats_text = f"💳 Acheté pour {price:.2f} €"
+            stats_text = f"💳 Acheté pour ${price:.2f}"
             if download_count > 0:
                 stats_text += f" • 📥 {download_count} " + ("téléchargements" if lang == 'fr' else "downloads")
             caption += stats_text + "\n"
@@ -199,10 +199,10 @@ class LibraryHandlers:
 
             # Vérifier l'achat et récupérer le fichier
             cursor.execute('''
-                SELECT p.main_file_path, p.title, o.order_id
+                SELECT p.main_file_url, p.title, o.order_id
                 FROM orders o
                 JOIN products p ON o.product_id = p.product_id
-                WHERE o.buyer_user_id = ? AND o.product_id = ? AND o.payment_status = 'completed'
+                WHERE o.buyer_user_id = %s AND o.product_id = %s AND o.payment_status = 'completed'
                 LIMIT 1
             ''', (user_id, product_id))
 
@@ -229,7 +229,7 @@ class LibraryHandlers:
                 UPDATE orders
                 SET download_count = COALESCE(download_count, 0) + 1,
                     last_download_at = CURRENT_TIMESTAMP
-                WHERE order_id = ?
+                WHERE order_id = %s
             ''', (order_id,))
             conn.commit()
             conn.close()
@@ -343,9 +343,9 @@ class LibraryHandlers:
             # Créer ou mettre à jour l'avis
             cursor.execute('''
                 INSERT INTO reviews (buyer_user_id, product_id, rating, created_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT(buyer_user_id, product_id)
-                DO UPDATE SET rating = ?, updated_at = CURRENT_TIMESTAMP
+                DO UPDATE SET rating = %s, updated_at = CURRENT_TIMESTAMP
             ''', (user_id, product_id, rating, rating))
             conn.commit()
             conn.close()
@@ -444,9 +444,9 @@ class LibraryHandlers:
             # Créer ou mettre à jour la note
             cursor.execute('''
                 INSERT INTO reviews (buyer_user_id, product_id, rating, created_at, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (%s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT(buyer_user_id, product_id)
-                DO UPDATE SET rating = ?, updated_at = CURRENT_TIMESTAMP
+                DO UPDATE SET rating = %s, updated_at = CURRENT_TIMESTAMP
             ''', (user_id, product_id, rating, rating))
 
             conn.commit()
@@ -522,8 +522,8 @@ class LibraryHandlers:
             # Mettre à jour l'avis
             cursor.execute('''
                 UPDATE reviews
-                SET review_text = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE buyer_user_id = ? AND product_id = ?
+                SET review_text = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE buyer_user_id = %s AND product_id = %s
             ''', (review_text, user_id, product_id))
 
             conn.commit()
@@ -568,7 +568,7 @@ class LibraryHandlers:
                 FROM orders o
                 JOIN products p ON o.product_id = p.product_id
                 JOIN users u ON p.seller_user_id = u.user_id
-                WHERE o.buyer_user_id = ? AND o.product_id = ? AND o.payment_status = 'completed'
+                WHERE o.buyer_user_id = %s AND o.product_id = %s AND o.payment_status = 'completed'
                 LIMIT 1
             ''', (user_id, product_id))
 
@@ -639,75 +639,4 @@ class LibraryHandlers:
                 ]])
             )
 
-    async def message_seller(self, bot, query, seller_user_id: int, product_id: str, lang: str):
-        """Create a support ticket to contact seller about a product"""
-        try:
-            conn = bot.get_db_connection()
-            cursor = conn.cursor()
-
-            # Get product and seller info
-            cursor.execute('''
-                SELECT p.title, COALESCE(u.seller_name, u.first_name) as seller_name
-                FROM products p
-                JOIN users u ON p.seller_user_id = u.user_id
-                WHERE p.product_id = ?
-            ''', (product_id,))
-            result = cursor.fetchone()
-
-            if not result:
-                conn.close()
-                await query.edit_message_text("❌ Error" if lang == 'en' else "❌ Erreur")
-                return
-
-            product_title, seller_name = result
-            user_id = query.from_user.id
-
-            # Create ticket ID
-            import time
-            ticket_id = f"SELLER-{user_id}-{int(time.time())}"
-
-            # Create support ticket with seller context
-            subject = f"Message to seller: {seller_name}" if lang == 'en' else f"Message au vendeur : {seller_name}"
-            message = f"Product: {product_title}\n\n[User will reply to this ticket to send message]" if lang == 'en' else f"Produit : {product_title}\n\n[L'utilisateur répondra à ce ticket pour envoyer son message]"
-
-            cursor.execute('''
-                INSERT INTO support_tickets
-                (ticket_id, user_id, subject, message, status, seller_user_id, product_id, created_at)
-                VALUES (?, ?, ?, ?, 'open', ?, ?, CURRENT_TIMESTAMP)
-            ''', (ticket_id, user_id, subject, message, seller_user_id, product_id))
-            conn.commit()
-            conn.close()
-
-            # Set state for waiting message
-            bot.reset_conflicting_states(user_id, keep={'waiting_ticket_message'})
-            bot.state_manager.update_state(user_id, waiting_ticket_message=ticket_id, lang=lang)
-
-            text = (
-                f"💬 **MESSAGE TO SELLER**\n\n"
-                f"**Seller:** {seller_name}\n"
-                f"**Product:** {product_title}\n"
-                f"**Ticket:** `{ticket_id}`\n\n"
-                f"Type your message below:"
-                if lang == 'en' else
-                f"💬 **MESSAGE AU VENDEUR**\n\n"
-                f"**Vendeur :** {seller_name}\n"
-                f"**Produit :** {product_title}\n"
-                f"**Ticket :** `{ticket_id}`\n\n"
-                f"Écrivez votre message ci-dessous :"
-            )
-
-            await query.edit_message_text(
-                text,
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(
-                        "❌ Cancel" if lang == 'en' else "❌ Annuler",
-                        callback_data='library_menu'
-                    )
-                ]]),
-                parse_mode='Markdown'
-            )
-
-        except Exception as e:
-            logger.error(f"Error in message_seller: {e}")
-            await query.edit_message_text("❌ Error" if lang == 'en' else "❌ Erreur")
 

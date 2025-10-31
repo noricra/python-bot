@@ -60,6 +60,9 @@ class Settings:
             "IPN_CALLBACK_URL", "http://localhost:8000/ipn/nowpayments"
         )
 
+        # Platform commission (2.78%)
+        self.PLATFORM_COMMISSION_PERCENT: float = float(os.getenv("PLATFORM_COMMISSION_PERCENT", "2.78"))
+
         # IPN server settings
         self.IPN_HOST: str = os.getenv("IPN_HOST", "0.0.0.0")
         self.IPN_PORT: int = int(os.getenv("IPN_PORT", "8000"))

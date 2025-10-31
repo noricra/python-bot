@@ -18,11 +18,12 @@ class PayoutRepository:
                 '''
                 INSERT INTO seller_payouts (seller_user_id, order_ids, total_amount_sol, payout_status)
                 VALUES (%s, %s, %s, 'pending')
-                ON CONFLICT DO NOTHING
+                RETURNING id
                 ''',
                 (seller_user_id, json.dumps(order_ids), total_amount_sol),
             )
-            payout_id = cursor.lastrowid
+            result = cursor.fetchone()
+            payout_id = result['id'] if result else None
             conn.commit()
             return payout_id
         except psycopg2.Error:

@@ -51,7 +51,9 @@ class NowPaymentsClient:
             return None
 
     def create_payment(self, amount_usd: float, pay_currency: str, order_id: str,
-                       description: str, ipn_callback_url: Optional[str] = None) -> Optional[Dict]:
+                       description: str, ipn_callback_url: Optional[str] = None,
+                       payout_address: Optional[str] = None, payout_currency: Optional[str] = None,
+                       payout_extra_id: Optional[str] = None) -> Optional[Dict]:
         if not self.api_key:
             logger.error("NOWPAYMENTS_API_KEY manquant!")
             return None
@@ -64,6 +66,14 @@ class NowPaymentsClient:
         }
         if ipn_callback_url:
             payload["ipn_callback_url"] = ipn_callback_url
+
+        # Split Payment: payout vers le wallet du vendeur
+        if payout_address:
+            payload["payout_address"] = payout_address
+            if payout_currency:
+                payload["payout_currency"] = payout_currency.lower()
+            if payout_extra_id:
+                payload["payout_extra_id"] = payout_extra_id
         try:
             logger.info(f"NOWPayments create_payment start order_id={order_id} pay_currency={pay_currency.lower()} price_usd={amount_usd}")
             response = requests.post(

@@ -120,7 +120,7 @@ class AnalyticsHandlers:
 
 📊 **Statistiques détaillées**
 
-Revenue (7j)      {perf.revenue_7d:.2f}€
+Revenue (7j)      {perf.revenue_7d:.2f}$
 Ventes (7j)       {perf.sales_7d}
 Conversion        {perf.conversion_rate:.1f}%
 Tendance          {perf.trend.capitalize()}
@@ -128,7 +128,7 @@ Tendance          {perf.trend.capitalize()}
 
             # Add price recommendation if available
             if perf.optimal_price:
-                details += f"\n💡 **Prix optimal suggéré**: {perf.optimal_price}€"
+                details += f"\n💡 **Prix optimal suggéré**: {perf.optimal_price}$"
 
             full_text = f"```\n{perf_text}\n```{details}"
 
@@ -143,7 +143,7 @@ Tendance          {perf.trend.capitalize()}
             if perf.optimal_price:
                 keyboard.insert(0, [
                     InlineKeyboardButton(
-                        f"💰 Appliquer prix ({perf.optimal_price}€)",
+                        f"💰 Appliquer prix ({perf.optimal_price}$)",
                         callback_data=f'apply_price_{product_id}_{perf.optimal_price}'
                     )
                 ])
@@ -180,7 +180,7 @@ Tendance          {perf.trend.capitalize()}
         """
         try:
             # Get all products
-            from app.data.product_repository import ProductRepository
+            from app.domain.repositories.product_repo import ProductRepository
             product_repo = ProductRepository()
 
             products = product_repo.get_products_by_seller(seller_user_id, active_only=True)
@@ -195,11 +195,11 @@ Tendance          {perf.trend.capitalize()}
             # Calculate scores for all
             product_scores = []
             for prod in products:
-                perf = self.analytics.calculate_product_score(prod[0])  # product_id
+                perf = self.analytics.calculate_product_score(prod['product_id'])  # product_id
                 if perf:
                     product_scores.append({
-                        'id': prod[0],
-                        'title': prod[1][:20],
+                        'id': prod['product_id'],
+                        'title': prod['title'][:20],
                         'score': perf.score,
                         'trend': perf.trend
                     })
@@ -296,14 +296,14 @@ Tendance          {perf.trend.capitalize()}
             # Product-specific recommendations
             text += "**Par produit :**\n\n"
 
-            from app.data.product_repository import ProductRepository
+            from app.domain.repositories.product_repo import ProductRepository
             product_repo = ProductRepository()
 
             products = product_repo.get_products_by_seller(seller_user_id, active_only=True)
 
             for prod in products[:5]:  # Top 5
-                product_id = prod[0]
-                title = prod[1][:20]
+                product_id = prod['product_id']
+                title = prod['title'][:20]
 
                 perf = self.analytics.calculate_product_score(product_id)
                 if perf and perf.recommendations:
@@ -375,7 +375,7 @@ Tendance          {perf.trend.capitalize()}
 
             text += "Revenus:\n"
             text += revenue_sparkline + "\n"
-            text += f"Total: {total_revenue:.2f}€\n\n"
+            text += f"Total: {total_revenue:.2f}$\n\n"
 
             text += "Ventes:\n"
             text += sales_sparkline + "\n"
@@ -391,7 +391,7 @@ Tendance          {perf.trend.capitalize()}
                 date_str = d['date'][-5:]  # MM-DD
                 bar = "█" * min(10, int(d['revenue'] / 50))  # Scale bar
 
-                text += f"{date_str}  {bar:<10} {d['revenue']:.0f}€  ({d['sales']})\n"
+                text += f"{date_str}  {bar:<10} {d['revenue']:.0f}$  ({d['sales']})\n"
 
             text += "```"
 
@@ -469,12 +469,12 @@ Tendance          {perf.trend.capitalize()}
         This is a "wow" feature - AI does the optimization
         """
         try:
-            from app.data.product_repository import ProductRepository
+            from app.domain.repositories.product_repo import ProductRepository
             product_repo = ProductRepository()
 
             # Verify ownership
             product = product_repo.get_product_by_id(product_id)
-            if not product or product[4] != seller_user_id:  # seller_user_id
+            if not product or product['seller_user_id'] != seller_user_id:
                 await query.answer("❌ Non autorisé", show_alert=True)
                 return
 
@@ -482,7 +482,7 @@ Tendance          {perf.trend.capitalize()}
             product_repo.update_product_price(product_id, new_price)
 
             await query.answer(
-                f"✅ Prix mis à jour : {new_price}€\n\n"
+                f"✅ Prix mis à jour : {new_price}$\n\n"
                 "Le nouveau prix est optimisé selon les données du marché.",
                 show_alert=True
             )

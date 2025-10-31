@@ -16,8 +16,10 @@ class OrderRepository:
             cursor.execute(
                 '''
                 INSERT INTO orders
-                (order_id, buyer_user_id, product_id, seller_user_id, product_title, product_price_eur, seller_revenue, crypto_currency, crypto_amount, payment_status, nowpayments_id, payment_address)
-                VALUES (%s, %s) ON CONFLICT DO NOTHING
+                (order_id, buyer_user_id, product_id, seller_user_id, product_title, product_price_usd,
+                 seller_revenue_usd, platform_commission_usd, payment_currency, payment_status,
+                 nowpayments_id, payment_id, payment_address)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING
                 ''',
                 (
                     order['order_id'],
@@ -25,12 +27,13 @@ class OrderRepository:
                     order['product_id'],
                     order['seller_user_id'],
                     order.get('product_title', ''),
-                    order['product_price_eur'],
-                    order['seller_revenue'],
-                    order.get('crypto_currency'),
-                    order.get('crypto_amount'),
+                    order.get('product_price_usd', order.get('product_price_eur', 0)),
+                    order.get('seller_revenue_usd', order.get('seller_revenue', 0)),
+                    order.get('platform_commission_usd', 0),
+                    order.get('payment_currency', order.get('crypto_currency')),
                     order.get('payment_status', 'pending'),
                     order.get('nowpayments_id'),
+                    order.get('payment_id'),
                     order.get('payment_address'),
                 ),
             )
@@ -69,12 +72,14 @@ class OrderRepository:
             if status == 'completed':
                 # Récupérer product_id, seller_user_id et prix
                 cursor.execute(
-                    'SELECT product_id, seller_user_id, product_price_eur FROM orders WHERE order_id = %s',
+                    'SELECT product_id, seller_user_id, product_price_usd FROM orders WHERE order_id = %s',
                     (order_id,)
                 )
                 row = cursor.fetchone()
                 if row:
-                    product_id, seller_user_id, product_price = row
+                    product_id = row['product_id']
+                    seller_user_id = row['seller_user_id']
+                    product_price = row['product_price_usd']
 
                     # Incrémenter sales_count du produit
                     cursor.execute(
@@ -133,10 +138,10 @@ class OrderRepository:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
-                'SELECT COUNT(*) FROM orders WHERE buyer_user_id = %s AND product_id = %s AND payment_status = "completed"',
-                (buyer_user_id, product_id)
+                'SELECT COUNT(*) as count FROM orders WHERE buyer_user_id = %s AND product_id = %s AND payment_status = %s',
+                (buyer_user_id, product_id, 'completed')
             )
-            count = cursor.fetchone()[0]
+            count = cursor.fetchone()['count']
             return count > 0
         except psycopg2.Error:
             return False
@@ -167,8 +172,8 @@ class OrderRepository:
           conn = get_postgresql_connection()
           cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
           try:
-              cursor.execute('SELECT COUNT(*) FROM orders')
-              return cursor.fetchone()[0]
+              cursor.execute('SELECT COUNT(*) as count FROM orders')
+              return cursor.fetchone()['count']
           except psycopg2.Error:
               return 0
           finally:
@@ -178,8 +183,8 @@ class OrderRepository:
           conn = get_postgresql_connection()
           cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
           try:
-              cursor.execute('SELECT SUM(seller_revenue) FROM orders WHERE payment_status = "completed"')
-              result = cursor.fetchone()[0]
+              cursor.execute('SELECT SUM(seller_revenue) as total FROM orders WHERE payment_status = %s', ('completed',))
+              result = cursor.fetchone()['total']
               return result if result else 0.0
           except psycopg2.Error:
               return 0.0

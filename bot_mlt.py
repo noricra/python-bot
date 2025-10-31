@@ -38,7 +38,8 @@ from telegram.error import TelegramError
 from dotenv import load_dotenv
 import re
 import base58 # Import manquant
-from app.core import settings as core_settings, configure_logging, get_sqlite_connection
+from app.core import settings as core_settings, configure_logging
+from app.core.database_init import get_postgresql_connection
 from app.core.i18n import t as i18n
 from app.core.validation import validate_email, validate_solana_address
 from app.core.state_manager import StateManager
@@ -93,9 +94,9 @@ class MarketplaceBot:
     def __init__(self):
         logger.info("🚀 Initialisation MarketplaceBot optimisé...")
 
-        self.db_path = core_settings.DATABASE_PATH
+        # PostgreSQL - No db_path needed anymore
         # Database initialization handled by DatabaseInitService
-        db_init_service = DatabaseInitService(self.db_path)
+        db_init_service = DatabaseInitService()
         db_init_service.init_all_tables()
 
         # State Manager centralisé (remplace memory_cache)
@@ -115,16 +116,16 @@ class MarketplaceBot:
         from app.services.payout_service import PayoutService
         from app.services.support_service import SupportService
 
-        self.user_repo = UserRepository(self.db_path)
-        self.product_repo = ProductRepository(self.db_path)
-        self.order_repo = OrderRepository(self.db_path)
-        self.ticket_repo = SupportTicketRepository(self.db_path)
-        self.payout_repo = PayoutRepository(self.db_path)
-        self.review_repo = ReviewRepository(self.db_path)  # V2: Initialize review repository
+        self.user_repo = UserRepository()
+        self.product_repo = ProductRepository()
+        self.order_repo = OrderRepository()
+        self.ticket_repo = SupportTicketRepository()
+        self.payout_repo = PayoutRepository()
+        self.review_repo = ReviewRepository()  # V2: Initialize review repository
         self.payment_service = PaymentService()
-        self.payout_service = PayoutService(self.db_path)
+        self.payout_service = PayoutService()
         self.support_service = SupportService(self.ticket_repo)
-        self.seller_service = SellerService(self.db_path)
+        self.seller_service = SellerService()
 
         # Email service
         from app.core.email_service import EmailService
@@ -142,9 +143,10 @@ class MarketplaceBot:
         from app.integrations.telegram.handlers.library_handlers import LibraryHandlers
         self.library_handlers = LibraryHandlers(self.product_repo, self.order_repo, self.user_repo)
 
-        # Initialize analytics handlers (AI-powered)
-        from app.integrations.telegram.handlers.analytics_handlers import AnalyticsHandlers
-        self.analytics_handlers = AnalyticsHandlers()
+        # Initialize analytics handlers (AI-powered) - DISABLED (analytics_engine removed)
+        # from app.integrations.telegram.handlers.analytics_handlers import AnalyticsHandlers
+        # self.analytics_handlers = AnalyticsHandlers()
+        self.analytics_handlers = None  # Placeholder
 
         # Router centralisé pour callbacks
         self.callback_router = CallbackRouter(self)
@@ -152,8 +154,8 @@ class MarketplaceBot:
         logger.info("✅ MarketplaceBot optimisé initialisé avec succès")
 
     def get_db_connection(self):
-        """Retourne une connexion à la base de données"""
-        return get_sqlite_connection(self.db_path)
+        """Retourne une connexion à la base de données PostgreSQL"""
+        return get_postgresql_connection()
 
     def escape_markdown(self, text: str) -> str:
         """Escape special markdown characters"""
@@ -202,7 +204,7 @@ class MarketplaceBot:
         - Active le compte mappé
         """
         try:
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # 1. Désactiver tous les comptes de ce telegram_id
@@ -215,7 +217,7 @@ class MarketplaceBot:
             # 2. Insérer ou activer le compte
             cursor.execute('''
                 INSERT INTO telegram_mappings (telegram_id, seller_user_id, is_active, account_name, last_login)
-                VALUES (?, ?, 1, ?, CURRENT_TIMESTAMP)
+                VALUES (%s, %s, 1, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT(telegram_id, seller_user_id) DO UPDATE SET
                     is_active = 1,
                     account_name = COALESCE(excluded.account_name, account_name),
@@ -239,7 +241,7 @@ class MarketplaceBot:
         - telegram_id si aucun mapping (nouveau user)
         """
         try:
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Try to get active account first
@@ -253,7 +255,7 @@ class MarketplaceBot:
 
             if result:
                 conn.close()
-                return result[0]  # Return active account
+                return result['seller_user_id']  # Return active account
 
             # No active account, get the most recent one (backward compatibility)
             cursor.execute('''
@@ -266,7 +268,7 @@ class MarketplaceBot:
             conn.close()
 
             if result:
-                return result[0]  # Return most recent account
+                return result['seller_user_id']  # Return most recent account
             else:
                 return telegram_id  # No mapping, use telegram_id directly
 
@@ -287,7 +289,7 @@ class MarketplaceBot:
         - last_login
         """
         try:
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('''
@@ -308,11 +310,11 @@ class MarketplaceBot:
             accounts = []
             for row in cursor.fetchall():
                 accounts.append({
-                    'seller_user_id': row[0],
-                    'is_active': bool(row[1]),
-                    'account_name': row[2] or row[3] or row[4] or f"Compte {row[0]}",  # Fallback name
-                    'created_at': row[5],
-                    'last_login': row[6]
+                    'seller_user_id': row['seller_user_id'],
+                    'is_active': bool(row['is_active']),
+                    'account_name': row['account_name'] or row['seller_name'] or row['first_name'] or f"Compte {row['seller_user_id']}",  # Fallback name
+                    'created_at': row['created_at'],
+                    'last_login': row['last_login']
                 })
 
             conn.close()
@@ -329,7 +331,7 @@ class MarketplaceBot:
         Returns: True si succès, False si compte n'existe pas
         """
         try:
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Vérifier que le compte existe pour ce telegram_id
@@ -409,8 +411,8 @@ class MarketplaceBot:
 
             # Récupérer infos commande
             cursor.execute('''
-                SELECT seller_user_id, product_price_eur
-                FROM orders 
+                SELECT seller_user_id, product_price_usd
+                FROM orders
                 WHERE order_id = %s AND payment_status = 'completed'
             ''', (order_id,))
 
@@ -418,14 +420,14 @@ class MarketplaceBot:
             if not result:
                 return False
 
-            seller_user_id, total_amount_eur = result
+            seller_user_id, total_amount_usd = result
 
-            # Calculer montant vendeur (95%)
-            seller_amount_eur = total_amount_eur * 0.95
+            # Calculer montant vendeur (95% - 5% commission plateforme)
+            seller_amount_usd = total_amount_usd * 0.95
 
-            # Convertir EUR → SOL (taux approximatif, à améliorer)
-            sol_price_eur = 100  # À récupérer via API CoinGecko
-            seller_amount_sol = seller_amount_eur / sol_price_eur
+            # Convertir USD → SOL (taux approximatif, à améliorer)
+            sol_price_usd = 100  # À récupérer via API CoinGecko
+            seller_amount_sol = seller_amount_usd / sol_price_usd
 
             # Créer le payout
             payout_id = self.payout_service.create_payout(
@@ -557,8 +559,7 @@ class MarketplaceBot:
                 # Add message to ticket
                 cursor.execute('''
                     INSERT INTO support_messages (ticket_id, sender_user_id, sender_role, message, created_at)
-                    VALUES (?, ?, 'buyer', ?, CURRENT_TIMESTAMP)
-                ON CONFLICT DO NOTHING
+                    VALUES (%s, %s, 'buyer', %s, CURRENT_TIMESTAMP)
                 ''', (ticket_id, user_id, message_text))
 
                 conn.commit()
@@ -766,7 +767,7 @@ class MarketplaceBot:
             content = message_text[:2000]
 
             from app.services.support_service import SupportService
-            ticket_id = SupportService(self.db_path).create_ticket(user_id, subject, content)
+            ticket_id = SupportService(self.ticket_repo).create_ticket(user_id, subject, content)
             if ticket_id:
                 # Nettoyer uniquement le contexte de création de ticket
                 state = self.state_manager.get_state(user_id)
@@ -821,9 +822,9 @@ class MarketplaceBot:
             logger.info(f"✅ DOCUMENT ACCEPTED - Delegating to process_file_upload")
             await self.sell_handlers.process_file_upload(self, update, update.message.document)
 
-        except (psycopg2.Error, Exception) as e:
+        except Exception as e:
             logger.error(f"Error handling document upload: {e}")
-            await update.message.reply_text("❌ Erreur lors du traitement du fichier.")
+            await update.message.reply_text("Erreur lors du traitement du fichier.")
 
     async def handle_photo_upload(self, update, context):
         """Handle photo uploads for product cover images"""
@@ -858,9 +859,9 @@ class MarketplaceBot:
                     # Ignore photos sent in other contexts (could be in chat, support, etc.)
                     logger.info(f"Photo ignored - User not in product creation mode")
 
-        except (psycopg2.Error, Exception) as e:
+        except Exception as e:
             logger.error(f"Error handling photo upload: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            await update.message.reply_text("❌ Erreur lors du traitement de l'image.")
+            await update.message.reply_text("Erreur lors du traitement de l'image.")
 

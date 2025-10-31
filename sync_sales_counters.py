@@ -4,15 +4,16 @@ Script de synchronisation des compteurs de ventes
 À exécuter après avoir modifié manuellement des statuts de paiement dans la base de données
 """
 
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import sys
-from app.core.settings import settings
+from app.core.database_init import get_postgresql_connection
 
 def sync_sales_counters():
     """Synchronise les compteurs de ventes avec les commandes complétées"""
 
-    conn = sqlite3.connect(settings.DATABASE_PATH)
-    cursor = conn.cursor()
+    conn = get_postgresql_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     print("🔄 Synchronisation des compteurs de ventes...")
 
@@ -47,7 +48,7 @@ def sync_sales_counters():
                 AND o.payment_status = 'completed'
             ),
             total_revenue = (
-                SELECT COALESCE(SUM(o.product_price_eur), 0)
+                SELECT COALESCE(SUM(o.product_price_usdt), 0)
                 FROM orders o
                 WHERE o.seller_user_id = users.user_id
                 AND o.payment_status = 'completed'
@@ -57,14 +58,14 @@ def sync_sales_counters():
         conn.commit()
 
         # 4. Afficher les résultats
-        cursor.execute("SELECT COUNT(*) FROM products WHERE sales_count > 0")
-        products_with_sales = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) as count FROM products WHERE sales_count > 0")
+        products_with_sales = cursor.fetchone()['count']
 
-        cursor.execute("SELECT COUNT(*) FROM users WHERE total_sales > 0")
-        sellers_with_sales = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) as count FROM users WHERE total_sales > 0")
+        sellers_with_sales = cursor.fetchone()['count']
 
-        cursor.execute("SELECT COUNT(*) FROM orders WHERE payment_status = 'completed'")
-        total_completed_orders = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) as count FROM orders WHERE payment_status = 'completed'")
+        total_completed_orders = cursor.fetchone()['count']
 
         print("\n✅ Synchronisation terminée !")
         print(f"  ↳ Total commandes complétées: {total_completed_orders}")

@@ -13,20 +13,24 @@ logger = logging.getLogger(__name__)
 
 def get_postgresql_connection():
     """
-    Get PostgreSQL connection using Railway environment variables
+    Get PostgreSQL connection using environment variables
 
     Returns:
         psycopg2.connection: PostgreSQL database connection
     """
     try:
-        # Railway provides these environment variables automatically
+        pghost = os.getenv('PGHOST', 'localhost')
+
+        # Determine SSL mode: local dev = prefer, production = require
+        sslmode = 'prefer' if pghost in ['localhost', '127.0.0.1'] else 'require'
+
         conn = psycopg2.connect(
-            host=os.getenv('PGHOST'),
+            host=pghost,
             port=os.getenv('PGPORT', 5432),
             database=os.getenv('PGDATABASE'),
             user=os.getenv('PGUSER'),
-            password=os.getenv('PGPASSWORD'),
-            sslmode='require'  # Railway requires SSL
+            password=os.getenv('PGPASSWORD', ''),
+            sslmode=sslmode
         )
         return conn
     except Exception as e:
@@ -44,10 +48,12 @@ class DatabaseInitService:
     def init_all_tables(self):
         """Initialize all PostgreSQL database tables"""
         try:
+            logger.info("🗄️  Initializing PostgreSQL database...")
             conn = get_postgresql_connection()
             cursor = conn.cursor()
 
             # Create all tables (in correct order for foreign keys)
+            logger.info("📋 Creating/verifying database tables...")
             self._create_users_table(cursor, conn)
             self._create_categories_table(cursor, conn)
             self._create_products_table(cursor, conn)
@@ -56,9 +62,11 @@ class DatabaseInitService:
             self._create_seller_payouts_table(cursor, conn)
 
             # Insert default data
+            logger.info("📦 Inserting default data...")
             self._insert_default_categories(cursor, conn)
 
             # Create triggers for automatic rating updates
+            logger.info("⚙️  Creating database triggers...")
             self._create_rating_triggers(cursor, conn)
 
             conn.close()
@@ -130,8 +138,8 @@ class DatabaseInitService:
         """
         Create products table (PostgreSQL)
         - Removed: id (product_id is PRIMARY KEY)
-        - Removed: price_usd (using USDT only, EUR shown in parentheses)
-        - Updated: paths for object storage (not local files)
+        - Price stored in USD (column: price_usd), EUR shown in parentheses in UI
+        - Updated: paths for object storage (Backblaze B2, not local files)
         """
         try:
             cursor.execute('''
@@ -141,7 +149,7 @@ class DatabaseInitService:
                     title TEXT NOT NULL,
                     description TEXT,
                     category TEXT,
-                    price_usdt REAL NOT NULL,
+                    price_usd REAL NOT NULL,
                     main_file_url TEXT,
                     file_size_mb REAL,
                     cover_image_url TEXT,
@@ -175,9 +183,8 @@ class DatabaseInitService:
         """
         Create orders table (PostgreSQL)
         - Primary Key: order_id (removed id column)
-        - Removed: crypto_currency (doublon with payment_currency)
-        - Removed: crypto_amount (never used)
-        - Removed: payment_address (never used with new NowPayments API)
+        - All prices in USD (product_price_usd, seller_revenue_usd, platform_commission_usd)
+        - payment_address: NOWPayments temporary wallet where buyer sends crypto
         - Unified: timestamps (all in TIMESTAMP format, not mixed)
         """
         try:
@@ -188,13 +195,14 @@ class DatabaseInitService:
                     seller_user_id BIGINT NOT NULL,
                     product_id TEXT NOT NULL,
                     product_title TEXT NOT NULL,
-                    product_price_usdt REAL NOT NULL,
+                    product_price_usd REAL NOT NULL,
                     payment_id TEXT,
+                    payment_address TEXT,
                     payment_currency TEXT,
                     payment_status TEXT DEFAULT 'pending',
                     nowpayments_id TEXT,
-                    seller_revenue_usdt REAL DEFAULT 0.0,
-                    platform_commission_usdt REAL DEFAULT 0.0,
+                    seller_revenue_usd REAL DEFAULT 0.0,
+                    platform_commission_usd REAL DEFAULT 0.0,
                     file_delivered BOOLEAN DEFAULT FALSE,
                     download_count INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

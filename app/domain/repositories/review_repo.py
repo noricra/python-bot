@@ -4,17 +4,18 @@ import psycopg2
 import psycopg2.extras
 from typing import List, Dict, Optional
 from app.core.utils import logger
+from app.core.database_init import get_postgresql_connection
 
 
 class ReviewRepository:
     """Repository for managing product reviews"""
 
-    def __init__(self, db_path: str):
-        self.db_path = db_path
+    def __init__(self):
+        pass
 
     def _get_connection(self):
         """Create database connection"""
-        return sqlite3.connect(self.db_path)
+        return get_postgresql_connection()
 
     def get_product_reviews(self, product_id: str, limit: int = 5, offset: int = 0) -> List[Dict]:
         """
@@ -59,17 +60,17 @@ class ReviewRepository:
             reviews = []
             for row in rows:
                 reviews.append({
-                    'id': row[0],
-                    'product_id': row[1],
-                    'buyer_user_id': row[2],
-                    'order_id': row[3],
-                    'rating': row[4],
-                    'comment': row[5],
-                    'review_text': row[6],
-                    'created_at': row[7],
-                    'updated_at': row[8],
-                    'buyer_first_name': row[9],
-                    'buyer_username': row[10]
+                    'id': row['id'],
+                    'product_id': row['product_id'],
+                    'buyer_user_id': row['buyer_user_id'],
+                    'order_id': row['order_id'],
+                    'rating': row['rating'],
+                    'comment': row['comment'],
+                    'review_text': row['review_text'],
+                    'created_at': row['created_at'],
+                    'updated_at': row['updated_at'],
+                    'buyer_first_name': row['first_name'],
+                    'buyer_username': row['username']
                 })
 
             return reviews
@@ -84,8 +85,8 @@ class ReviewRepository:
             conn = self._get_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-            cursor.execute('SELECT COUNT(*) FROM reviews WHERE product_id = %s', (product_id,))
-            count = cursor.fetchone()[0]
+            cursor.execute('SELECT COUNT(*) as count FROM reviews WHERE product_id = %s', (product_id,))
+            count = cursor.fetchone()['count']
             conn.close()
 
             return count
@@ -120,12 +121,12 @@ class ReviewRepository:
             distribution = {}
             for stars in range(1, 6):
                 cursor.execute('''
-                    SELECT COUNT(*)
+                    SELECT COUNT(*) as count
                     FROM reviews
                     WHERE product_id = %s AND rating = %s
                 ''', (product_id, stars))
 
-                count = cursor.fetchone()[0]
+                count = cursor.fetchone()['count']
                 distribution[stars] = count
 
             conn.close()
@@ -176,7 +177,7 @@ class ReviewRepository:
             logger.info(f"✅ Review added: product={product_id}, buyer={buyer_user_id}, rating={rating}")
             return True
 
-        except sqlite3.IntegrityError:
+        except psycopg2.IntegrityError:
             logger.warning(f"Review already exists for buyer {buyer_user_id} on product {product_id}")
             return False
         except psycopg2.Error as e:
@@ -190,12 +191,12 @@ class ReviewRepository:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('''
-                SELECT COUNT(*)
+                SELECT COUNT(*) as count
                 FROM reviews
                 WHERE product_id = %s AND buyer_user_id = %s
             ''', (product_id, buyer_user_id))
 
-            count = cursor.fetchone()[0]
+            count = cursor.fetchone()['count']
             conn.close()
 
             return count > 0

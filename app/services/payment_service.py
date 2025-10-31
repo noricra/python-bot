@@ -30,8 +30,24 @@ class PaymentService:
         }
 
     def create_payment(self, amount_usd: float, pay_currency: str, order_id: str,
-                       description: str, ipn_callback_url: Optional[str] = None) -> Optional[Dict]:
-        """Create a comprehensive payment with QR code, exact amount, and address"""
+                       description: str, ipn_callback_url: Optional[str] = None,
+                       seller_wallet_address: Optional[str] = None,
+                       seller_payout_currency: Optional[str] = "usdttrc20") -> Optional[Dict]:
+        """
+        Create a comprehensive payment with QR code, exact amount, and split payment support.
+
+        Args:
+            amount_usd: Total price in USD
+            pay_currency: Currency the customer will pay with
+            order_id: Order ID
+            description: Order description
+            ipn_callback_url: IPN callback URL
+            seller_wallet_address: Seller's wallet address (for split payment)
+            seller_payout_currency: Currency for seller payout (default: usdttrc20)
+
+        Returns:
+            Enhanced payment data with commission info, or None if failed
+        """
         if not self.api_key:
             logger.error("NOWPAYMENTS_API_KEY manquant!")
             return None
@@ -41,13 +57,20 @@ class PaymentService:
             return None
 
         try:
+            # Calculate commission (2.78%)
+            commission_percent = core_settings.PLATFORM_COMMISSION_PERCENT
+            commission_amount = amount_usd * (commission_percent / 100)
+            seller_revenue = amount_usd - commission_amount
+
+            logger.info(f"Payment split: total={amount_usd} USD, commission={commission_amount:.2f} USD ({commission_percent}%), seller={seller_revenue:.2f} USD")
+
             # Step 1: Get exact crypto amount using client
             exact_crypto_amount = self._get_exact_crypto_amount(amount_usd, pay_currency)
             if not exact_crypto_amount:
                 logger.error(f"Failed to get exact crypto amount for {pay_currency}")
                 return None
 
-            # Step 2: Create payment using client
+            # Step 2: Create payment using client with split payment support
             logger.info(f"Creating payment: order_id={order_id}, currency={pay_currency}, amount_usd={amount_usd}")
 
             payment_data = self.client.create_payment(
@@ -55,7 +78,9 @@ class PaymentService:
                 pay_currency=pay_currency,
                 order_id=order_id,
                 description=description,
-                ipn_callback_url=ipn_callback_url
+                ipn_callback_url=ipn_callback_url,
+                payout_address=seller_wallet_address if seller_wallet_address else None,
+                payout_currency=seller_payout_currency if seller_wallet_address else None
             )
 
             if not payment_data:
@@ -64,6 +89,14 @@ class PaymentService:
 
             # Step 3: Enhance payment data with QR code and details
             enhanced_payment = self._enhance_payment_data(payment_data, exact_crypto_amount)
+
+            # Step 4: Add commission tracking info
+            enhanced_payment['commission_info'] = {
+                'commission_percent': commission_percent,
+                'commission_amount_usd': commission_amount,
+                'seller_revenue_usd': seller_revenue,
+                'total_amount_usd': amount_usd
+            }
 
             logger.info(f"Payment created successfully: order_id={order_id}, payment_id={enhanced_payment.get('payment_id')}")
             return enhanced_payment

@@ -16,18 +16,17 @@ class MessagingRepository:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
-                'SELECT ticket_id FROM support_tickets WHERE user_id = %s AND order_id = %s AND seller_user_id = %s AND status IN ("open","pending_user","pending_admin")',
-                (buyer_user_id, order_id, seller_user_id)
+                'SELECT ticket_id FROM support_tickets WHERE user_id = %s AND order_id = %s AND seller_user_id = %s AND status IN (%s,%s,%s)',
+                (buyer_user_id, order_id, seller_user_id, 'open', 'pending_user', 'pending_admin')
             )
             row = cursor.fetchone()
             if row:
-                return row[0]
+                return row['ticket_id']
             from app.core.utils import generate_ticket_id
-            from app.core import settings as core_settings
-            ticket_id = generate_ticket_id(core_settings.DATABASE_PATH)
+            ticket_id = generate_ticket_id()
             cursor.execute(
-                'INSERT INTO support_tickets (user_id, ticket_id, subject, message, status, order_id, seller_user_id) VALUES (%s, %s, %s, %s, "open", %s, %s)',
-                (buyer_user_id, ticket_id, subject[:100], '', order_id, seller_user_id)
+                'INSERT INTO support_tickets (user_id, ticket_id, subject, message, status, order_id, seller_user_id) VALUES (%s, %s, %s, %s, %s, %s, %s)',
+                (buyer_user_id, ticket_id, subject[:100], '', 'open', order_id, seller_user_id)
             )
             conn.commit()
             return ticket_id
@@ -56,7 +55,7 @@ class MessagingRepository:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
-                'INSERT INTO support_messages (ticket_id, sender_user_id, sender_role, message) VALUES (%s, %s) ON CONFLICT DO NOTHING',
+                'INSERT INTO support_messages (ticket_id, sender_user_id, sender_role, message) VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING',
                 (ticket_id, sender_user_id, sender_role, message[:2000])
             )
             cursor.execute('UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP WHERE ticket_id = %s', (ticket_id,))
@@ -101,7 +100,7 @@ class MessagingRepository:
         conn = get_postgresql_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
-            cursor.execute('UPDATE support_tickets SET assigned_to_user_id = %s, status = "pending_admin", updated_at = CURRENT_TIMESTAMP WHERE ticket_id = %s', (admin_user_id, ticket_id))
+            cursor.execute('UPDATE support_tickets SET assigned_to_user_id = %s, status = %s, updated_at = CURRENT_TIMESTAMP WHERE ticket_id = %s', (admin_user_id, 'pending_admin', ticket_id))
             conn.commit()
             return cursor.rowcount > 0
         except psycopg2.Error:

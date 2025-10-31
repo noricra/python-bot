@@ -7,7 +7,7 @@ import psycopg2
 import psycopg2.extras
 import logging
 import asyncio
-from telegram import Bot
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.core import settings as core_settings
 from app.core.database_init import get_postgresql_connection
@@ -46,31 +46,38 @@ async def nowpayments_ipn(request: Request):
     conn = get_postgresql_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
-        cursor.execute('SELECT order_id, product_id, seller_user_id, seller_revenue FROM orders WHERE nowpayments_id = %s', (payment_id,))
+        cursor.execute('SELECT order_id, product_id, seller_user_id, seller_revenue_usd, platform_commission_usd FROM orders WHERE nowpayments_id = %s', (payment_id,))
         row = cursor.fetchone()
         if not row:
             conn.close()
             return {"ok": True}
 
-        order_id, product_id, seller_user_id, seller_revenue = row
+        order_id = row['order_id']
+        product_id = row['product_id']
+        seller_user_id = row['seller_user_id']
+        seller_revenue_usd = row['seller_revenue_usd']
+        platform_commission_usd = row['platform_commission_usd']
 
         if payment_status in ['finished', 'confirmed']:
             # Check if already delivered to avoid duplicate sends
             cursor.execute('SELECT payment_status, file_delivered, buyer_user_id FROM orders WHERE nowpayments_id = %s', (payment_id,))
             order_check = cursor.fetchone()
 
-            if order_check and order_check[0] == 'completed' and order_check[1]:
+            if order_check and order_check['payment_status'] == 'completed' and order_check['file_delivered']:
                 # Already processed and delivered
                 conn.close()
                 logger.info(f"Order {order_id} already completed and delivered, skipping")
                 return {"ok": True}
 
-            buyer_user_id = order_check[2] if order_check else None
+            buyer_user_id = order_check['buyer_user_id'] if order_check else None
+
+            # Log commission split info
+            logger.info(f"Payment confirmed - Order: {order_id}, Seller revenue: ${seller_revenue_usd:.2f}, Platform commission: ${platform_commission_usd:.2f}")
 
             # Update order status (but keep file_delivered=FALSE until actually sent)
             cursor.execute('UPDATE orders SET payment_status = %s, completed_at = CURRENT_TIMESTAMP WHERE nowpayments_id = %s', ('completed', payment_id))
             cursor.execute('UPDATE products SET sales_count = sales_count + 1 WHERE product_id = %s', (product_id,))
-            cursor.execute('UPDATE users SET total_sales = total_sales + 1, total_revenue = total_revenue + %s WHERE user_id = %s', (seller_revenue, seller_user_id))
+            cursor.execute('UPDATE users SET total_sales = total_sales + 1, total_revenue = total_revenue + %s WHERE user_id = %s', (seller_revenue_usd, seller_user_id))
 
             conn.commit()
 
@@ -104,7 +111,7 @@ async def send_formation_to_buyer(buyer_user_id: int, order_id: str, product_id:
 
         title, file_url = product_result
 
-        # Send confirmation message with file
+        # Send confirmation message with button to library
         success_message = f"""✅ **PAIEMENT CONFIRMÉ !**
 
 🎉 Félicitations ! Votre paiement a été reçu et confirmé.
@@ -114,10 +121,15 @@ async def send_formation_to_buyer(buyer_user_id: int, order_id: str, product_id:
 
 Votre formation est en cours d'envoi..."""
 
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("📚 Voir ma bibliothèque", callback_data='library_menu')
+        ]])
+
         await bot.send_message(
             chat_id=buyer_user_id,
             text=success_message,
-            parse_mode='Markdown'
+            parse_mode='Markdown',
+            reply_markup=keyboard
         )
 
         # Download file from B2 and send it
@@ -127,13 +139,18 @@ Votre formation est en cours d'envoi..."""
                 local_path = await download_product_file_from_b2(file_url, product_id)
 
                 if local_path and os.path.exists(local_path):
-                    # Send the file
+                    # Send the file with library button
+                    library_keyboard = InlineKeyboardMarkup([[
+                        InlineKeyboardButton("📚 Accéder à ma bibliothèque", callback_data='library_menu')
+                    ]])
+
                     with open(local_path, 'rb') as file:
                         await bot.send_document(
                             chat_id=buyer_user_id,
                             document=file,
-                            caption=f"📚 **{title}**\n\n✅ Téléchargement réussi !\n\n💡 Conservez ce fichier précieusement.",
-                            parse_mode='Markdown'
+                            caption=f"📚 **{title}**\n\n✅ Téléchargement réussi !\n\n💡 Conservez ce fichier précieusement.\n📖 Vous pouvez aussi le retrouver dans votre bibliothèque.",
+                            parse_mode='Markdown',
+                            reply_markup=library_keyboard
                         )
 
                     # Mark as delivered and update download count

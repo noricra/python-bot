@@ -15,9 +15,9 @@ class UserRepository:
         try:
             cursor.execute(
                 '''
-                INSERT INTO users 
+                INSERT INTO users
                 (user_id, username, first_name, language_code)
-                VALUES (%s, %s) ON CONFLICT DO NOTHING
+                VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING
                 ''',
                 (user_id, username, first_name, language_code),
             )
@@ -81,7 +81,7 @@ class UserRepository:
         conn = get_postgresql_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
-            cursor.execute('UPDATE users SET is_seller = 0, seller_name = NULL, seller_bio = NULL WHERE user_id = %s', (user_id,))
+            cursor.execute('UPDATE users SET is_seller = FALSE, seller_name = NULL, seller_bio = NULL WHERE user_id = %s', (user_id,))
             conn.commit()
             return cursor.rowcount > 0
         except psycopg2.Error:
@@ -106,8 +106,8 @@ class UserRepository:
         conn = get_postgresql_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
-            cursor.execute('SELECT COUNT(*) FROM users')
-            return cursor.fetchone()[0]
+            cursor.execute('SELECT COUNT(*) as count FROM users')
+            return cursor.fetchone()['count']
         except psycopg2.Error:
             return 0
         finally:
@@ -117,8 +117,8 @@ class UserRepository:
         conn = get_postgresql_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
-            cursor.execute('SELECT COUNT(*) FROM users WHERE is_seller = 1')
-            return cursor.fetchone()[0]
+            cursor.execute('SELECT COUNT(*) as count FROM users WHERE is_seller = TRUE')
+            return cursor.fetchone()['count']
         except psycopg2.Error:
             return 0
         finally:
@@ -140,51 +140,5 @@ class UserRepository:
         finally:
             conn.close()
 
-    def set_recovery_code(self, email: str, code_hash: str, expiry_timestamp: int) -> bool:
-        """Set recovery code hash and expiry for password recovery"""
-        conn = get_postgresql_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        try:
-            cursor.execute(
-                'UPDATE users SET recovery_code_hash = %s, recovery_code_expiry = %s WHERE email = %s',
-                (code_hash, expiry_timestamp, email)
-            )
-            conn.commit()
-            return cursor.rowcount > 0
-        except psycopg2.Error:
-            return False
-        finally:
-            conn.close()
-
-    def validate_recovery_code(self, email: str, code_hash: str, current_timestamp: int) -> bool:
-        """Validate recovery code with expiration check"""
-        conn = get_postgresql_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        try:
-            cursor.execute(
-                'SELECT user_id FROM users WHERE email = %s AND recovery_code_hash = %s AND recovery_code_expiry > %s',
-                (email, code_hash, current_timestamp)
-            )
-            row = cursor.fetchone()
-            return row is not None
-        except psycopg2.Error:
-            return False
-        finally:
-            conn.close()
-
-    def update_password_by_email(self, email: str, password_salt: str, password_hash: str) -> bool:
-        """Update password and clear recovery code after successful recovery"""
-        conn = get_postgresql_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        try:
-            cursor.execute(
-                'UPDATE users SET password_salt = %s, password_hash = %s, recovery_code_hash = NULL WHERE email = %s',
-                (password_salt, password_hash, email)
-            )
-            conn.commit()
-            return cursor.rowcount > 0
-        except psycopg2.Error:
-            return False
-        finally:
-            conn.close()
+    # Recovery code system removed - no longer needed (no password system)
 

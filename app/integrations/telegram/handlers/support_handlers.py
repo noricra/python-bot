@@ -38,7 +38,7 @@ class SupportHandlers:
                 SELECT o.order_id, p.seller_user_id, p.title
                 FROM orders o
                 JOIN products p ON p.product_id = o.product_id
-                WHERE o.buyer_user_id = ? AND o.product_id = ? AND o.payment_status = 'completed'
+                WHERE o.buyer_user_id = %s AND o.product_id = %s AND o.payment_status = 'completed'
                 ORDER BY o.completed_at DESC LIMIT 1
                 ''', (buyer_id, product_id)
             )

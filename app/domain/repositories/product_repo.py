@@ -19,8 +19,8 @@ class ProductRepository:
             cursor.execute(
                 '''
                 INSERT INTO products
-                (product_id, seller_user_id, title, description, category, price_eur, price_usd, main_file_path, file_size_mb, cover_image_path, thumbnail_path, status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (product_id, seller_user_id, title, description, category, price_usd, main_file_url, file_size_mb, cover_image_url, thumbnail_url, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''',
                 (
                     product['product_id'],
@@ -28,12 +28,11 @@ class ProductRepository:
                     product['title'],
                     product.get('description'),
                     product.get('category'),
-                    product['price_eur'],
-                    product['price_usd'],
-                    product.get('main_file_path'),
+                    product.get('price_usd', product.get('price_eur', 0)),  # fallback to price_eur if needed
+                    product.get('main_file_url'),
                     product.get('file_size_mb'),
-                    product.get('cover_image_path'),
-                    product.get('thumbnail_path'),
+                    product.get('cover_image_url'),
+                    product.get('thumbnail_url'),
                     product.get('status', 'active'),
                 ),
             )
@@ -142,14 +141,14 @@ class ProductRepository:
             cursor.execute('SELECT seller_user_id, title FROM products WHERE product_id = %s', (product_id,))
             check = cursor.fetchone()
             if check:
-                logger.info(f"🔍 DELETE CHECK: Product {product_id} exists, seller_id={check[0]}, trying to delete with seller_id={seller_user_id}")
+                logger.info(f"🔍 DELETE CHECK: Product {product_id} exists, seller_id={check['seller_user_id']}, trying to delete with seller_id={seller_user_id}")
             else:
                 logger.warning(f"❌ DELETE CHECK: Product {product_id} NOT FOUND in database")
 
             # Get category before deletion to update count
             cursor.execute('SELECT category FROM products WHERE product_id = %s AND seller_user_id = %s', (product_id, seller_user_id))
             result = cursor.fetchone()
-            category = result[0] if result else None
+            category = result['category'] if result else None
 
             if not category:
                 logger.warning(f"❌ DELETE FAILED: Product {product_id} not found for seller {seller_user_id} (ownership mismatch or product doesn't exist)")
@@ -206,10 +205,10 @@ class ProductRepository:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
-                "SELECT COUNT(*) FROM products WHERE seller_user_id = %s",
+                "SELECT COUNT(*) as count FROM products WHERE seller_user_id = %s",
                 (seller_user_id,)
             )
-            return cursor.fetchone()[0]
+            return cursor.fetchone()['count']
         except psycopg2.Error:
             return 0
         finally:
@@ -244,25 +243,26 @@ class ProductRepository:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
-                "SELECT COUNT(*) FROM products WHERE category = %s AND status = 'active'",
+                "SELECT COUNT(*) as count FROM products WHERE category = %s AND status = 'active'",
                 (category,)
             )
-            return cursor.fetchone()[0]
+            return cursor.fetchone()['count']
         except psycopg2.Error:
             return 0
         finally:
             conn.close()
 
-    def update_price(self, product_id: str, seller_user_id: int, price_eur: float, price_usd: float) -> bool:
+    def update_price(self, product_id: str, seller_user_id: int, price_usd: float) -> bool:
+        """Update product price (USDT only, EUR shown in UI)"""
         conn = get_postgresql_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
                 '''
-                UPDATE products SET price_eur = %s, price_usd = %s, updated_at = CURRENT_TIMESTAMP
+                UPDATE products SET price_usd = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE product_id = %s AND seller_user_id = %s
                 ''',
-                (price_eur, price_usd, product_id, seller_user_id)
+                (price_usd, product_id, seller_user_id)
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -345,8 +345,8 @@ class ProductRepository:
         conn = get_postgresql_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
-            cursor.execute("SELECT COUNT(*) FROM products")
-            return cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) as count FROM products")
+            return cursor.fetchone()['count']
         except psycopg2.Error:
             return 0
         finally:
@@ -389,7 +389,7 @@ class ProductRepository:
         from app.core.utils import generate_product_id
 
         # Generate unique product ID
-        product_id = generate_product_id(self.database_path)
+        product_id = generate_product_id()
 
         # Ensure we have all required fields
         product = {
@@ -398,12 +398,11 @@ class ProductRepository:
             'title': product_data.get('title'),
             'description': product_data.get('description', ''),
             'category': product_data.get('category', 'General'),
-            'price_eur': product_data.get('price_eur'),
-            'price_usd': product_data.get('price_usd'),
-            'main_file_path': product_data.get('file_path'),
+            'price_usd': product_data.get('price_usd', product_data.get('price_eur', 0)),  # USDT only
+            'main_file_url': product_data.get('file_path'),
             'file_size_mb': round(product_data.get('file_size', 0) / (1024 * 1024), 2),
-            'cover_image_path': product_data.get('cover_image_path'),
-            'thumbnail_path': product_data.get('thumbnail_path'),
+            'cover_image_url': product_data.get('cover_image_url'),
+            'thumbnail_url': product_data.get('thumbnail_url'),
             'status': 'active'
         }
 

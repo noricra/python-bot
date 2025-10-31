@@ -2,6 +2,8 @@
 
 import os
 import logging
+import psycopg2
+import psycopg2.extras
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.core.i18n import t as i18n
 from app.integrations.telegram.keyboards import sell_menu_keyboard, back_to_main_button
@@ -80,21 +82,20 @@ class SellHandlers:
         if user_data and user_data['is_seller']:
             await query.edit_message_text(
                 (
-                    "🔐 **CONNEXION VENDEUR**\n\n"
-                    "Entrez votre **email** pour vous connecter à votre compte vendeur."
+                    "Connexion vendeur\n\n"
+                    "Entrez votre email pour vous connecter."
                 ) if lang == 'fr' else (
-                    "🔐 **SELLER LOGIN**\n\n"
-                    "Enter your **email** to login to your seller account."
+                    "Seller login\n\n"
+                    "Enter your email to login."
                 ),
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
-                        "🔙 Retour" if lang == 'fr' else "🔙 Back",
+                        "Retour" if lang == 'fr' else "Back",
                         callback_data='back_main'
                     )
                 ]]),
                 parse_mode='Markdown'
             )
-            # Définir l'état en attente d'email
             bot.state_manager.update_state(user_id, waiting_seller_login_email=True, lang=lang)
             return
 
@@ -149,7 +150,6 @@ class SellHandlers:
 
     async def seller_dashboard(self, bot, query, lang: str):
         """Dashboard vendeur avec graphiques visuels"""
-        from app.core import chart_generator
         from datetime import datetime, timedelta
 
         # Get actual seller_id (handles multi-account mapping)
@@ -162,41 +162,35 @@ class SellHandlers:
         products = self.product_repo.get_products_by_seller(seller_id)
 
         # Calculer revenu réel depuis la table orders (source de vérité)
-        import psycopg2
-        import psycopg2.extras
         from app.core.database_init import get_postgresql_connection
         from app.core import settings as core_settings
         conn = get_postgresql_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
-            SELECT COALESCE(SUM(product_price_eur), 0)
+            SELECT COALESCE(SUM(product_price_usd), 0) as total_revenue
             FROM orders
             WHERE seller_user_id = %s AND payment_status = 'completed'
         """, (seller_id,))
-        total_revenue = cursor.fetchone()[0]
+        total_revenue = cursor.fetchone()['total_revenue']
 
         # Calculate total storage used (in MB)
         cursor.execute("""
-            SELECT COALESCE(SUM(file_size_mb), 0)
+            SELECT COALESCE(SUM(file_size_mb), 0) as storage_used
             FROM products
             WHERE seller_user_id = %s
         """, (seller_id,))
-        storage_used_mb = cursor.fetchone()[0]
+        storage_used_mb = cursor.fetchone()['storage_used']
         conn.close()
 
         # Storage limit: 100MB
         storage_limit_mb = 100
-        storage_percentage = (storage_used_mb / storage_limit_mb) * 100 if storage_limit_mb > 0 else 0
-
-        # Storage indicator
-        storage_bar = "🟩" * int(storage_percentage // 10) + "⬜" * (10 - int(storage_percentage // 10))
-        storage_text = f"\n\n📦 **Stockage:** {storage_used_mb:.1f} / {storage_limit_mb} MB\n{storage_bar} {storage_percentage:.0f}%"
+        storage_text = f"\n\nStockage: {storage_used_mb:.1f}/100MB"
 
         # Message texte simple
         dashboard_text = i18n(lang, 'dashboard_welcome').format(
             name=bot.escape_markdown(user_data.get('seller_name', 'Vendeur')),
             products_count=len(products),
-            revenue=f"{total_revenue:.2f}€"
+            revenue=f"${total_revenue:.2f}"
         )
         dashboard_text += storage_text
 
@@ -216,83 +210,65 @@ class SellHandlers:
             await query.message.reply_text(dashboard_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
     async def seller_analytics_visual(self, bot, query, lang: str):
-        """Affiche les analytics avec de vrais graphiques matplotlib"""
-        from app.core import chart_generator
+        """Affiche les analytics avec statistiques textuelles (graphiques désactivés temporairement)"""
         from datetime import datetime, timedelta
+        from app.core.database_init import get_postgresql_connection
+
         seller_id = query.from_user.id
 
         try:
             # Notifier l'utilisateur
-            await query.answer("📊 Génération des graphiques...")
+            await query.answer("📊 Chargement des statistiques...")
 
-            # Récupérer les données de ventes (7 derniers jours)
-            orders = bot.order_repo.get_orders_by_seller(seller_id)
+            # Récupérer les données de ventes
+            conn = get_postgresql_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-            # Préparer données revenus timeline
-            sales_data = []
-            product_sales_data = []
+            # Total revenus
+            cursor.execute("""
+                SELECT COALESCE(SUM(product_price_usd), 0) as total_revenue,
+                       COUNT(*) as total_sales
+                FROM orders
+                WHERE seller_user_id = %s AND payment_status = 'completed'
+            """, (seller_id,))
+            stats = cursor.fetchone()
 
-            for order in orders:
-                if order.get('payment_status') == 'completed':
-                    sales_data.append({
-                        'date': order.get('created_at', datetime.now()),
-                        'revenue': float(order.get('product_price_eur', 0))
-                    })
+            # Top 5 produits
+            cursor.execute("""
+                SELECT p.title, COUNT(o.order_id) as sales, COALESCE(SUM(o.product_price_usd), 0) as revenue
+                FROM products p
+                LEFT JOIN orders o ON p.product_id = o.product_id AND o.payment_status = 'completed'
+                WHERE p.seller_user_id = %s
+                GROUP BY p.product_id, p.title
+                ORDER BY revenue DESC
+                LIMIT 5
+            """, (seller_id,))
+            top_products = cursor.fetchall()
+            conn.close()
 
-            # Données par produit
-            products = self.product_repo.get_products_by_seller(seller_id)
-            for product in products:
-                product_orders = [o for o in orders if o.get('product_id') == product.get('product_id') and o.get('payment_status') == 'completed']
-                if product_orders:
-                    product_sales_data.append({
-                        'product_name': product.get('title', 'Sans nom'),
-                        'sales_count': len(product_orders),
-                        'revenue': sum(float(o.get('product_price_eur', 0)) for o in product_orders)
-                    })
+            # Construire le message
+            text = f"""📊 **Statistiques de vente**
 
-            # Générer graphique revenus (si données disponibles)
-            if sales_data:
-                try:
-                    revenue_chart = chart_generator.generate_revenue_chart(sales_data, days=7)
-                    await query.message.reply_photo(
-                        photo=revenue_chart,
-                        caption="📈 **Revenus des 7 derniers jours**",
-                        parse_mode='Markdown'
-                    )
-                except (psycopg2.Error, Exception) as e:
-                    logger.error(f"Error generating revenue chart: {e}")
+💰 **Revenus totaux:** ${stats['total_revenue']:.2f}
+📦 **Ventes totales:** {stats['total_sales']}
 
-            # Générer graphique produits (si données disponibles)
-            if product_sales_data:
-                try:
-                    products_chart = chart_generator.generate_products_chart(product_sales_data, top_n=5)
-                    await query.message.reply_photo(
-                        photo=products_chart,
-                        caption="🏆 **Top 5 Produits par Revenus**",
-                        parse_mode='Markdown'
-                    )
-                except (psycopg2.Error, Exception) as e:
-                    logger.error(f"Error generating products chart: {e}")
-
-            # Si pas de données
-            if not sales_data and not product_sales_data:
-                await query.message.reply_text(
-                    "📊 **Aucune donnée de vente disponible**\n\n"
-                    "Les graphiques s'afficheront dès que vous aurez des ventes.",
-                    parse_mode='Markdown'
-                )
+🏆 **Top 5 Produits:**
+"""
+            for i, p in enumerate(top_products, 1):
+                text += f"{i}. {p['title'][:30]}... - ${p['revenue']:.2f} ({p['sales']} ventes)\n"
 
             # Bouton retour
             keyboard = [[InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')]]
-            await query.message.reply_text(
-                "✅ Analytics générées avec succès!",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
             )
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in seller_analytics_visual: {e}")
             await query.message.reply_text(
-                "❌ Erreur lors de la génération des graphiques.\n\n"
+                "❌ Erreur lors de la génération des statistiques.\n\n"
                 f"Détails: {str(e)}",
                 parse_mode='Markdown'
             )
@@ -363,7 +339,7 @@ class SellHandlers:
             breadcrumb = f"📂 _Mes Produits" + (f" › {category}_" if category else "_")
             caption += f"{breadcrumb}\n\n"
             caption += f"{status_icon} **{product['title']}**\n\n"
-            caption += f"💰 **{product['price_eur']:.2f} €**  •  {status_text}\n"
+            caption += f"💰 **${product['price_usd']:.2f}**  •  {status_text}\n"
             caption += "────────────────\n\n"
             caption += "📊 **PERFORMANCE**\n"
             caption += f"• **{product.get('sales_count', 0)}** ventes"
@@ -490,8 +466,6 @@ class SellHandlers:
         products = self.product_repo.get_products_by_seller(seller_id)
 
         # Calculer ventes et revenu réels depuis la table orders (source de vérité)
-        import psycopg2
-        import psycopg2.extras
         from app.core.database_init import get_postgresql_connection
         from app.core import settings as core_settings
         conn = get_postgresql_connection()
@@ -499,7 +473,7 @@ class SellHandlers:
         cursor.execute("""
             SELECT
                 COUNT(*),
-                COALESCE(SUM(product_price_eur), 0)
+                COALESCE(SUM(product_price_usd), 0)
             FROM orders
             WHERE seller_user_id = %s AND payment_status = 'completed'
         """, (seller_id,))
@@ -509,7 +483,7 @@ class SellHandlers:
         analytics_text = i18n(lang, 'analytics_title').format(
             products=len(products),
             sales=total_sales,
-            revenue=f"{total_revenue:.2f}€"
+            revenue=f"${total_revenue:.2f}"
         )
 
         await query.edit_message_text(
@@ -728,7 +702,7 @@ class SellHandlers:
             return
 
         # Connexion réussie
-        # Removed: bot.login_seller(user_id) - mapping removed
+        bot.login_seller(user_id)
         bot.state_manager.reset_state(user_id, keep={'lang'})
 
         # Envoyer email de notification de connexion
@@ -816,8 +790,7 @@ class SellHandlers:
                 logger.info(f"💰 PRICE STEP - User {user_id}")
                 logger.info(f"   State BEFORE: {user_state}")
 
-                product_data['price_eur'] = price
-                product_data['price_usd'] = price * self.payment_service.get_exchange_rate()
+                product_data['price_usd'] = price
                 user_state['product_data'] = product_data  # CRITICAL: Update product_data in state
                 user_state['step'] = 'cover_image'
 
@@ -840,7 +813,7 @@ class SellHandlers:
                 keyboard = InlineKeyboardMarkup(new_keyboard)
 
                 await update.message.reply_text(
-                    f"✅ **Prix :** {price}€\n\n"
+                    f"✅ **Prix :** ${price:.2f}\n\n"
                     f"📸 **Étape 5/6 :** Envoyez une image de couverture (optionnel)\n\n"
                     f"• Format: JPG/PNG\n"
                     f"• Taille max: 5MB\n"
@@ -901,7 +874,7 @@ class SellHandlers:
         bot.state_manager.update_state(user_id, **user_state)
 
         await query.edit_message_text(
-            f"✅ **Catégorie :** {category_name}\n\n💰 **Étape 4/6 :** Prix en EUR (ex: 29.99)",
+            f"✅ **Catégorie :** {category_name}\n\n💰 **Étape 4/6 :** Prix en $ (ex: 29.99)",
             parse_mode='Markdown',
             reply_markup=self._get_product_creation_keyboard('price', lang)
         )
@@ -948,10 +921,10 @@ class SellHandlers:
             'title': f"📝 **Étape 1/6 :** Titre du produit\n\n{i18n(lang, 'product_step1_prompt')}",
             'description': f"📋 **Étape 2/6 :** Description du produit\n\nTitre actuel: {product_data.get('title', 'N/A')}",
             'category': None,  # Will show category selection
-            'price': f"💰 **Étape 4/6 :** Prix en EUR\n\nCatégorie actuelle: {product_data.get('category', 'N/A')}",
+            'price': f"💰 **Étape 4/6 :** Prix en $\n\nCatégorie actuelle: {product_data.get('category', 'N/A')}",
             'cover_image': (
                 f"📸 **Étape 5/6 :** Image de couverture (optionnel)\n\n"
-                f"Prix actuel: {product_data.get('price_eur', 'N/A')}€\n\n"
+                f"Prix actuel: ${product_data.get('price_usd', 0):.2f}\n\n"
                 f"• Format: JPG/PNG\n• Taille max: 5MB"
             ),
             'file': f"📁 **Étape 6/6 :** Fichier produit"
@@ -1018,22 +991,22 @@ class SellHandlers:
             temp_product_id = f"TEMP_{uuid.uuid4().hex[:8]}"
 
             # Save cover and generate thumbnail
-            cover_path, thumbnail_path = ImageUtils.save_telegram_photo(
+            cover_path, thumbnail_url = ImageUtils.save_telegram_photo(
                 tmp_path, seller_id, temp_product_id
             )
 
             # Clean up temp file
             os.remove(tmp_path)
 
-            if cover_path and thumbnail_path:
-                product_data['cover_image_path'] = cover_path
-                product_data['thumbnail_path'] = thumbnail_path
+            if cover_path and thumbnail_url:
+                product_data['cover_image_url'] = cover_path
+                product_data['thumbnail_url'] = thumbnail_url
                 product_data['temp_product_id'] = temp_product_id
                 user_state['step'] = 'file'
                 bot.state_manager.update_state(telegram_id, **user_state)
 
                 # DEBUG LOG
-                logger.info(f"📸 IMAGE STORED - Cover: {cover_path}, Thumbnail: {thumbnail_path}, Temp ID: {temp_product_id}")
+                logger.info(f"📸 IMAGE STORED - Cover: {cover_path}, Thumbnail: {thumbnail_url}, Temp ID: {temp_product_id}")
 
                 await update.message.reply_text(
                     f"✅ **Image de couverture enregistrée!**\n\n"
@@ -1101,6 +1074,14 @@ class SellHandlers:
                     product_repo = ProductRepository()
                     product_repo.update_product_file_url(product_id, b2_url)
                     logger.info(f"✅ Product file uploaded to B2: {product_id}")
+
+                    # Delete local file after successful upload
+                    try:
+                        if os.path.exists(local_file_path):
+                            os.remove(local_file_path)
+                            logger.info(f"🗑️ Local file deleted after B2 upload: {local_file_path}")
+                    except Exception as e:
+                        logger.error(f"⚠️ Failed to delete local file {local_file_path}: {e}")
                 else:
                     logger.warning(f"⚠️ Failed to upload to B2, file kept locally: {product_id}")
 
@@ -1119,13 +1100,13 @@ class SellHandlers:
                                 to_email=user_data['email'],
                                 seller_name=user_data.get('seller_name', 'Vendeur'),
                                 product_title=product_data['title'],
-                                product_price=product_data['price_eur']
+                                product_price=product_data['price_usd']
                             )
                             logger.info(f"📧 Email premier produit envoyé à {user_data['email']}")
                 except (psycopg2.Error, Exception) as e:
                     logger.error(f"Erreur envoi email premier produit: {e}")
 
-                success_msg = f"✅ **Produit créé avec succès!**\n\n**ID:** {product_id}\n**Titre:** {product_data['title']}\n**Prix:** {product_data['price_eur']}€"
+                success_msg = f"✅ **Produit créé avec succès!**\n\n**ID:** {product_id}\n**Titre:** {product_data['title']}\n**Prix:** ${product_data['price_usd']:.2f}"
 
                 await update.message.reply_text(
                     success_msg,
@@ -1140,7 +1121,9 @@ class SellHandlers:
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error processing file upload: {e}")
-            await update.message.reply_text("❌ Erreur lors du traitement du fichier")
+            import traceback
+            logger.error(traceback.format_exc())
+            await update.message.reply_text("Erreur lors du traitement du fichier")
 
     def _rename_product_images(self, seller_id, temp_product_id, final_product_id, product_data):
         """Rename product image directory from temp to final product_id and UPDATE DATABASE"""
@@ -1159,32 +1142,32 @@ class SellHandlers:
 
                 # Update paths in product_data (for logging)
                 new_cover_path = None
-                new_thumbnail_path = None
+                new_thumbnail_url = None
 
-                if 'cover_image_path' in product_data:
-                    new_cover_path = product_data['cover_image_path'].replace(
+                if 'cover_image_url' in product_data:
+                    new_cover_path = product_data['cover_image_url'].replace(
                         temp_product_id, final_product_id
                     )
-                if 'thumbnail_path' in product_data:
-                    new_thumbnail_path = product_data['thumbnail_path'].replace(
+                if 'thumbnail_url' in product_data:
+                    new_thumbnail_url = product_data['thumbnail_url'].replace(
                         temp_product_id, final_product_id
                     )
 
                 # 🔧 CRITICAL FIX: Update paths in DATABASE
-                if new_cover_path or new_thumbnail_path:
-                    conn = get_sqlite_connection(core_settings.DATABASE_PATH)
+                if new_cover_path or new_thumbnail_url:
+                    conn = get_postgresql_connection()
                     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                     try:
                         cursor.execute(
                             '''
                             UPDATE products
-                            SET cover_image_path = %s, thumbnail_path = %s
+                            SET cover_image_url = %s, thumbnail_url = %s
                             WHERE product_id = %s
                             ''',
-                            (new_cover_path, new_thumbnail_path, final_product_id)
+                            (new_cover_path, new_thumbnail_url, final_product_id)
                         )
                         conn.commit()
-                        logger.info(f"✅ Updated DB paths: cover={new_cover_path}, thumb={new_thumbnail_path}")
+                        logger.info(f"✅ Updated DB paths: cover={new_cover_path}, thumb={new_thumbnail_url}")
                     except Exception as db_error:
                         logger.error(f"❌ DB update failed: {db_error}")
                         conn.rollback()
@@ -1203,35 +1186,57 @@ class SellHandlers:
         state = bot.state_manager.get_state(user_id)
         step = state.get('step')
 
+        lang = state.get('lang', 'fr')
+
         if step == 'edit_name':
             new_name = message_text.strip()[:50]
             success = self.user_repo.update_seller_name(user_id, new_name)
             bot.state_manager.reset_state(user_id, keep={'lang'})
-            await update.message.reply_text("✅ Nom mis à jour." if success else "❌ Erreur mise à jour nom.")
+            await update.message.reply_text(
+                "Nom mis a jour." if success else "Erreur mise a jour nom.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Retour Dashboard", callback_data='seller_dashboard')
+                ]])
+            )
 
         elif step == 'edit_bio':
             new_bio = message_text.strip()[:500]
             success = self.user_repo.update_seller_bio(user_id, new_bio)
             bot.state_manager.reset_state(user_id, keep={'lang'})
-            await update.message.reply_text("✅ Biographie mise à jour." if success else "❌ Erreur mise à jour bio.")
+            await update.message.reply_text(
+                "Biographie mise a jour." if success else "Erreur mise a jour bio.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Retour Dashboard", callback_data='seller_dashboard')
+                ]])
+            )
 
         elif step == 'edit_email':
             new_email = message_text.strip().lower()
             if not validate_email(new_email):
-                await update.message.reply_text("❌ Email invalide")
+                await update.message.reply_text("Email invalide")
                 return
             success = self.user_repo.update_seller_email(user_id, new_email)
             bot.state_manager.reset_state(user_id, keep={'lang'})
-            await update.message.reply_text("✅ Email mis à jour." if success else "❌ Erreur mise à jour email.")
+            await update.message.reply_text(
+                "Email mis a jour." if success else "Erreur mise a jour email.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Retour Dashboard", callback_data='seller_dashboard')
+                ]])
+            )
 
         elif step == 'edit_solana_address':
             new_address = message_text.strip()
             if not validate_solana_address(new_address):
-                await update.message.reply_text("❌ Adresse Solana invalide (32-44 caractères)")
+                await update.message.reply_text("Adresse Solana invalide (32-44 caracteres)")
                 return
             success = self.user_repo.update_seller_solana_address(user_id, new_address)
             bot.state_manager.reset_state(user_id, keep={'lang'})
-            await update.message.reply_text("✅ Adresse Solana mise à jour." if success else "❌ Erreur mise à jour adresse.")
+            await update.message.reply_text(
+                "Adresse Solana mise a jour." if success else "Erreur mise a jour adresse.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Retour Dashboard", callback_data='seller_dashboard')
+                ]])
+            )
 
     # Missing methods from monolith - extracted from bot_mlt.py
     async def payout_history(self, bot, query, lang):
@@ -1314,10 +1319,10 @@ class SellHandlers:
                 return
 
             title = product.get('title', 'Sans titre')
-            price = product.get('price_eur', 0)
+            price = product.get('price_usd', 0)
             status = product.get('status', 'active')
 
-            menu_text = f"✏️ **Édition: {title}**\n\n💰 Prix: {price}€\n📊 Statut: {status}\n\nQue voulez-vous modifier ?"
+            menu_text = f"✏️ **Édition: {title}**\n\n💰 Prix: ${price:.2f}\n📊 Statut: {status}\n\nQue voulez-vous modifier ?"
 
             keyboard = [
                 [InlineKeyboardButton("📝 Modifier titre" if lang == 'fr' else "📝 Edit title",
@@ -1432,11 +1437,11 @@ class SellHandlers:
                 await safe_transition_to_text(
                     query,
                     f"💰 **Modifier le prix de:** {product.get('title', 'N/A')}\n\n"
-                    f"Prix actuel: {product.get('price_eur', 0):.2f}€\n\n"
-                    f"Entrez le nouveau prix en euros:" if lang == 'fr' else
+                    f"Prix actuel: ${product.get('price_usd', 0):.2f}\n\n"
+                    f"Entrez le nouveau prix en $:" if lang == 'fr' else
                     f"💰 **Edit price for:** {product.get('title', 'N/A')}\n\n"
-                    f"Current price: €{product.get('price_eur', 0):.2f}\n\n"
-                    f"Enter new price in euros:",
+                    f"Current price: ${product.get('price_usd', 0):.2f}\n\n"
+                    f"Enter new price in $:",
                     InlineKeyboardMarkup([[
                         InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data=f'edit_product_{product_id}')
                     ]])
@@ -1652,11 +1657,11 @@ class SellHandlers:
             await safe_transition_to_text(
                 query,
                 f"💰 **Modifier le prix de:** {product.get('title', 'N/A')}\n\n"
-                f"Prix actuel: {product.get('price_eur', 0):.2f}€\n\n"
-                f"Entrez le nouveau prix en euros (1-5000€):" if lang == 'fr' else
+                f"Prix actuel: ${product.get('price_usd', 0):.2f}\n\n"
+                f"Entrez le nouveau prix en $ (1-5000):" if lang == 'fr' else
                 f"💰 **Edit price for:** {product.get('title', 'N/A')}\n\n"
-                f"Current price: €{product.get('price_eur', 0):.2f}\n\n"
-                f"Enter new price in euros (€1-5000):",
+                f"Current price: ${product.get('price_usd', 0):.2f}\n\n"
+                f"Enter new price in $ (1-5000):",
                 InlineKeyboardMarkup([[
                     InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data=f'edit_product_{product_id}')
                 ]])
@@ -1712,6 +1717,30 @@ class SellHandlers:
             # Verify ownership using helper
             product = await self._verify_product_ownership(bot, query, product_id)
             if not product:
+                return
+
+            # Check if product was deactivated by admin
+            deactivated_by_admin = product.get('deactivated_by_admin', False)
+            admin_reason = product.get('admin_deactivation_reason', '')
+
+            if deactivated_by_admin and product.get('status') == 'inactive':
+                # CRITICAL: Prevent seller from reactivating product disabled by admin
+                await safe_transition_to_text(
+                    query,
+                    f"🚫 **PRODUIT DÉSACTIVÉ PAR L'ADMINISTRATEUR**\n\n"
+                    f"Ce produit a été désactivé par un administrateur et ne peut pas être réactivé.\n\n"
+                    f"**Raison:** {admin_reason}\n\n"
+                    f"Contactez le support pour plus d'informations." if lang == 'fr'
+                    else
+                    f"🚫 **PRODUCT DISABLED BY ADMINISTRATOR**\n\n"
+                    f"This product has been disabled by an administrator and cannot be reactivated.\n\n"
+                    f"**Reason:** {admin_reason}\n\n"
+                    f"Contact support for more information.",
+                    InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data=f'edit_product_{product_id}')
+                    ]]),
+                    parse_mode='Markdown'
+                )
                 return
 
             # Toggle status

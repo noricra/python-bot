@@ -2,9 +2,11 @@
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.core.i18n import t as i18n
-from app.core.db import get_sqlite_connection
+from app.core.database_init import get_postgresql_connection
 from app.core.settings import settings
 import logging
+import psycopg2
+import psycopg2.extras
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +39,7 @@ class AdminHandlers:
     async def admin_users_menu(self, query, lang):
         """Menu gestion utilisateurs"""
         users_keyboard = [
-            [InlineKeyboardButton(" Voir utilisateurs", callback_data='admin_users'),
-             InlineKeyboardButton(" Rechercher user", callback_data='admin_search_user')],
+            [InlineKeyboardButton(" Gérer utilisateurs", callback_data='admin_users')],
             [InlineKeyboardButton(" Suspendre user", callback_data='admin_suspend_user'),
              InlineKeyboardButton(" Rétablir user", callback_data='admin_restore_user')],
             [InlineKeyboardButton(" Export users", callback_data='admin_export_users')],
@@ -67,15 +68,15 @@ class AdminHandlers:
             parse_mode='Markdown')
 
     async def admin_users(self, query, lang):
-        """Gestion utilisateurs"""
+        """Gestion utilisateurs - Liste et recherche unifiées"""
         try:
             users = self.user_repo.get_all_users(limit=50)  # Increased limit
-            text = "👥 **UTILISATEURS ENREGISTRÉS**\n\n" if lang == 'fr' else "👥 **REGISTERED USERS**\n\n"
+            text = "👥 **GESTION DES UTILISATEURS**\n\n" if lang == 'fr' else "👥 **USER MANAGEMENT**\n\n"
 
             if not users:
                 text += "Aucun utilisateur trouvé." if lang == 'fr' else "No users found."
             else:
-                text += f"Total: {len(users)} utilisateurs\n\n" if lang == 'fr' else f"Total: {len(users)} users\n\n"
+                text += f"📊 Total: {len(users)} utilisateurs\n\n" if lang == 'fr' else f"📊 Total: {len(users)} users\n\n"
 
                 for i, user in enumerate(users[:30], 1):  # Show first 30 for readability
                     status = "🟢 Vendeur" if user.get('is_seller') else "🔵 Acheteur"
@@ -86,16 +87,29 @@ class AdminHandlers:
                     first_name = user.get('first_name', 'N/A')
                     registration_date = user.get('registration_date', 'N/A')[:10] if user.get('registration_date') else 'N/A'
 
-                    text += f"**{i}.** {display_status}\n"
+                    # Additional stats
+                    total_sales = user.get('total_sales', 0)
+                    total_revenue = user.get('total_revenue', 0.0)
+                    is_suspended = user.get('is_suspended', False)
+                    suspended_icon = " 🚫" if is_suspended else ""
+
+                    text += f"**{i}.** {display_status}{suspended_icon}\n"
                     text += f"   • ID: `{user['user_id']}`\n"
                     text += f"   • Nom: {first_name}\n" if lang == 'fr' else f"   • Name: {first_name}\n"
                     text += f"   • Username: @{username}\n" if username != 'N/A' else ""
+
+                    if user.get('is_seller'):
+                        text += f"   • Ventes: {total_sales} | Revenus: {total_revenue:.2f}$\n" if lang == 'fr' else f"   • Sales: {total_sales} | Revenue: {total_revenue:.2f}$\n"
+
                     text += f"   • Inscrit: {registration_date}\n\n" if lang == 'fr' else f"   • Registered: {registration_date}\n\n"
 
                 if len(users) > 30:
-                    text += f"... et {len(users) - 30} autres utilisateurs" if lang == 'fr' else f"... and {len(users) - 30} more users"
+                    text += f"... et {len(users) - 30} autres utilisateurs\n" if lang == 'fr' else f"... and {len(users) - 30} more users\n"
+
+            text += "\n💡 Utilisez le bouton 🔍 pour rechercher un utilisateur spécifique par ID" if lang == 'fr' else "\n💡 Use the 🔍 button to search for a specific user by ID"
 
             keyboard = [
+                [InlineKeyboardButton("🔍 Rechercher par ID" if lang == 'fr' else "🔍 Search by ID", callback_data='admin_search_user')],
                 [InlineKeyboardButton(" Export CSV", callback_data='admin_export_users')],
                 [InlineKeyboardButton("🔙 Menu Users" if lang == 'fr' else "🔙 Users Menu", callback_data='admin_users_menu')]
             ]
@@ -130,7 +144,7 @@ class AdminHandlers:
             text = i18n(lang, 'admin_payouts_title') + "\n\n"
 
             for payout in payouts:
-                text += f"User {payout['user_id']}: {payout['amount']}€\n"
+                text += f"User {payout['user_id']}: {payout['amount']}$\n"
 
             keyboard = [
                 [InlineKeyboardButton("✅ Mark All Paid", callback_data='admin_mark_all_payouts_paid')],
@@ -155,7 +169,7 @@ class AdminHandlers:
  Products: {total_products}
  Orders: {total_orders}
 
- Total Revenue: {self.order_repo.get_total_revenue():.2f}€"""
+ Total Revenue: {self.order_repo.get_total_revenue():.2f}$"""
 
             await query.edit_message_text(
                 stats_text,
@@ -264,7 +278,7 @@ class AdminHandlers:
                 return
 
             # Comprehensive user suspension
-            conn = get_sqlite_connection(settings.DATABASE_PATH)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Store original seller status and suspend
@@ -320,7 +334,7 @@ class AdminHandlers:
 
         # Get list of suspended users
         try:
-            conn = get_sqlite_connection(settings.DATABASE_PATH)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 SELECT user_id, seller_name, email, first_name
@@ -385,12 +399,12 @@ class AdminHandlers:
             # Check suspension more comprehensively:
             # 1. Check seller_name for [SUSPENDED] marker
             # 2. Check if there are suspended products for this user
-            conn = get_sqlite_connection(settings.DATABASE_PATH)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Check for suspended products
-            cursor.execute('SELECT COUNT(*) FROM products WHERE seller_user_id = ? AND status = "suspended"', (user_id,))
-            suspended_products_count = cursor.fetchone()[0]
+            cursor.execute('SELECT COUNT(*) as count FROM products WHERE seller_user_id = %s AND status = %s', (user_id, 'suspended'))
+            suspended_products_count = cursor.fetchone()['count']
 
             seller_name = user_data.get('seller_name', '')
             is_marked_suspended = seller_name.startswith('[SUSPENDED]')
@@ -542,7 +556,7 @@ class AdminHandlers:
             for i, product in enumerate(products[:20], 1):  # Limit to first 20 for readability
                 export_text += f"**{i}. {product.get('title', 'N/A')}**\n"
                 export_text += f"• ID: `{product.get('product_id', 'N/A')}`\n"
-                export_text += f"• Prix: {product.get('price_eur', 0):.2f}€\n" if lang == 'fr' else f"• Price: €{product.get('price_eur', 0):.2f}\n"
+                export_text += f"• Prix: ${product.get('price_usd', 0):.2f}\n" if lang == 'fr' else f"• Price: ${product.get('price_usd', 0):.2f}\n"
                 export_text += f"• Catégorie: {product.get('category', 'N/A')}\n" if lang == 'fr' else f"• Category: {product.get('category', 'N/A')}\n"
                 export_text += f"• Statut: {product.get('status', 'N/A')}\n" if lang == 'fr' else f"• Status: {product.get('status', 'N/A')}\n"
                 export_text += f"• Vendeur ID: {product.get('seller_user_id', 'N/A')}\n\n"
@@ -634,7 +648,7 @@ class AdminHandlers:
                                 reason=reason,
                                 can_appeal=True
                             )
-                except (psycopg2.Error, Exception) as email_error:
+                except Exception as email_error:
                     logger.error(f"Erreur envoi email suspension produit: {email_error}")
 
             # Message de confirmation avec la raison
@@ -681,13 +695,13 @@ class AdminHandlers:
                     f"✅ **Produit rétabli avec succès!**\n\n"
                     f" **{product['title']}**\n"
                     f" {product_id}\n"
-                    f" {product['price_eur']}€\n\n"
+                    f" ${product['price_usd']:.2f}\n\n"
                     f"Le produit est maintenant visible sur la marketplace."
                 ) if lang == 'fr' else (
                     f"✅ **Product restored successfully!**\n\n"
                     f" **{product['title']}**\n"
                     f" {product_id}\n"
-                    f" {product['price_eur']}€\n\n"
+                    f" ${product['price_usd']:.2f}\n\n"
                     f"The product is now visible on the marketplace."
                 )
 
@@ -697,7 +711,7 @@ class AdminHandlers:
                     if seller and seller.get('email'):
                         # TODO: Créer email de notification de rétablissement si souhaité
                         pass
-                except (psycopg2.Error, Exception) as email_error:
+                except Exception as email_error:
                     logger.error(f"Erreur notification vendeur restoration: {email_error}")
             else:
                 text = "❌ Erreur lors du rétablissement." if lang == 'fr' else "❌ Error restoring product."
@@ -742,7 +756,7 @@ class AdminHandlers:
                 writer.writerow([
                     product.get('product_id', ''),
                     product.get('title', ''),
-                    product.get('price_eur', 0),
+                    product.get('price_usd', 0),
                     product.get('category', ''),
                     product.get('status', ''),
                     product.get('seller_user_id', ''),

@@ -6,13 +6,12 @@ from app.domain.repositories.ticket_repo import SupportTicketRepository
 
 
 class SupportService:
-    def __init__(self, database_path: Optional[str] = None) -> None:
-        self.database_path = database_path
-        self.repo = SupportTicketRepository(database_path)
+    def __init__(self, ticket_repo: SupportTicketRepository) -> None:
+        self.repo = ticket_repo
 
     def create_ticket(self, user_id: int, subject: str, message: str) -> Optional[str]:
         from app.core.utils import generate_ticket_id
-        ticket_id = generate_ticket_id(self.database_path)
+        ticket_id = generate_ticket_id()
         created = self.repo.create_ticket(user_id=user_id, ticket_id=ticket_id, subject=subject[:100], message=message[:2000])
         return ticket_id if created else None
 

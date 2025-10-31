@@ -3,6 +3,8 @@ Product Service - Business logic for product operations
 """
 import re
 import logging
+import psycopg2
+import psycopg2.extras
 from typing import Dict, Any, Optional, List
 from app.core.database_init import get_postgresql_connection
 
@@ -12,8 +14,7 @@ logger = logging.getLogger(__name__)
 class ProductService:
     """Service for product business logic"""
 
-    def __init__(self, db_path: str = None, product_repo=None):
-        self.db_path = db_path
+    def __init__(self, product_repo=None):
         self.product_repo = product_repo
 
     def validate_product_id_format(self, product_id: str) -> bool:
@@ -23,8 +24,7 @@ class ProductService:
     def get_product_with_seller_info(self, product_id: str) -> Optional[Dict[str, Any]]:
         """Get product with seller information"""
         try:
-            conn = get_sqlite_connection(self.db_path)
-            conn.row_factory = lambda cursor, row: {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('''
@@ -45,7 +45,7 @@ class ProductService:
     def increment_product_views(self, product_id: str) -> bool:
         """Increment product view count"""
         try:
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute(
                 'UPDATE products SET views_count = views_count + 1 WHERE product_id = %s',
@@ -62,8 +62,7 @@ class ProductService:
     def search_products_by_category(self, category: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Search products by category"""
         try:
-            conn = get_sqlite_connection(self.db_path)
-            conn.row_factory = lambda cursor, row: {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('''
@@ -90,7 +89,7 @@ class ProductService:
             from app.core.utils import generate_product_id
 
             # Generate unique product ID
-            product_id = generate_product_id(self.db_path)
+            product_id = generate_product_id()
 
             # Prepare product data
             product_dict = {
@@ -99,9 +98,8 @@ class ProductService:
                 'title': title,
                 'description': description,
                 'category': category,
-                'price_eur': price,
-                'price_usd': price * 1.1,  # Simple EUR->USD conversion
-                'main_file_path': file_path,
+                'price_usd': price,  # Price in USDT
+                'main_file_url': file_path,
                 'file_size_mb': 2.0,  # Default size
                 'status': 'active'
             }
@@ -111,7 +109,7 @@ class ProductService:
                 success = self.product_repo.insert_product(product_dict)
             else:
                 from app.domain.repositories.product_repo import ProductRepository
-                product_repo = ProductRepository(self.db_path)
+                product_repo = ProductRepository()
                 success = product_repo.insert_product(product_dict)
 
             return product_id if success else None
@@ -123,8 +121,7 @@ class ProductService:
     def get_user_purchases(self, user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """Get user's purchased products"""
         try:
-            conn = get_sqlite_connection(self.db_path)
-            conn.row_factory = lambda cursor, row: {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             cursor.execute('''
@@ -147,15 +144,15 @@ class ProductService:
     def check_user_has_purchased(self, user_id: int, product_id: str) -> bool:
         """Check if user has purchased a specific product"""
         try:
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
-                SELECT COUNT(*)
+                SELECT COUNT(*) as count
                 FROM orders
-                WHERE buyer_user_id = ? AND product_id = ? AND payment_status = 'completed'
+                WHERE buyer_user_id = %s AND product_id = %s AND payment_status = 'completed'
             ''', (user_id, product_id))
 
-            count = cursor.fetchone()[0]
+            count = cursor.fetchone()['count']
             conn.close()
             return count > 0
 
@@ -166,10 +163,10 @@ class ProductService:
     def get_product_file_info(self, user_id: int, product_id: str) -> Optional[Dict[str, str]]:
         """Get product file information for download"""
         try:
-            conn = get_sqlite_connection(self.db_path)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
-                SELECT p.main_file_path, p.title
+                SELECT p.main_file_url, p.title
                 FROM orders o
                 JOIN products p ON o.product_id = p.product_id
                 WHERE o.buyer_user_id = %s AND o.product_id = %s AND o.payment_status = 'completed'
@@ -180,8 +177,8 @@ class ProductService:
 
             if result:
                 return {
-                    'file_path': result[0],
-                    'title': result[1]
+                    'file_path': result['main_file_url'],
+                    'title': result['title']
                 }
             return None
 

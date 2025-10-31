@@ -55,11 +55,11 @@ class CarouselHelper:
             keyboard_markup = InlineKeyboardMarkup(keyboard)
 
             # Get image path
-            thumbnail_path = CarouselHelper._get_image_path(product)
+            thumbnail_url = CarouselHelper._get_image_path(product)
 
             # Display carousel (edit or send new)
             await CarouselHelper._display_message(
-                query, bot, thumbnail_path, caption, keyboard_markup, parse_mode
+                query, bot, thumbnail_url, caption, keyboard_markup, parse_mode
             )
 
         except Exception as e:
@@ -84,11 +84,11 @@ class CarouselHelper:
         Returns:
             Chemin vers l'image ou None
         """
-        thumbnail_path = product.get('thumbnail_path')
+        thumbnail_url = product.get('thumbnail_url')
 
         # Check if thumbnail exists
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            return thumbnail_path
+        if thumbnail_url and os.path.exists(thumbnail_url):
+            return thumbnail_url
 
         # Fallback: try to get placeholder
         try:
@@ -109,7 +109,7 @@ class CarouselHelper:
     async def _display_message(
         query,
         bot,
-        thumbnail_path: Optional[str],
+        thumbnail_url: Optional[str],
         caption: str,
         keyboard_markup: InlineKeyboardMarkup,
         parse_mode: str
@@ -123,16 +123,16 @@ class CarouselHelper:
         Args:
             query: CallbackQuery
             bot: Instance bot
-            thumbnail_path: Chemin image ou None
+            thumbnail_url: Chemin image ou None
             caption: Caption formaté
             keyboard_markup: Clavier inline
             parse_mode: Mode parsing
         """
         try:
             # Try to edit existing message
-            if thumbnail_path and os.path.exists(thumbnail_path):
+            if thumbnail_url and os.path.exists(thumbnail_url):
                 # Has image - use edit_message_media
-                with open(thumbnail_path, 'rb') as photo_file:
+                with open(thumbnail_url, 'rb') as photo_file:
                     await query.edit_message_media(
                         media=InputMediaPhoto(
                             media=photo_file,
@@ -159,8 +159,8 @@ class CarouselHelper:
                 pass  # Ignore if can't delete
 
             # Send new message
-            if thumbnail_path and os.path.exists(thumbnail_path):
-                with open(thumbnail_path, 'rb') as photo_file:
+            if thumbnail_url and os.path.exists(thumbnail_url):
+                with open(thumbnail_url, 'rb') as photo_file:
                     await bot.application.bot.send_photo(
                         chat_id=query.message.chat_id,
                         photo=photo_file,

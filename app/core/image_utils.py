@@ -267,7 +267,7 @@ class ImageUtils:
             product_id: Product ID
 
         Returns:
-            tuple: (cover_path, thumbnail_path) or (None, None) on error
+            tuple: (cover_path, thumbnail_url) or (None, None) on error
         """
         try:
             # Create directory
@@ -276,7 +276,7 @@ class ImageUtils:
             # Define paths
             original_path = os.path.join(product_dir, 'cover_original.jpg')
             cover_path = os.path.join(product_dir, 'cover.jpg')
-            thumbnail_path = os.path.join(product_dir, 'thumb.jpg')
+            thumbnail_url = os.path.join(product_dir, 'thumb.jpg')
 
             # 1. TOUJOURS sauver l'original intact (JAMAIS altéré)
             with open(file_path, 'rb') as src:
@@ -304,14 +304,14 @@ class ImageUtils:
                     shutil.copy2(original_path, cover_path)
 
             # 3. Générer thumbnail DEPUIS L'ORIGINAL (meilleure qualité)
-            success = ImageUtils.generate_thumbnail(original_path, thumbnail_path)
+            success = ImageUtils.generate_thumbnail(original_path, thumbnail_url)
 
             if not success:
                 logger.error("Failed to generate thumbnail")
                 return None, None
 
             logger.info(f"✅ Product images saved: original + cover + thumb")
-            return cover_path, thumbnail_path
+            return cover_path, thumbnail_url
 
         except Exception as e:
             logger.error(f"❌ Error saving product photo: {e}")

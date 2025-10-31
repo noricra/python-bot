@@ -4,15 +4,15 @@ Script Admin - Nettoyage des produits orphelins
 Supprime les produits que tu ne peux pas delete via le bot
 """
 
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import sys
-
-DATABASE_PATH = "marketplace_database.db"
+from app.core.database_init import get_postgresql_connection
 
 def list_products():
     """Liste tous les produits avec leurs infos"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
+    conn = get_postgresql_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cursor.execute("""
         SELECT product_id, seller_user_id, title, created_at, status
@@ -31,12 +31,12 @@ def list_products():
         print("Aucun produit dans la base.")
         return []
 
-    for i, (pid, seller_id, title, created, status) in enumerate(products, 1):
-        print(f"{i}. {pid}")
-        print(f"   Titre: {title}")
-        print(f"   Seller ID: {seller_id}")
-        print(f"   Créé: {created}")
-        print(f"   Status: {status}")
+    for i, product in enumerate(products, 1):
+        print(f"{i}. {product['product_id']}")
+        print(f"   Titre: {product['title']}")
+        print(f"   Seller ID: {product['seller_user_id']}")
+        print(f"   Créé: {product['created_at']}")
+        print(f"   Status: {product['status']}")
         print()
 
     return products
@@ -44,11 +44,11 @@ def list_products():
 
 def delete_product_force(product_id):
     """Supprime un produit SANS vérifier le seller_id"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
+    conn = get_postgresql_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Get product info first
-    cursor.execute("SELECT title, seller_user_id FROM products WHERE product_id = ?", (product_id,))
+    cursor.execute("SELECT title, seller_user_id FROM products WHERE product_id = %s", (product_id,))
     result = cursor.fetchone()
 
     if not result:
@@ -56,11 +56,10 @@ def delete_product_force(product_id):
         conn.close()
         return False
 
-    title, seller_id = result
     print(f"\n🗑️  Suppression FORCÉE de:")
     print(f"   ID: {product_id}")
-    print(f"   Titre: {title}")
-    print(f"   Seller: {seller_id}")
+    print(f"   Titre: {result['title']}")
+    print(f"   Seller: {result['seller_user_id']}")
 
     confirm = input("\n⚠️  CONFIRMER LA SUPPRESSION ? (yes/no): ")
 
@@ -71,7 +70,7 @@ def delete_product_force(product_id):
 
     try:
         # Delete without checking seller_id
-        cursor.execute("DELETE FROM products WHERE product_id = ?", (product_id,))
+        cursor.execute("DELETE FROM products WHERE product_id = %s", (product_id,))
         deleted = cursor.rowcount
 
         conn.commit()
@@ -93,11 +92,11 @@ def delete_product_force(product_id):
 
 def delete_all_products():
     """Supprime TOUS les produits (DANGER!)"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
+    conn = get_postgresql_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute("SELECT COUNT(*) FROM products")
-    count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) as count FROM products")
+    count = cursor.fetchone()['count']
 
     print(f"\n⚠️  DANGER: Supprimer TOUS les {count} produits ?")
     confirm = input("Tapez 'DELETE ALL' pour confirmer: ")

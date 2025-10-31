@@ -4,6 +4,7 @@ Notifie les vendeurs à chaque événement important
 """
 
 import logging
+import psycopg2.extras
 from datetime import datetime
 from typing import Optional, Dict
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -30,10 +31,10 @@ class SellerNotifications:
         try:
             # Get seller's telegram_id from mapping
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 SELECT telegram_id FROM telegram_mappings
-                WHERE seller_user_id = ? AND is_active = 1
+                WHERE seller_user_id = %s AND is_active = 1
                 LIMIT 1
             ''', (seller_id,))
             result = cursor.fetchone()
@@ -43,7 +44,7 @@ class SellerNotifications:
                 logger.warning(f"No telegram mapping found for seller {seller_id}")
                 return
 
-            telegram_id = result[0]
+            telegram_id = result['telegram_id']
             product_title = product_data.get('title', 'Produit')
             product_id = product_data.get('product_id', 'N/A')
 
@@ -56,7 +57,7 @@ class SellerNotifications:
  **Produit:** {product_title}
  **ID:** `{product_id}`
 
- **Montant:** {amount_eur:.2f} €
+ **Montant:** {amount_eur:.2f} $
  **Crypto:** {crypto_code}
 
  **Acheteur:** {buyer_name}
@@ -103,10 +104,10 @@ Vous serez notifié dès confirmation blockchain.
         """
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 SELECT telegram_id FROM telegram_mappings
-                WHERE seller_user_id = ? AND is_active = 1
+                WHERE seller_user_id = %s AND is_active = 1
                 LIMIT 1
             ''', (seller_id,))
             result = cursor.fetchone()
@@ -115,7 +116,7 @@ Vous serez notifié dès confirmation blockchain.
             if not result:
                 return
 
-            telegram_id = result[0]
+            telegram_id = result['telegram_id']
             product_title = product_data.get('title', 'Produit')
 
             # Calculate seller revenue (minus fees)
@@ -130,8 +131,8 @@ Vous serez notifié dès confirmation blockchain.
  **Produit:** {product_title}
  **Acheteur:** {buyer_name}
 
- **Montant total:** {amount_eur:.2f} €
- **Votre revenu:** {seller_revenue:.2f} € _(après frais 5%)_
+ **Montant total:** {amount_eur:.2f} $
+ **Votre revenu:** {seller_revenue:.2f} $ _(après frais 5%)_
 
  **Crypto:** {crypto_code}
 """
@@ -179,10 +180,10 @@ Vous serez notifié dès confirmation blockchain.
         """
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 SELECT telegram_id FROM telegram_mappings
-                WHERE seller_user_id = ? AND is_active = 1
+                WHERE seller_user_id = %s AND is_active = 1
                 LIMIT 1
             ''', (seller_id,))
             result = cursor.fetchone()
@@ -191,7 +192,7 @@ Vous serez notifié dès confirmation blockchain.
             if not result:
                 return
 
-            telegram_id = result[0]
+            telegram_id = result['telegram_id']
             product_title = product_data.get('title', 'Produit')
 
             # Star rating visual
@@ -250,10 +251,10 @@ _{review_snippet}_
         """
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 SELECT telegram_id FROM telegram_mappings
-                WHERE seller_user_id = ? AND is_active = 1
+                WHERE seller_user_id = %s AND is_active = 1
                 LIMIT 1
             ''', (seller_id,))
             result = cursor.fetchone()
@@ -262,7 +263,7 @@ _{review_snippet}_
             if not result:
                 return
 
-            telegram_id = result[0]
+            telegram_id = result['telegram_id']
 
             sales_today = summary_data.get('sales_today', 0)
             revenue_today = summary_data.get('revenue_today', 0.0)
@@ -279,7 +280,7 @@ _{review_snippet}_
 
  **{datetime.now().strftime('%d %B %Y')}**
 
- **Revenus:** {revenue_today:.2f} €
+ **Revenus:** {revenue_today:.2f} $
  **Ventes:** {sales_today}
  **Vues produits:** {views_today}
 
@@ -329,10 +330,10 @@ _{review_snippet}_
         """
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 SELECT telegram_id FROM telegram_mappings
-                WHERE seller_user_id = ? AND is_active = 1
+                WHERE seller_user_id = %s AND is_active = 1
                 LIMIT 1
             ''', (seller_id,))
             result = cursor.fetchone()
@@ -341,7 +342,7 @@ _{review_snippet}_
             if not result:
                 return
 
-            telegram_id = result[0]
+            telegram_id = result['telegram_id']
             product_title = product_data.get('title', 'Produit')
 
             # Milestone-specific message
@@ -358,9 +359,9 @@ _{review_snippet}_
                     1000: ('⭐', '1000 vues — Viral !'),
                 },
                 'revenue': {
-                    100: ('💰', '100€ de revenus générés'),
-                    500: ('💵', '500€ de revenus !'),
-                    1000: ('💸', '1000€ de revenus — Excellent !'),
+                    100: ('💰', '100$ de revenus générés'),
+                    500: ('💵', '500$ de revenus !'),
+                    1000: ('💸', '1000$ de revenus — Excellent !'),
                 }
             }
 
