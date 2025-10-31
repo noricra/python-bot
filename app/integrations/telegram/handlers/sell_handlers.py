@@ -1583,7 +1583,7 @@ class SellHandlers:
                 )
                 return
 
-            bot.state_manager.update_state(user_id, step='edit_email')
+            bot.state_manager.update_state(user_id, editing_settings=True, step='edit_email')
             current_email = user_data.get('email', 'Non défini')
             await query.edit_message_text(
                 f"📧 **Modifier l'email**\n\nEmail actuel: {current_email}\n\nEntrez votre nouvel email:" if lang == 'fr' else f"📧 **Edit email**\n\nCurrent email: {current_email}\n\nEnter your new email:",
@@ -1606,7 +1606,7 @@ class SellHandlers:
                 )
                 return
 
-            bot.state_manager.update_state(user_id, step='edit_solana_address')
+            bot.state_manager.update_state(user_id, editing_settings=True, step='edit_solana_address')
             current_addr = user_data.get('seller_solana_address', 'Non configurée')
             await query.edit_message_text(
                 f"💰 **Modifier l'adresse Solana**\n\nAdresse actuelle: {current_addr}\n\nEntrez votre nouvelle adresse Solana (32-44 caractères):" if lang == 'fr' else f"💰 **Edit Solana address**\n\nCurrent address: {current_addr}\n\nEnter your new Solana address (32-44 characters):",
