@@ -1698,3 +1698,47 @@ class EmailService:
             logger.error(f"Erreur envoi email produit supprimé: {e}")
             logger.info(f"📧 Email produit supprimé simulé (fallback) - To: {to_email}")
             return True
+    def send_new_ticket_notification(self, ticket_id: str, user_id: int, subject: str, message: str, client_email: str) -> bool:
+        """
+        Envoie un email à l'admin lors de la création d'un nouveau ticket support
+
+        Args:
+            ticket_id: ID du ticket
+            user_id: ID de l'utilisateur
+            subject: Sujet du ticket
+            message: Message du ticket
+            client_email: Email du client pour réponse
+
+        Returns:
+            bool: True si envoi réussi
+        """
+        try:
+            # Email admin = FROM_EMAIL (généralement l'email de notification)
+            admin_email = self.smtp_email
+
+            if not admin_email:
+                logger.warning("Admin email not configured")
+                return False
+
+            email_subject = f"Nouveau ticket support - {ticket_id}"
+            email_body = f"""
+Nouveau ticket de support créé
+
+ID Ticket: {ticket_id}
+User ID: {user_id}
+Email client: {client_email}
+
+Sujet: {subject}
+
+Message:
+{message}
+
+Vous pouvez répondre directement à l'adresse: {client_email}
+"""
+
+            return self.send_email(admin_email, email_subject, email_body)
+
+        except Exception as e:
+            logger.error(f"Erreur envoi email nouveau ticket: {e}")
+            logger.info(f"Email nouveau ticket simulé (fallback) - Ticket: {ticket_id}")
+            return True

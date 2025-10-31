@@ -322,18 +322,41 @@ A: 24/7 ticket system."""
             )
 
         elif step == 'content':
-            subject = user_state.get('ticket_subject', 'Support Request')
+            if len(message_text.strip()) < 10:
+                await update.message.reply_text("Le message doit contenir au moins 10 caractères." if lang == 'fr' else "Message must contain at least 10 characters.")
+                return
 
-            # Create ticket using support service
-            ticket_id = self.support_service.create_ticket(user_id, subject, message_text)
+            # Store content and move to email step
+            user_state['ticket_content'] = message_text.strip()[:2000]
+            user_state['step'] = 'email'
+            bot.state_manager.update_state(user_id, user_state)
+
+            await update.message.reply_text(
+                "Veuillez entrer votre adresse email pour recevoir une réponse :" if lang == 'fr' else "Please enter your email address to receive a response:",
+                parse_mode='Markdown'
+            )
+
+        elif step == 'email':
+            # Validate email format
+            email = message_text.strip()
+            if '@' not in email or '.' not in email.split('@')[-1]:
+                await update.message.reply_text("Adresse email invalide. Veuillez réessayer." if lang == 'fr' else "Invalid email address. Please try again.")
+                return
+
+            subject = user_state.get('ticket_subject', 'Support Request')
+            content = user_state.get('ticket_content', '')
+
+            # Create ticket using support service with email
+            ticket_id = self.support_service.create_ticket(user_id, subject, content, client_email=email)
 
             if ticket_id:
                 await update.message.reply_text(
-                    f"✅ **Ticket créé avec succès !**\n\n🎫 **ID :** {ticket_id}\n\nNotre équipe vous répondra dans les plus brefs délais.",
+                    f"Ticket créé avec succès !\n\nID : {ticket_id}\n\nNotre équipe vous répondra à l'adresse : {email}" if lang == 'fr'
+                    else f"Ticket created successfully!\n\nID: {ticket_id}\n\nOur team will respond to: {email}",
                     parse_mode='Markdown'
                 )
             else:
-                await update.message.reply_text("❌ Erreur lors de la création du ticket. Veuillez réessayer.")
+                await update.message.reply_text("Erreur lors de la création du ticket. Veuillez réessayer." if lang == 'fr' else "Error creating ticket. Please try again.")
 
             # Reset state
             bot.reset_user_state(user_id)

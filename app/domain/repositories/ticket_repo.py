@@ -9,13 +9,13 @@ class SupportTicketRepository:
     def __init__(self) -> None:
         pass
 
-    def create_ticket(self, user_id: int, ticket_id: str, subject: str, message: str) -> bool:
+    def create_ticket(self, user_id: int, ticket_id: str, subject: str, message: str, client_email: str = None) -> bool:
         conn = get_postgresql_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
-                'INSERT INTO support_tickets (user_id, ticket_id, subject, message) VALUES (%s, %s) ON CONFLICT DO NOTHING',
-                (user_id, ticket_id, subject, message),
+                'INSERT INTO support_tickets (user_id, ticket_id, subject, message, client_email) VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING',
+                (user_id, ticket_id, subject, message, client_email),
             )
             conn.commit()
             return True
