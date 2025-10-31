@@ -35,7 +35,7 @@ class ReviewRepository:
 
             query = '''
                 SELECT
-                    r.id,
+                    r.review_id,
                     r.product_id,
                     r.buyer_user_id,
                     r.order_id,
@@ -60,7 +60,7 @@ class ReviewRepository:
             reviews = []
             for row in rows:
                 reviews.append({
-                    'id': row['id'],
+                    'id': row['review_id'],
                     'product_id': row['product_id'],
                     'buyer_user_id': row['buyer_user_id'],
                     'order_id': row['order_id'],

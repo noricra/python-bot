@@ -409,7 +409,7 @@ class BuyHandlers:
             conn.close()
 
             if first_category:
-                category_name = first_category[0]
+                category_name = first_category['name']
                 # Show products in carousel for this category
                 await self.show_category_products(bot, query, category_name, lang, page=0)
             else:
@@ -552,10 +552,10 @@ class BuyHandlers:
 
 <b>{title}</b>
 
-<b>Prix :</b> {price_usd}
-<b>Frais de gestion :</b> {fees}€
+<b>Prix :</b> ${price_usd:.2f}
+<b>Frais de gestion :</b> ${fees:.2f}
 ────────────────
-<b>Total :</b> {total}€
+<b>Total :</b> ${total:.2f}
 
 <b>Délais de confirmation :</b>
 
@@ -568,10 +568,10 @@ class BuyHandlers:
 
 <b>{title}</b>
 
-<b>Price:</b> €{price_usd}
-<b>Processing fee:</b> €{fees}
+<b>Price:</b> ${price_usd:.2f}
+<b>Processing fee:</b> ${fees:.2f}
 ────────────────
-<b>Total:</b> €{total}
+<b>Total:</b> ${total:.2f}
 
 <b>Time for confirmation:</b>
 
@@ -604,11 +604,11 @@ class BuyHandlers:
 
         # Calcul des frais (2.78%)
         fees = round(price_usd * 0.0278, 2)
-        total_eur = round(price_usd + fees, 2)
+        total_usd = round(price_usd + fees, 2)
 
         if lang == 'fr':
             return f"""<b>{title}</b>
-Prix total : <b>{total_eur}€</b> ({price_usd:.2f} USD)
+Prix total : <b>${total_usd:.2f}</b>
 <i>Frais inclus</i>
 
 <b>Envoyez EXACTEMENT :</b>
@@ -627,7 +627,7 @@ Prix total : <b>{total_eur}€</b> ({price_usd:.2f} USD)
 Contactez le support avec votre Order ID"""
         else:
             return f"""<b>{title}</b>
-Total Price: <b>€{total_eur}</b> (${price_usd:.2f} USD)
+Total Price: <b>${total_usd:.2f}</b>
 <i>Fees included</i>
 
 <b>Send EXACTLY:</b>
@@ -921,7 +921,7 @@ Contact support with your Order ID"""
             conn = bot.get_db_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('SELECT name FROM categories ORDER BY products_count DESC')
-            all_categories = [row[0] for row in cursor.fetchall()]
+            all_categories = [row['name'] for row in cursor.fetchall()]
             conn.close()
 
             # Use existing helper
@@ -1732,18 +1732,17 @@ Contact support with your Order ID"""
 
             # Store order in database
             from app.core.database_init import get_postgresql_connection
-            from app.core.settings import settings
 
-            conn = get_sqlite_connection(settings.DATABASE_PATH)
+            conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 INSERT INTO orders (order_id, buyer_user_id, seller_user_id, product_id,
                                   product_title, product_price_usd, payment_id, payment_currency,
                                   payment_status, created_at, nowpayments_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, %s)
             ''', (order_id, user_id, product.get('seller_user_id'), product_id, title,
                   price_usd, payment_data.get('payment_id'), crypto_code, 'waiting',
-                  int(time.time()), payment_data.get('payment_id')))
+                  payment_data.get('payment_id')))
             conn.commit()
             conn.close()
 
