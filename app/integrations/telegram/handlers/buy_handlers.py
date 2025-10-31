@@ -1709,12 +1709,16 @@ Contact support with your Order ID"""
             title = product.get('title', 'Produit')
             price_usd = product.get('price_usd', 0)
 
+            # Calculate total with platform fees (2.78%)
+            platform_fee = round(price_usd * 0.0278, 2)
+            total_amount = round(price_usd + platform_fee, 2)
+
             # Create order in database
             order_id = f"TBO-{user_id}-{int(time.time())}"
 
-            # Create NowPayments payment with enhanced data
+            # Create NowPayments payment with enhanced data (buyer pays total with fees)
             payment_data = self.payment_service.create_payment(
-                amount_usd=price_usd,
+                amount_usd=total_amount,
                 pay_currency=crypto_code,
                 order_id=order_id,
                 description=title,
