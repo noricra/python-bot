@@ -22,6 +22,7 @@ class CallbackRouter:
         """Configure les routes de callbacks"""
         # Navigation principale
         self.routes.update({
+            'main_menu': lambda query, lang: self.bot.core_handlers.back_to_main_with_bot(self.bot, query, lang),
             'buy_menu': lambda query, lang: self.bot.buy_handlers.buy_menu(self.bot, query, lang),
             'sell_menu': lambda query, lang: self.bot.sell_handlers.sell_menu(self.bot, query, lang),
             'seller_dashboard': lambda query, lang: self.bot.sell_handlers.seller_dashboard(self.bot, query, lang),
@@ -192,20 +193,33 @@ class CallbackRouter:
         # 🎠 Phase 2: Carousel navigation (carousel_{category}_{index})
         if callback_data.startswith('carousel_'):
             try:
-                # Parse: carousel_FinanceCrypto_2
+                # Parse: carousel_FinanceCrypto_2 or carousel_seller_123_1
                 parts = callback_data.replace('carousel_', '').rsplit('_', 1)
                 category = parts[0]
                 index = int(parts[1])
 
-                # Get products for category
-                products = self.bot.buy_handlers.product_repo.get_products_by_category(category, limit=100, offset=0)
+                # Check if this is a seller shop (category starts with "seller_")
+                if category.startswith('seller_'):
+                    seller_user_id = int(category.replace('seller_', ''))
+                    products = self.bot.buy_handlers.product_repo.get_products_by_seller(seller_user_id, limit=100, offset=0)
+                    active_products = [p for p in products if p.get('status') == 'active']
 
-                if products:
-                    await self.bot.buy_handlers.show_product_carousel(
-                        self.bot, query, category, products, index, lang
-                    )
+                    if active_products:
+                        await self.bot.buy_handlers.show_product_carousel(
+                            self.bot, query, category, active_products, index, lang
+                        )
+                    else:
+                        await query.answer("No products found" if lang == 'en' else "Aucun produit trouvé")
                 else:
-                    await query.answer("No products found" if lang == 'en' else "Aucun produit trouvé")
+                    # Regular category navigation
+                    products = self.bot.buy_handlers.product_repo.get_products_by_category(category, limit=100, offset=0)
+
+                    if products:
+                        await self.bot.buy_handlers.show_product_carousel(
+                            self.bot, query, category, products, index, lang
+                        )
+                    else:
+                        await query.answer("No products found" if lang == 'en' else "Aucun produit trouvé")
 
                 return True
             except Exception as e:
@@ -442,8 +456,20 @@ class CallbackRouter:
                 parts = callback_data.replace('collapse_', '').split('_')
                 if len(parts) >= 3:
                     product_id = parts[0]
-                    category_key = parts[1]
-                    index = int(parts[2])
+                    # The index is always the last part
+                    index_str = parts[-1]
+                    # Check if last part is a valid index (integer)
+                    try:
+                        index = int(index_str)
+                        # Category is everything between product_id and index
+                        category_key = '_'.join(parts[1:-1])
+                    except ValueError:
+                        # Last part is not an index, means it's part of category (e.g., seller_your_telegram_user_id_here)
+                        # This happens when callback is from seller shop without index
+                        logger.warning(f"collapse callback missing index: {callback_data}")
+                        await query.answer("Error" if lang == 'en' else "Erreur")
+                        return True
+
                     await self.bot.buy_handlers.collapse_product_details(self.bot, query, product_id, category_key, index, lang)
                     return True
             except Exception as e:
@@ -474,10 +500,18 @@ class CallbackRouter:
                 if len(parts) >= 3:
                     # Extended format: product_details_{product_id}_{category}_{index}
                     product_id = parts[0]
-                    category_key = parts[1]
-                    index = int(parts[2])
-                    # Pass extra parameters for context
-                    await self.bot.buy_handlers.show_product_details(self.bot, query, product_id, lang, category_key=category_key, index=index)
+                    # The index is always the last part
+                    index_str = parts[-1]
+                    try:
+                        index = int(index_str)
+                        # Category is everything between product_id and index
+                        category_key = '_'.join(parts[1:-1])
+                        # Pass extra parameters for context
+                        await self.bot.buy_handlers.show_product_details(self.bot, query, product_id, lang, category_key=category_key, index=index)
+                    except ValueError:
+                        # Last part is not an index, legacy format
+                        product_id = callback_data.replace('product_details_', '')
+                        await self.bot.buy_handlers.show_product_details(self.bot, query, product_id, lang)
                 else:
                     # Legacy format: product_details_{product_id}
                     product_id = callback_data.replace('product_details_', '')

@@ -67,8 +67,8 @@ class BuyHandlers:
             seller = product.get('seller_name', 'Vendeur')
             rating = product.get('rating', 0)
             reviews_count = product.get('reviews_count', 0)
-            sales = product.get('sales_count', 0)
-            views = product.get('views_count', 0)
+            sales = int(product.get('sales_count', 0) or 0)
+            views = int(product.get('views_count', 0) or 0)
             file_size = product.get('file_size_mb', 0)
 
             # Format numbers (1234 → 1.2k)
@@ -116,8 +116,8 @@ class BuyHandlers:
             seller = product.get('seller_name', 'Vendeur')
             rating = product.get('rating', 0)
             reviews_count = product.get('reviews_count', 0)
-            sales = product.get('sales_count', 0)
-            views = product.get('views_count', 0)
+            sales = int(product.get('sales_count', 0) or 0)
+            views = int(product.get('views_count', 0) or 0)
             file_size = product.get('file_size_mb', 0)
 
             # Format numbers (1234 → 1.2k)
@@ -841,20 +841,29 @@ Contact support with your Order ID"""
             # Get all products in category
             conn = bot.get_db_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cursor.execute('''
-                SELECT * FROM products
-                WHERE category = %s AND status = 'active'
-                ORDER BY created_at DESC
-            ''', (category_key,))
 
-            columns = [description[0] for description in cursor.description]
+            # Check if this is a seller shop (pseudo-category)
+            if category_key.startswith('seller_'):
+                # Extract seller_user_id from category_key (e.g., "seller_your_telegram_user_id_here" -> your_telegram_user_id_here)
+                seller_user_id = int(category_key.replace('seller_', ''))
+                cursor.execute('''
+                    SELECT * FROM products
+                    WHERE seller_user_id = %s AND status = 'active'
+                    ORDER BY created_at DESC
+                ''', (seller_user_id,))
+            else:
+                # Normal category
+                cursor.execute('''
+                    SELECT * FROM products
+                    WHERE category = %s AND status = 'active'
+                    ORDER BY created_at DESC
+                ''', (category_key,))
+
             rows = cursor.fetchall()
             conn.close()
 
-            products = []
-            for row in rows:
-                product_dict = dict(zip(columns, row))
-                products.append(product_dict)
+            # RealDictCursor already returns dict-like objects
+            products = [dict(row) for row in rows]
 
             if not products:
                 await safe_transition_to_text(query, "❌ No products found" if lang == 'en' else "❌ Aucun produit trouvé")
@@ -963,17 +972,27 @@ Contact support with your Order ID"""
                     custom_message=f"La catégorie '{category_key}' ne contient pas encore de produits." if lang == 'fr'
                     else f"Category '{category_key}' does not contain any products yet.")
 
-                # Delete message and send new one (avoids edit_message_text on photo messages)
-                try:
-                    await query.message.delete()
-                except:
-                    pass  # Ignore if can't delete
-
-                await query.message.reply_text(
-                    text=error_data['text'],
-                    reply_markup=error_data['keyboard'],
-                    parse_mode='Markdown'
-                )
+                # Handle both query types (callback and command)
+                if hasattr(query, 'message') and query.message:
+                    try:
+                        await query.message.delete()
+                    except:
+                        pass
+                    await query.message.reply_text(
+                        text=error_data['text'],
+                        reply_markup=error_data['keyboard'],
+                        parse_mode='Markdown'
+                    )
+                else:
+                    # For commands, send directly to bot
+                    from telegram import Update
+                    context = query  # MockQuery contains context
+                    await context.bot.send_message(
+                        chat_id=context.effective_chat.id,
+                        text=error_data['text'],
+                        reply_markup=error_data['keyboard'],
+                        parse_mode='Markdown'
+                    )
                 return
 
             # Launch carousel mode starting at index 0
@@ -984,17 +1003,27 @@ Contact support with your Order ID"""
             # Use user-friendly error message
             error_data = get_error_message('product_load_error', lang)
 
-            # Delete message and send new one (avoids edit_message_text on photo messages)
-            try:
-                await query.message.delete()
-            except:
-                pass  # Ignore if can't delete
-
-            await query.message.reply_text(
-                text=error_data['text'],
-                reply_markup=error_data['keyboard'],
-                parse_mode='Markdown'
-            )
+            # Handle both query types (callback and command)
+            if hasattr(query, 'message') and query.message:
+                try:
+                    await query.message.delete()
+                except:
+                    pass
+                await query.message.reply_text(
+                    text=error_data['text'],
+                    reply_markup=error_data['keyboard'],
+                    parse_mode='Markdown'
+                )
+            else:
+                # For commands, send directly to bot
+                from telegram import Update
+                context = query  # MockQuery contains context
+                await context.bot.send_message(
+                    chat_id=context.effective_chat.id,
+                    text=error_data['text'],
+                    reply_markup=error_data['keyboard'],
+                    parse_mode='Markdown'
+                )
 
     async def show_product_details(self, bot, query, product_id: str, lang: str, category_key: str = None, index: int = None) -> None:
         """
