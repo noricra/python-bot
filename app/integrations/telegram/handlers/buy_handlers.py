@@ -180,9 +180,9 @@ class BuyHandlers:
         from app.core.settings import get_absolute_path
         import os
 
-        thumbnail_path = product.get('thumbnail_path')
+        thumbnail_path = product.get('thumbnail_url')
 
-        logger.info(f"🖼️ Image lookup - Product: {product['product_id']}, thumbnail_path (raw): {thumbnail_path}")
+        logger.info(f"🖼️ Image lookup - Product: {product['product_id']}, thumbnail_url (raw): {thumbnail_path}")
 
         # Convert to absolute path if relative
         if thumbnail_path:
@@ -196,7 +196,7 @@ class BuyHandlers:
             if thumbnail_path_abs:
                 logger.warning(f"⚠️ Image not found at: {thumbnail_path_abs}")
             else:
-                logger.warning(f"⚠️ No thumbnail_path in product")
+                logger.warning(f"⚠️ No thumbnail_url in product")
 
             logger.info(f"🎨 Generating placeholder...")
             placeholder_path = ImageUtils.create_or_get_placeholder(
