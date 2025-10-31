@@ -44,7 +44,7 @@ class LibraryHandlers:
                 JOIN products p ON o.product_id = p.product_id
                 JOIN users u ON p.seller_user_id = u.user_id
                 WHERE o.buyer_user_id = %s AND o.payment_status = 'completed'
-                GROUP BY p.product_id, p.title, p.description, p.price_usd, p.thumbnail_url, p.category, p.file_size_mb, u.seller_name
+                GROUP BY p.product_id, p.title, p.description, p.price_usd, p.thumbnail_url, p.category, p.file_size_mb, u.seller_name, u.first_name, o.download_count
                 ORDER BY MAX(o.completed_at) DESC
             ''', (user_id,))
             purchases_raw = cursor.fetchall()
