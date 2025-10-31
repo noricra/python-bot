@@ -580,7 +580,7 @@ class BuyHandlers:
 ────────────────
 💡 <b>Recommended: Solana</b> (fastest)"""
 
-    def _build_payment_confirmation_text(self, title: str, price_usd: float, price_usd: float,
+    def _build_payment_confirmation_text(self, title: str, price_usd: float,
                                          exact_amount: str, crypto_code: str, payment_address: str,
                                          order_id: str, network: str = None, lang: str = 'fr') -> str:
         """
@@ -588,7 +588,6 @@ class BuyHandlers:
 
         Args:
             title: Titre du produit
-            price_usd: Prix en euros
             price_usd: Prix en USD
             exact_amount: Montant exact en crypto
             crypto_code: Code de la crypto (BTC, ETH, SOL, etc.)
@@ -1709,7 +1708,6 @@ Contact support with your Order ID"""
             user_id = query.from_user.id
             title = product.get('title', 'Produit')
             price_usd = product.get('price_usd', 0)
-            price_usd = price_usd * self.payment_service.get_exchange_rate()
 
             # Create order in database
             order_id = f"TBO-{user_id}-{int(time.time())}"
@@ -1772,7 +1770,7 @@ Contact support with your Order ID"""
                 # Don't fail the purchase if notification fails
 
             # Display comprehensive payment info with QR code
-            await self._display_payment_details(query, payment_data, title, price_usd, price_usd, order_id, product_id, crypto_code, lang)
+            await self._display_payment_details(query, payment_data, title, price_usd, order_id, product_id, crypto_code, lang)
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error processing crypto payment: {e}")
@@ -2036,7 +2034,7 @@ Contact support with your Order ID"""
                 ]])
             )
 
-    async def _display_payment_details(self, query, payment_data, title, price_usd, price_usd, order_id, product_id, crypto_code, lang):
+    async def _display_payment_details(self, query, payment_data, title, price_usd, order_id, product_id, crypto_code, lang):
         """Display comprehensive payment details with QR code and exact amounts"""
         try:
             # Get payment details
@@ -2050,7 +2048,6 @@ Contact support with your Order ID"""
             # Utiliser la fonction centralisée de génération de texte
             text = self._build_payment_confirmation_text(
                 title=title,
-                price_usd=price_usd,
                 price_usd=price_usd,
                 exact_amount=formatted_amount,
                 crypto_code=crypto_code,
