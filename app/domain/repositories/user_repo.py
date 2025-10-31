@@ -65,6 +65,30 @@ class UserRepository:
         finally:
             conn.close()
 
+    def update_seller_email(self, user_id: int, email: str) -> bool:
+        conn = get_postgresql_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            cursor.execute('UPDATE users SET email = %s WHERE user_id = %s', (email, user_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except psycopg2.Error:
+            return False
+        finally:
+            conn.close()
+
+    def update_seller_solana_address(self, user_id: int, seller_solana_address: str) -> bool:
+        conn = get_postgresql_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            cursor.execute('UPDATE users SET seller_solana_address = %s WHERE user_id = %s', (seller_solana_address, user_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except psycopg2.Error:
+            return False
+        finally:
+            conn.close()
+
     def update_user_language(self, user_id: int, language_code: str) -> bool:
         conn = get_postgresql_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
