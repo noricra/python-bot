@@ -1347,7 +1347,9 @@ Contact support with your Order ID"""
             await query.message.reply_text("❌ Commande introuvable!")
             return
         logger.info(order)
-        payment_id = order[7]
+        # Convert RealDictRow to dict for easier access
+        order = dict(order)
+        payment_id = order.get('payment_id') or order.get('nowpayments_id')
 
         # Check if payment_id exists
         if not payment_id:
@@ -1394,7 +1396,7 @@ Contact support with your Order ID"""
                         UPDATE products
                         SET sales_count = sales_count + 1
                         WHERE product_id = %s
-                    ''', (order[3], ))
+                    ''', (order['product_id'], ))
 
                     cursor.execute(
                         '''
@@ -1402,7 +1404,7 @@ Contact support with your Order ID"""
                         SET total_sales = total_sales + 1,
                             total_revenue = total_revenue + %s
                         WHERE user_id = %s
-                    ''', (order[7], order[4]))
+                    ''', (order['product_price_usd'], order['seller_user_id']))
 
                     # Partner commission removed - referral system deleted
 
@@ -1417,14 +1419,15 @@ Contact support with your Order ID"""
                 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 try:
                     # Get product data and buyer info for notification
-                    cursor.execute('SELECT * FROM products WHERE product_id = %s', (order[3],))
+                    cursor.execute('SELECT * FROM products WHERE product_id = %s', (order['product_id'],))
                     product_row = cursor.fetchone()
 
                     if product_row:
+                        product_row = dict(product_row)
                         product_data = {
-                            'product_id': product_row[0],
-                            'title': product_row[1],
-                            'seller_user_id': product_row[4]
+                            'product_id': product_row['product_id'],
+                            'title': product_row['title'],
+                            'seller_user_id': product_row['seller_user_id']
                         }
 
                         buyer_name = query.from_user.first_name or query.from_user.username or "Acheteur"
@@ -1432,11 +1435,11 @@ Contact support with your Order ID"""
                         # Send notification to seller
                         await SellerNotifications.notify_payment_confirmed(
                             bot=bot,
-                            seller_id=product_row[4],  # seller_user_id
+                            seller_id=product_row['seller_user_id'],
                             product_data=product_data,
                             buyer_name=buyer_name,
-                            amount_eur=order[7],  # price_usd
-                            crypto_code=order[8],  # payment_currency
+                            amount_eur=order['product_price_usd'],
+                            crypto_code=order['payment_currency'],
                             tx_hash=payment_status.get('payment_hash')
                         )
                         logger.info(f"✅ Seller notification sent for order {order_id}")
@@ -1463,7 +1466,7 @@ Contact support with your Order ID"""
                         file_sent = True  # Mark as sent so we show correct message
                     else:
                         # Get product file URL (from B2)
-                        cursor.execute('SELECT title, main_file_url FROM products WHERE product_id = %s', (order[3],))
+                        cursor.execute('SELECT title, main_file_url FROM products WHERE product_id = %s', (order['product_id'],))
                         product_file = cursor.fetchone()
 
                         if product_file and product_file[1]:
@@ -1484,7 +1487,7 @@ Contact support with your Order ID"""
                                 from app.core.file_utils import download_product_file_from_b2
 
                                 # Download from B2 to temp location
-                                local_path = await download_product_file_from_b2(file_url, order[3])
+                                local_path = await download_product_file_from_b2(file_url, order['product_id'])
 
                                 if local_path and os.path.exists(local_path):
                                     # Send the file
@@ -1533,7 +1536,7 @@ Contact support with your Order ID"""
                 keyboard = [[
                     InlineKeyboardButton(
                         "📥 Télécharger à nouveau" if file_sent else "📥 Télécharger maintenant",
-                        callback_data=f'download_product_{order[3]}')
+                        callback_data=f'download_product_{order["product_id"]}')
                 ], [
                     InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')
                 ]]
@@ -1967,11 +1970,12 @@ Contact support with your Order ID"""
             [InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data=back_callback)]
         ]
 
-        # Send buttons without text
-        await query.message.reply_text(
-            ".",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        # Send buttons only if preview was shown
+        if media_preview_sent:
+            await query.message.reply_text(
+                "📦 Aperçu du produit ci-dessus" if lang == 'fr' else "📦 Product preview above",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
     async def mark_as_paid(self, bot, query, product_id: str, lang: str):
         """Mark order as paid (test functionality)"""
