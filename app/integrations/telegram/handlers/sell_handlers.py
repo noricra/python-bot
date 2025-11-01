@@ -73,30 +73,9 @@ class SellHandlers:
 
         user_data = self.user_repo.get_user(user_id)
 
-        # Vérifier si déjà connecté via session
-        if user_data and user_data['is_seller'] and bot.is_seller_logged_in(user_id):
-            await self.seller_dashboard(bot, query, lang)
-            return
-
-        # Si vendeur mais pas connecté → Demander email
+        # Si déjà vendeur → Dashboard direct (aligné sur /stats)
         if user_data and user_data['is_seller']:
-            await query.edit_message_text(
-                (
-                    "Connexion vendeur\n\n"
-                    "Entrez votre email pour vous connecter."
-                ) if lang == 'fr' else (
-                    "Seller login\n\n"
-                    "Enter your email to login."
-                ),
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(
-                        "Retour" if lang == 'fr' else "Back",
-                        callback_data='back_main'
-                    )
-                ]]),
-                parse_mode='Markdown'
-            )
-            bot.state_manager.update_state(user_id, waiting_seller_login_email=True, lang=lang)
+            await self.seller_dashboard(bot, query, lang)
             return
 
         # Sinon → Proposer création compte

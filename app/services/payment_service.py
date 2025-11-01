@@ -87,6 +87,61 @@ class PaymentService:
                 logger.error(f"Payment creation failed for order {order_id}")
                 return None
 
+            # Check if payment_data contains an error
+            if 'error' in payment_data:
+                error_code = payment_data.get('error')
+                error_message = payment_data.get('error_message', '')
+
+                # Handle CURRENCY_UNAVAILABLE error with automatic fallback
+                if error_code == 'CURRENCY_UNAVAILABLE':
+                    logger.warning(f"Currency {pay_currency} is temporarily unavailable, trying fallback...")
+
+                    # Define fallback currencies
+                    fallback_map = {
+                        'usdt': 'usdc',
+                        'usdc': 'usdt',
+                        'btc': 'eth',
+                        'eth': 'btc'
+                    }
+
+                    fallback_currency = fallback_map.get(pay_currency.lower())
+
+                    if fallback_currency:
+                        logger.info(f"Retrying payment with fallback currency: {fallback_currency}")
+
+                        # Get exact amount for fallback currency
+                        exact_crypto_amount = self._get_exact_crypto_amount(amount_usd, fallback_currency)
+                        if not exact_crypto_amount:
+                            logger.error(f"Failed to get exact crypto amount for fallback {fallback_currency}")
+                            return {"error": "CURRENCY_UNAVAILABLE", "original_currency": pay_currency, "error_message": error_message}
+
+                        # Retry with fallback currency
+                        payment_data = self.client.create_payment(
+                            amount_usd=amount_usd,
+                            pay_currency=fallback_currency,
+                            order_id=order_id,
+                            description=description,
+                            ipn_callback_url=ipn_callback_url,
+                            payout_address=seller_wallet_address if seller_wallet_address else None,
+                            payout_currency=seller_payout_currency if seller_wallet_address else None
+                        )
+
+                        if payment_data and 'error' not in payment_data:
+                            logger.info(f"Payment successful with fallback currency: {fallback_currency}")
+                            payment_data['fallback_used'] = True
+                            payment_data['original_currency'] = pay_currency
+                            payment_data['fallback_currency'] = fallback_currency
+                        else:
+                            logger.error(f"Fallback currency {fallback_currency} also failed")
+                            return {"error": "CURRENCY_UNAVAILABLE", "original_currency": pay_currency, "fallback_currency": fallback_currency, "error_message": error_message}
+                    else:
+                        logger.error(f"No fallback currency available for {pay_currency}")
+                        return {"error": "CURRENCY_UNAVAILABLE", "original_currency": pay_currency, "error_message": error_message}
+                else:
+                    # Other errors
+                    logger.error(f"Payment error: {error_code} - {error_message}")
+                    return payment_data
+
             # Step 3: Enhance payment data with QR code and details
             enhanced_payment = self._enhance_payment_data(payment_data, exact_crypto_amount)
 
@@ -137,32 +192,54 @@ class PaymentService:
         """Get exact crypto amount using NOWPayments estimate"""
         try:
             # For stablecoins pegged to USD, use 1:1 ratio
-            if pay_currency.lower() in ['usdt', 'usdc', 'usdttrc20', 'usdterc20']:
+            stablecoins = ['usdt', 'usdc', 'usdttrc20', 'usdterc20', 'usdtbsc', 'usdtsol', 'usdtmatic',
+                          'usdcarc20', 'usdcbsc', 'usdcsol', 'usdcmatic', 'usdcbase']
+            if pay_currency.lower() in stablecoins:
                 logger.info(f"Using 1:1 ratio for {pay_currency}: {amount_usd}")
                 return amount_usd
 
+            # Try client first
             if self.client:
                 estimate_data = self.client.get_estimate(amount_usd, "usd", pay_currency)
-                if estimate_data:
+                if estimate_data and 'estimated_amount' in estimate_data:
                     return float(estimate_data.get('estimated_amount', 0))
 
-            # Fallback to direct API call if client fails
-            response = requests.get(
-                f"{self.BASE_URL}/estimate",
-                headers=self._headers(),
-                params={
-                    "amount": amount_usd,
-                    "currency_from": "usd",
-                    "currency_to": pay_currency.lower()
-                },
-                timeout=10
-            )
+            # Fallback to direct API call with retry
+            max_retries = 2
+            for attempt in range(max_retries):
+                try:
+                    import time
+                    if attempt > 0:
+                        time.sleep(2)  # Wait 2s before retry
 
-            if response.status_code == 200:
-                data = response.json()
-                return float(data.get('estimated_amount', 0))
+                    response = requests.get(
+                        f"{self.BASE_URL}/estimate",
+                        headers=self._headers(),
+                        params={
+                            "amount": amount_usd,
+                            "currency_from": "usd",
+                            "currency_to": pay_currency.lower()
+                        },
+                        timeout=10
+                    )
 
-            logger.error(f"Estimate API failed: {response.status_code} - {response.text}")
+                    if response.status_code == 200:
+                        data = response.json()
+                        return float(data.get('estimated_amount', 0))
+
+                    # Don't retry on 4xx errors (bad request)
+                    if 400 <= response.status_code < 500 and response.status_code != 429:
+                        logger.error(f"Estimate API failed (no retry): {response.status_code} - {response.text}")
+                        break
+
+                    logger.warning(f"Estimate attempt {attempt+1}/{max_retries} failed: {response.status_code}")
+
+                except requests.exceptions.RequestException as e:
+                    logger.warning(f"Estimate request error attempt {attempt+1}/{max_retries}: {e}")
+                    if attempt == max_retries - 1:
+                        raise
+
+            logger.error(f"All estimate attempts failed for {pay_currency}")
             return None
 
         except Exception as e:

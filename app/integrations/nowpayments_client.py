@@ -56,7 +56,7 @@ class NowPaymentsClient:
                        payout_extra_id: Optional[str] = None) -> Optional[Dict]:
         if not self.api_key:
             logger.error("NOWPAYMENTS_API_KEY manquant!")
-            return None
+            return {"error": "API_KEY_MISSING"}
 
         # For stablecoins (USDT, USDC), use them as price_currency to avoid conversion errors
         pay_curr_lower = pay_currency.lower()
@@ -95,17 +95,30 @@ class NowPaymentsClient:
             if response.status_code == 201:
                 logger.info(f"NOWPayments create_payment success order_id={order_id} pay_currency={pay_currency.lower()}")
                 return response.json()
+
             # Log détaillé en cas d'erreur
             err_text = response.text
             try:
                 err_json = response.json()
+                error_code = err_json.get('code', 'UNKNOWN_ERROR')
+                error_message = err_json.get('message', err_text)
             except Exception:
                 err_json = None
+                error_code = f"HTTP_{response.status_code}"
+                error_message = err_text
+
             logger.error(f"NOWPayments create_payment failed order_id={order_id} pay_currency={pay_currency.lower()} status={response.status_code} body={err_text} json={err_json}")
-            return None
+
+            # Return error details instead of None for better handling
+            return {
+                "error": error_code,
+                "error_message": error_message,
+                "status_code": response.status_code,
+                "currency": pay_currency.lower()
+            }
         except Exception as exc:
             logger.error(f"NOWPayments create_payment exception order_id={order_id} pay_currency={pay_currency.lower()} error={exc}")
-            return None
+            return {"error": "EXCEPTION", "error_message": str(exc)}
 
     def get_payment(self, payment_id: str) -> Optional[Dict]:
         if not self.api_key:

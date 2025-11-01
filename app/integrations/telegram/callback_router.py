@@ -103,7 +103,7 @@ class CallbackRouter:
 
         # Routes support - signatures corrigées
         support_routes = {
-            'support_menu': lambda query, lang: self.bot.support_handlers.support_menu(query, lang),
+            'support_menu': lambda query, lang: self.bot.support_handlers.support_menu(self.bot, query, lang),
             'create_ticket': lambda query, lang: self.bot.support_handlers.create_ticket_prompt(self.bot, query, lang),
             'my_tickets': lambda query, lang: self.bot.support_handlers.my_tickets(query, lang),
         }

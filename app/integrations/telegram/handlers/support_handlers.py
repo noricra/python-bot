@@ -26,7 +26,7 @@ class SupportHandlers:
                 self.from_user = type('u', (), {'id': uid})
             async def edit_message_text(self, *args, **kwargs):
                 await update.message.reply_text(*args, **kwargs)
-        await bot.create_ticket(DummyQuery(user.id), lang)
+        await self.create_ticket_prompt(bot, DummyQuery(user.id), lang)
 
     async def contact_seller_start(self, bot, query, product_id: str, lang: str) -> None:
         buyer_id = query.from_user.id
@@ -164,10 +164,9 @@ class SupportHandlers:
         await update.message.reply_text(f"✅ Réponse envoyée.\n\n🧵 Derniers messages:\n{thread}")
 
     # Support UI Methods - Extracted from bot_mlt.py
-    async def support_menu(self, query, lang):
+    async def support_menu(self, bot, query, lang):
         """Main support menu"""
         # Reset conflicting states when entering support workflow
-        from bot_mlt import bot
         if hasattr(query, 'from_user'):
             bot.reset_conflicting_states(query.from_user.id, keep={'lang'})
 
@@ -350,9 +349,11 @@ A: 24/7 ticket system."""
             ticket_id = self.support_service.create_ticket(user_id, subject, content, client_email=email)
 
             if ticket_id:
+                keyboard = [[InlineKeyboardButton("🏠 Menu principal" if lang == 'fr' else "🏠 Main menu", callback_data='back_main')]]
                 await update.message.reply_text(
                     f"Ticket créé avec succès !\n\nID : {ticket_id}\n\nNotre équipe vous répondra à l'adresse : {email}" if lang == 'fr'
                     else f"Ticket created successfully!\n\nID: {ticket_id}\n\nOur team will respond to: {email}",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode='Markdown'
                 )
             else:

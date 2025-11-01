@@ -39,12 +39,15 @@ def build_application(bot_instance) -> Application:
     async def achat_command_wrapper(update, context):
         """Quick access to buy menu"""
         class MockQuery:
-            def __init__(self, user):
+            def __init__(self, user, update_obj, bot):
                 self.from_user = user
+                self.effective_chat = update_obj.effective_chat
+                self.bot = bot
+                self._update = update_obj
             async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
-                await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+                await self._update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
 
-        mock_query = MockQuery(update.effective_user)
+        mock_query = MockQuery(update.effective_user, update, context.bot)
         lang = bot_instance.get_user_language(update.effective_user.id)
         await bot_instance.buy_handlers.buy_menu(bot_instance, mock_query, lang)
 
@@ -70,7 +73,7 @@ def build_application(bot_instance) -> Application:
 
         mock_query = MockQuery(update.effective_user)
         lang = bot_instance.get_user_language(update.effective_user.id)
-        await bot_instance.library_handlers.library_menu(bot_instance, mock_query, lang)
+        await bot_instance.library_handlers.show_library(bot_instance, mock_query, lang)
 
     async def stats_command_wrapper(update, context):
         """Quick access to seller stats (if seller)"""
@@ -124,13 +127,15 @@ def build_application(bot_instance) -> Application:
         seller = None
         if seller_identifier.startswith('@'):
             username = seller_identifier[1:]  # Remove @
-            # Search by username (need to add this method if not exists)
+            # Search by username (case-insensitive)
             from app.core.database_init import get_postgresql_connection
             import psycopg2.extras
             conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cursor.execute('SELECT * FROM users WHERE username = %s AND is_seller = TRUE', (username,))
+            cursor.execute('SELECT * FROM users WHERE LOWER(username) = LOWER(%s) AND is_seller = TRUE', (username,))
             seller = cursor.fetchone()
+            if seller:
+                seller = dict(seller)
             conn.close()
         else:
             try:
@@ -164,8 +169,8 @@ def build_application(bot_instance) -> Application:
         mock_query = MockQuery(update.effective_user)
         lang = bot_instance.get_user_language(update.effective_user.id)
 
-        # Use existing view_seller_shop method or create inline display
-        await bot_instance.buy_handlers.view_seller_shop(bot_instance, mock_query, seller['user_id'], lang)
+        # Use existing show_seller_shop method
+        await bot_instance.buy_handlers.show_seller_shop(bot_instance, mock_query, seller['user_id'], lang)
 
     application.add_handler(CommandHandler("achat", achat_command_wrapper))
     application.add_handler(CommandHandler("vendre", vendre_command_wrapper))

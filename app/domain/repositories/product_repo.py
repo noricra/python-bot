@@ -184,12 +184,25 @@ class ProductRepository:
         try:
             if limit is not None:
                 cursor.execute(
-                    'SELECT * FROM products WHERE seller_user_id = %s ORDER BY created_at DESC LIMIT %s OFFSET %s',
+                    '''
+                    SELECT p.*, u.seller_name, u.seller_rating, u.seller_bio
+                    FROM products p
+                    LEFT JOIN users u ON p.seller_user_id = u.user_id
+                    WHERE p.seller_user_id = %s
+                    ORDER BY p.created_at DESC
+                    LIMIT %s OFFSET %s
+                    ''',
                     (seller_user_id, limit, offset)
                 )
             else:
                 cursor.execute(
-                    'SELECT * FROM products WHERE seller_user_id = %s ORDER BY created_at DESC',
+                    '''
+                    SELECT p.*, u.seller_name, u.seller_rating, u.seller_bio
+                    FROM products p
+                    LEFT JOIN users u ON p.seller_user_id = u.user_id
+                    WHERE p.seller_user_id = %s
+                    ORDER BY p.created_at DESC
+                    ''',
                     (seller_user_id,)
                 )
             rows = cursor.fetchall()

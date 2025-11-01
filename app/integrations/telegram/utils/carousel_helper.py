@@ -128,49 +128,76 @@ class CarouselHelper:
             keyboard_markup: Clavier inline
             parse_mode: Mode parsing
         """
+        # Check if this is a callback query or command (MockQuery)
+        is_callback = hasattr(query, 'edit_message_media') and hasattr(query, 'message')
+
         try:
-            # Try to edit existing message
-            if thumbnail_url and os.path.exists(thumbnail_url):
-                # Has image - use edit_message_media
-                with open(thumbnail_url, 'rb') as photo_file:
-                    await query.edit_message_media(
-                        media=InputMediaPhoto(
-                            media=photo_file,
-                            caption=caption,
-                            parse_mode=parse_mode
-                        ),
-                        reply_markup=keyboard_markup
+            if is_callback:
+                # Try to edit existing message (callback query)
+                if thumbnail_url and os.path.exists(thumbnail_url):
+                    # Has image - use edit_message_media
+                    with open(thumbnail_url, 'rb') as photo_file:
+                        await query.edit_message_media(
+                            media=InputMediaPhoto(
+                                media=photo_file,
+                                caption=caption,
+                                parse_mode=parse_mode
+                            ),
+                            reply_markup=keyboard_markup
+                        )
+                else:
+                    # No image - text only
+                    await query.edit_message_text(
+                        text=caption,
+                        reply_markup=keyboard_markup,
+                        parse_mode=parse_mode
                     )
             else:
-                # No image - text only
-                await query.edit_message_text(
-                    text=caption,
-                    reply_markup=keyboard_markup,
-                    parse_mode=parse_mode
-                )
+                # Command (MockQuery) - send new message
+                chat_id = query.effective_chat.id if hasattr(query, 'effective_chat') else query.message.chat_id
+
+                if thumbnail_url and os.path.exists(thumbnail_url):
+                    with open(thumbnail_url, 'rb') as photo_file:
+                        await query.bot.send_photo(
+                            chat_id=chat_id,
+                            photo=photo_file,
+                            caption=caption,
+                            reply_markup=keyboard_markup,
+                            parse_mode=parse_mode
+                        )
+                else:
+                    await query.bot.send_message(
+                        chat_id=chat_id,
+                        text=caption,
+                        reply_markup=keyboard_markup,
+                        parse_mode=parse_mode
+                    )
 
         except Exception as e:
             # Edit failed (message too old, etc) - send new message
-            logger.warning(f"Failed to edit message, sending new: {e}")
+            logger.warning(f"Failed to edit/send message, trying fallback: {e}")
 
             try:
-                await query.message.delete()
+                if hasattr(query, 'message') and query.message:
+                    await query.message.delete()
             except:
                 pass  # Ignore if can't delete
 
-            # Send new message
+            # Fallback: send new message
+            chat_id = query.effective_chat.id if hasattr(query, 'effective_chat') else query.message.chat_id
+
             if thumbnail_url and os.path.exists(thumbnail_url):
                 with open(thumbnail_url, 'rb') as photo_file:
-                    await bot.application.bot.send_photo(
-                        chat_id=query.message.chat_id,
+                    await query.bot.send_photo(
+                        chat_id=chat_id,
                         photo=photo_file,
                         caption=caption,
                         reply_markup=keyboard_markup,
                         parse_mode=parse_mode
                     )
             else:
-                await bot.application.bot.send_message(
-                    chat_id=query.message.chat_id,
+                await query.bot.send_message(
+                    chat_id=chat_id,
                     text=caption,
                     reply_markup=keyboard_markup,
                     parse_mode=parse_mode

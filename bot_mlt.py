@@ -518,7 +518,7 @@ class MarketplaceBot:
 
         # === CRÉATION TICKET SUPPORT ===
         elif user_state.get('creating_ticket'):
-            await self.process_support_ticket(update, message_text)
+            await self.support_handlers.process_ticket_creation(self, update, message_text)
         elif user_state.get('waiting_reply_ticket_id'):
             await self.support_handlers.process_messaging_reply(self, update, message_text)
         elif user_state.get('waiting_admin_reply_ticket_id'):

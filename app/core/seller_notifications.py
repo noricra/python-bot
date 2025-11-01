@@ -29,22 +29,8 @@ class SellerNotifications:
             crypto_code: Cryptocurrency used
         """
         try:
-            # Get seller's telegram_id from mapping
-            conn = bot.get_db_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cursor.execute('''
-                SELECT telegram_id FROM telegram_mappings
-                WHERE seller_user_id = %s AND is_active = 1
-                LIMIT 1
-            ''', (seller_id,))
-            result = cursor.fetchone()
-            conn.close()
-
-            if not result:
-                logger.warning(f"No telegram mapping found for seller {seller_id}")
-                return
-
-            telegram_id = result['telegram_id']
+            # seller_id is already the telegram user_id
+            telegram_id = seller_id
             product_title = product_data.get('title', 'Produit')
             product_id = product_data.get('product_id', 'N/A')
 
@@ -103,20 +89,8 @@ Vous serez notifié dès confirmation blockchain.
             tx_hash: Blockchain transaction hash (optional)
         """
         try:
-            conn = bot.get_db_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cursor.execute('''
-                SELECT telegram_id FROM telegram_mappings
-                WHERE seller_user_id = %s AND is_active = 1
-                LIMIT 1
-            ''', (seller_id,))
-            result = cursor.fetchone()
-            conn.close()
-
-            if not result:
-                return
-
-            telegram_id = result['telegram_id']
+            # seller_id is already the telegram user_id
+            telegram_id = seller_id
             product_title = product_data.get('title', 'Produit')
 
             # Calculate seller revenue (minus fees)
@@ -179,20 +153,8 @@ Vous serez notifié dès confirmation blockchain.
             review_text: Review text content
         """
         try:
-            conn = bot.get_db_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cursor.execute('''
-                SELECT telegram_id FROM telegram_mappings
-                WHERE seller_user_id = %s AND is_active = 1
-                LIMIT 1
-            ''', (seller_id,))
-            result = cursor.fetchone()
-            conn.close()
-
-            if not result:
-                return
-
-            telegram_id = result['telegram_id']
+            # seller_id is already the telegram user_id
+            telegram_id = seller_id
             product_title = product_data.get('title', 'Produit')
 
             # Star rating visual
@@ -250,20 +212,8 @@ _{review_snippet}_
                 - top_product: Best selling product
         """
         try:
-            conn = bot.get_db_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cursor.execute('''
-                SELECT telegram_id FROM telegram_mappings
-                WHERE seller_user_id = %s AND is_active = 1
-                LIMIT 1
-            ''', (seller_id,))
-            result = cursor.fetchone()
-            conn.close()
-
-            if not result:
-                return
-
-            telegram_id = result['telegram_id']
+            # seller_id is already the telegram user_id
+            telegram_id = seller_id
 
             sales_today = summary_data.get('sales_today', 0)
             revenue_today = summary_data.get('revenue_today', 0.0)
@@ -329,20 +279,8 @@ _{review_snippet}_
             milestone_value: The milestone number (50, 100, 500, etc.)
         """
         try:
-            conn = bot.get_db_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cursor.execute('''
-                SELECT telegram_id FROM telegram_mappings
-                WHERE seller_user_id = %s AND is_active = 1
-                LIMIT 1
-            ''', (seller_id,))
-            result = cursor.fetchone()
-            conn.close()
-
-            if not result:
-                return
-
-            telegram_id = result['telegram_id']
+            # seller_id is already the telegram user_id
+            telegram_id = seller_id
             product_title = product_data.get('title', 'Produit')
 
             # Milestone-specific message
