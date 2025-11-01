@@ -1331,17 +1331,8 @@ Contact support with your Order ID"""
 
     async def check_payment_handler(self, bot, query, order_id, lang):
         """Vérifie le statut du paiement, met à jour les entités et crée un payout vendeur."""
-        # Check if message has photo (QR code) - can't edit photo message text
-        try:
-            if query.message.photo:
-                # Send new message instead of editing
-                await query.message.reply_text("🔍 Vérification en cours...")
-            else:
-                await query.edit_message_text("🔍 Vérification en cours...")
-        except (psycopg2.Error, Exception) as e:
-            logger.error(f"Error updating message: {e}")
-            # Fallback: send new message
-            await query.message.reply_text("🔍 Vérification en cours...")
+        # Always send new message to preserve payment info above
+        await query.message.reply_text("🔍 Vérification en cours...")
 
         conn = bot.get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -1353,7 +1344,7 @@ Contact support with your Order ID"""
             return
 
         if not order:
-            await query.edit_message_text("❌ Commande introuvable!")
+            await query.message.reply_text("❌ Commande introuvable!")
             return
         logger.info(order)
         payment_id = order[7]
@@ -1367,10 +1358,11 @@ Contact support with your Order ID"""
                     InlineKeyboardButton("💬 Support", callback_data='support_menu'),
                     InlineKeyboardButton("🏠 Menu", callback_data='back_main')
                 ]])
-                await self._safe_edit_message(query,
+                await query.message.reply_text(
                     "❌ Erreur: Paiement non trouvé. Contactez le support." if lang == 'fr'
                     else "❌ Error: Payment not found. Contact support.",
-                    error_keyboard)
+                    reply_markup=error_keyboard
+                )
             except Exception:
                 await query.message.reply_text(
                     "❌ Erreur: Paiement non trouvé. Contactez le support." if lang == 'fr'
@@ -1485,7 +1477,7 @@ Contact support with your Order ID"""
 
 📚 **Envoi de votre formation en cours...**"""
 
-                            await self._safe_edit_message(query, success_text, None)
+                            await query.message.reply_text(success_text, parse_mode='Markdown')
 
                             # Download file from B2 and send it
                             try:
@@ -1549,36 +1541,21 @@ Contact support with your Order ID"""
                 await query.message.reply_text(final_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
             else:
                 conn.close()
-                try:
-                    status_text = (f"⏳ **PAYMENT IN PROGRESS**\n\n🔍 **Status:** {status}\n\n💡 Confirmations can take 5-30 min" if lang == 'en' else f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min")
-                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(
-                        "🔄 Refresh" if lang == 'en' else "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]])
-                    await self._safe_edit_message(query, status_text, keyboard)
-                except Exception:
-                    await query.message.reply_text(
-                        (f"⏳ **PAYMENT IN PROGRESS**\n\n🔍 **Status:** {status}\n\n💡 Confirmations can take 5-30 min" if lang == 'en' else f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min"),
-                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                            "🔄 Refresh" if lang == 'en' else "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]]),
-                        parse_mode='Markdown')
+                status_text = (f"⏳ **PAYMENT IN PROGRESS**\n\n🔍 **Status:** {status}\n\n💡 Confirmations can take 5-30 min" if lang == 'en' else f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min")
+                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(
+                    "🔄 Refresh" if lang == 'en' else "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]])
+                await query.message.reply_text(status_text, reply_markup=keyboard, parse_mode='Markdown')
         else:
             conn.close()
-            try:
-                error_keyboard = InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔄 Retry" if lang == 'en' else "🔄 Réessayer",
-                                         callback_data=f'check_payment_{order_id}')
-                ], [
-                    InlineKeyboardButton("💬 Support", callback_data='support_menu')
-                ]])
-                await self._safe_edit_message(query, i18n(lang, 'err_verify'), error_keyboard)
-            except Exception:
-                await query.message.reply_text(
-                    i18n(lang, 'err_verify'),
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔄 Retry" if lang == 'en' else "🔄 Réessayer",
-                                             callback_data=f'check_payment_{order_id}')
-                    ], [
-                        InlineKeyboardButton("💬 Support", callback_data='support_menu')
-                    ]]),
+            error_keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔄 Retry" if lang == 'en' else "🔄 Réessayer",
+                                     callback_data=f'check_payment_{order_id}')
+            ], [
+                InlineKeyboardButton("💬 Support", callback_data='support_menu')
+            ]])
+            await query.message.reply_text(
+                i18n(lang, 'err_verify'),
+                reply_markup=error_keyboard,
                     parse_mode='Markdown')
 
     async def buy_product(self, bot, query, product_id: str, lang: str, category_key: str = None, index: int = None):
@@ -1878,13 +1855,7 @@ Contact support with your Order ID"""
                                 bio = BytesIO(pix.tobytes('png'))
                                 bio.seek(0)
 
-                                # Delete original message first
-                                try:
-                                    await query.delete_message()
-                                except:
-                                    pass
-
-                                # Send PDF preview (no caption)
+                                # Send PDF preview as new message (preserve payment info)
                                 await query.message.reply_photo(photo=bio)
                                 doc.close()
                                 logger.info(f"[PDF Preview] Preview sent successfully!")
@@ -1928,13 +1899,7 @@ Contact support with your Order ID"""
                                 duration_sec_rem = duration_sec % 60
                                 duration_str = f"{duration_min}:{duration_sec_rem:02d}"
 
-                                # Delete original message
-                                try:
-                                    await query.delete_message()
-                                except:
-                                    pass
-
-                                # Send thumbnail (no caption)
+                                # Send thumbnail as new message (preserve payment info)
                                 with open(thumbnail_path, 'rb') as thumb_file:
                                     await query.message.reply_photo(photo=thumb_file)
 
@@ -1972,13 +1937,7 @@ Contact support with your Order ID"""
                                     if len(info_list) > 10:
                                         file_list.append(f"  ... et {len(info_list) - 10} fichiers de plus")
 
-                            # Delete original message
-                            try:
-                                await query.delete_message()
-                            except:
-                                pass
-
-                            # Send archive preview (no text - archive previews will just show buttons)
+                            # Archive preview as new message (preserve payment info)
                             logger.info(f"[Archive Preview] Preview sent successfully!")
                             media_preview_sent = True
                         except (psycopg2.Error, Exception) as e:
@@ -1988,13 +1947,7 @@ Contact support with your Order ID"""
         except (psycopg2.Error, Exception) as e:
             logger.error(f"[Preview] General error: {e}")
 
-        # Delete message if no media preview was sent
-        if not media_preview_sent:
-            try:
-                await query.delete_message()
-            except:
-                pass
-
+        # Don't delete payment message - send buttons as new message instead
         # Now send action buttons AFTER the preview content (at the bottom, easy to access)
         # V2: Include context for closed circuit Preview → Précédent → Details (with context) → Réduire → Carousel
         from app.core.i18n import t as i18n
