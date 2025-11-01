@@ -1331,8 +1331,8 @@ Contact support with your Order ID"""
 
     async def check_payment_handler(self, bot, query, order_id, lang):
         """Vérifie le statut du paiement, met à jour les entités et crée un payout vendeur."""
-        # Always send new message to preserve payment info above
-        await query.message.reply_text("🔍 Vérification en cours...")
+        # Show loading toast (doesn't create a message)
+        await query.answer("🔍 Vérification en cours...", show_alert=False)
 
         conn = bot.get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
