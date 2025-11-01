@@ -17,14 +17,23 @@ class SupportService:
         created = self.repo.create_ticket(user_id=user_id, ticket_id=ticket_id, subject=subject[:100], message=message[:2000], client_email=client_email)
 
         if created and client_email:
-            # Envoyer une notification email à l'admin
             email_service = EmailService()
+
+            # Envoyer une notification email à l'admin
             email_service.send_new_ticket_notification(
                 ticket_id=ticket_id,
                 user_id=user_id,
                 subject=subject[:100],
                 message=message[:2000],
                 client_email=client_email
+            )
+
+            # Envoyer une confirmation au client
+            email_service.send_ticket_confirmation_client(
+                client_email=client_email,
+                ticket_id=ticket_id,
+                subject=subject[:100],
+                message=message[:2000]
             )
 
         return ticket_id if created else None

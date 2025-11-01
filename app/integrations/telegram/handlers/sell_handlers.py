@@ -1067,14 +1067,26 @@ class SellHandlers:
                 # Succès - réinitialiser l'état et rediriger
                 bot.reset_user_state_preserve_login(telegram_id)
 
-                # Vérifier si c'est le premier produit et envoyer email de félicitations
+                # Envoyer emails de notification
                 try:
-                    total_products = self.product_repo.count_products_by_seller(seller_id)
-                    if total_products == 1:  # Premier produit
-                        user_data = self.user_repo.get_user(telegram_id)
-                        if user_data and user_data.get('email'):
-                            from app.core.email_service import EmailService
-                            email_service = EmailService()
+                    from app.core.email_service import EmailService
+                    email_service = EmailService()
+                    user_data = self.user_repo.get_user(telegram_id)
+
+                    if user_data and user_data.get('email'):
+                        # Email pour tous les produits ajoutés
+                        email_service.send_product_added_email(
+                            to_email=user_data['email'],
+                            seller_name=user_data.get('seller_name', 'Vendeur'),
+                            product_title=product_data['title'],
+                            product_price=f"{product_data['price_usd']:.2f}",
+                            product_id=product_id
+                        )
+                        logger.info(f"📧 Email produit ajouté envoyé à {user_data['email']}")
+
+                        # Vérifier si c'est le premier produit et envoyer email de félicitations
+                        total_products = self.product_repo.count_products_by_seller(seller_id)
+                        if total_products == 1:  # Premier produit
                             email_service.send_first_product_published_notification(
                                 to_email=user_data['email'],
                                 seller_name=user_data.get('seller_name', 'Vendeur'),
@@ -1083,7 +1095,7 @@ class SellHandlers:
                             )
                             logger.info(f"📧 Email premier produit envoyé à {user_data['email']}")
                 except (psycopg2.Error, Exception) as e:
-                    logger.error(f"Erreur envoi email premier produit: {e}")
+                    logger.error(f"Erreur envoi emails produit: {e}")
 
                 success_msg = f"✅ **Produit créé avec succès!**\n\n**ID:** {product_id}\n**Titre:** {product_data['title']}\n**Prix:** ${product_data['price_usd']:.2f}"
 
@@ -1370,6 +1382,23 @@ class SellHandlers:
             success = self.product_repo.delete_product(product_id, seller_user_id)
 
             if success:
+                # Envoyer email de notification de suppression
+                try:
+                    user_data = self.user_repo.get_user(seller_user_id)
+                    if user_data and user_data.get('email'):
+                        from app.core.email_service import EmailService
+                        email_service = EmailService()
+                        email_service.send_product_removed_email(
+                            to_email=user_data['email'],
+                            seller_name=user_data.get('seller_name', 'Vendeur'),
+                            product_title=title,
+                            product_id=product_id,
+                            reason="à votre demande"
+                        )
+                        logger.info(f"📧 Email produit supprimé envoyé à {user_data['email']}")
+                except Exception as e:
+                    logger.error(f"Erreur envoi email produit supprimé: {e}")
+
                 keyboard = InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Mes produits" if lang == 'fr' else "🔙 My products", callback_data='my_products')
                 ]])

@@ -1742,3 +1742,349 @@ Vous pouvez répondre directement à l'adresse: {client_email}
             logger.error(f"Erreur envoi email nouveau ticket: {e}")
             logger.info(f"Email nouveau ticket simulé (fallback) - Ticket: {ticket_id}")
             return True
+
+    def send_ticket_confirmation_client(self, client_email: str, ticket_id: str, subject: str, message: str) -> bool:
+        """
+        Envoie un email de confirmation au client qui a créé un ticket
+
+        Args:
+            client_email: Email du client
+            ticket_id: ID du ticket créé
+            subject: Sujet du ticket
+            message: Message du client
+
+        Returns:
+            bool: True si envoi réussi
+        """
+        try:
+            email_subject = f"✅ Ticket reçu - {ticket_id}"
+
+            content_html = f"""
+                <div class="success-box">
+                    <h2>Votre ticket a bien été reçu</h2>
+                    <p>Merci de nous avoir contactés. Notre équipe support traite votre demande et vous répondra dans les plus brefs délais.</p>
+                </div>
+
+                <div class="info-section">
+                    <div class="info-item">
+                        <div class="info-label">🎫 Numéro de ticket</div>
+                        <div class="info-value"><strong>{ticket_id}</strong></div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">📋 Sujet</div>
+                        <div class="info-value">{subject}</div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">💬 Votre message</div>
+                        <div class="info-value" style="background: #f9fafb; padding: 15px; border-radius: 8px; white-space: pre-wrap;">{message[:500]}{"..." if len(message) > 500 else ""}</div>
+                    </div>
+                </div>
+
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="https://t.me/uzeur_bot" class="cta-button">
+                        📱 Voir mes tickets
+                    </a>
+                </div>
+
+                <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px; text-align: center;">
+                    <p style="font-size: 14px; color: #1e40af; margin: 0;">
+                        ⏱️ <strong>Délai de réponse habituel</strong> : 24-48 heures<br>
+                        💡 Vous recevrez une notification dès que nous aurons répondu
+                    </p>
+                </div>
+            """
+
+            body = self._build_email_template(
+                header_title="✅ Ticket Reçu",
+                header_subtitle=f"Référence : {ticket_id}",
+                content_html=content_html
+            )
+
+            if not self.smtp_configured:
+                logger.info(f"📧 Email confirmation ticket simulé - To: {client_email}")
+                print(f"📧 Ticket confirmation to {client_email}")
+                print(f"   Ticket: {ticket_id}, Subject: {subject}")
+                return True
+
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            msg = MIMEMultipart('alternative')
+            msg['From'] = self.smtp_email
+            msg['To'] = client_email
+            msg['Subject'] = email_subject
+
+            html_part = MIMEText(body, 'html', 'utf-8')
+            msg.attach(html_part)
+
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                if self.smtp_port == 587:
+                    server.starttls()
+                server.login(self.smtp_email, self.smtp_password)
+                server.send_message(msg)
+                logger.info(f"📧 Email confirmation ticket envoyé - To: {client_email}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Erreur envoi email confirmation ticket: {e}")
+            logger.info(f"📧 Email confirmation ticket simulé (fallback) - To: {client_email}")
+            return True
+
+    def send_sale_notification_seller(
+        self,
+        seller_email: str,
+        seller_name: str,
+        product_title: str,
+        product_price_usd: float,
+        seller_revenue_usd: float,
+        platform_commission_usd: float,
+        buyer_username: str,
+        order_id: str,
+        payment_currency: str
+    ) -> bool:
+        """
+        Envoie un email au vendeur lors d'une nouvelle vente
+
+        Args:
+            seller_email: Email du vendeur
+            seller_name: Nom du vendeur
+            product_title: Titre du produit vendu
+            product_price_usd: Prix de vente
+            seller_revenue_usd: Revenu net du vendeur
+            platform_commission_usd: Commission plateforme
+            buyer_username: Username de l'acheteur
+            order_id: ID de la commande
+            payment_currency: Crypto utilisée (BTC, ETH, etc.)
+
+        Returns:
+            bool: True si envoi réussi
+        """
+        try:
+            email_subject = f"🎉 Nouvelle vente - {product_title}"
+
+            content_html = f"""
+                <div class="success-box">
+                    <h2>Félicitations {seller_name} !</h2>
+                    <p>Vous venez de réaliser une nouvelle vente. Le paiement a été confirmé et le produit a été livré automatiquement à l'acheteur.</p>
+                </div>
+
+                <div class="info-section">
+                    <div class="info-item">
+                        <div class="info-label">📦 Produit vendu</div>
+                        <div class="info-value"><strong>{product_title}</strong></div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">💰 Prix de vente</div>
+                        <div class="info-value"><strong>${product_price_usd:.2f} USD</strong></div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">💳 Paiement en</div>
+                        <div class="info-value">{payment_currency}</div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">👤 Acheteur</div>
+                        <div class="info-value">@{buyer_username}</div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">🆔 Commande</div>
+                        <div class="info-value" style="font-family: monospace; font-size: 12px;">{order_id}</div>
+                    </div>
+                </div>
+
+                <div style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%); padding: 20px; border-radius: 12px; margin: 20px 0;">
+                    <h3 style="margin: 0 0 15px 0; color: #065f46;">💵 Répartition financière</h3>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr style="border-bottom: 1px solid #d1fae5;">
+                            <td style="padding: 10px 0; color: #064e3b;">Prix de vente</td>
+                            <td style="padding: 10px 0; text-align: right; color: #064e3b;">${product_price_usd:.2f}</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #d1fae5;">
+                            <td style="padding: 10px 0; color: #064e3b;">Commission plateforme (2.78%)</td>
+                            <td style="padding: 10px 0; text-align: right; color: #064e3b;">-${platform_commission_usd:.2f}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 0; color: #065f46; font-weight: bold; font-size: 16px;">Votre revenu net</td>
+                            <td style="padding: 10px 0; text-align: right; color: #065f46; font-weight: bold; font-size: 16px;">${seller_revenue_usd:.2f}</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="https://t.me/uzeur_bot" class="cta-button">
+                        📊 Voir mes statistiques
+                    </a>
+                </div>
+
+                <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px; text-align: center;">
+                    <p style="font-size: 14px; color: #1e40af; margin: 0;">
+                        💰 Vos revenus seront transférés vers votre wallet Solana lors du prochain payout.<br>
+                        📅 Les payouts sont traités manuellement après vérification anti-fraude.
+                    </p>
+                </div>
+            """
+
+            body = self._build_email_template(
+                header_title="🎉 Nouvelle Vente !",
+                header_subtitle=f"Vous avez gagné ${seller_revenue_usd:.2f}",
+                content_html=content_html
+            )
+
+            if not self.smtp_configured:
+                logger.info(f"📧 Email nouvelle vente simulé - To: {seller_email}")
+                print(f"📧 Sale notification to {seller_name} ({seller_email})")
+                print(f"   Product: {product_title}, Revenue: ${seller_revenue_usd:.2f}")
+                return True
+
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            msg = MIMEMultipart('alternative')
+            msg['From'] = self.smtp_email
+            msg['To'] = seller_email
+            msg['Subject'] = email_subject
+
+            html_part = MIMEText(body, 'html', 'utf-8')
+            msg.attach(html_part)
+
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                if self.smtp_port == 587:
+                    server.starttls()
+                server.login(self.smtp_email, self.smtp_password)
+                server.send_message(msg)
+                logger.info(f"📧 Email nouvelle vente envoyé - To: {seller_email}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Erreur envoi email nouvelle vente: {e}")
+            logger.info(f"📧 Email nouvelle vente simulé (fallback) - To: {seller_email}")
+            return True
+
+    def send_purchase_confirmation_buyer(
+        self,
+        buyer_email: str,
+        buyer_username: str,
+        product_title: str,
+        product_price_usd: float,
+        payment_currency: str,
+        order_id: str,
+        seller_name: str
+    ) -> bool:
+        """
+        Envoie un email de confirmation d'achat à l'acheteur
+
+        Args:
+            buyer_email: Email de l'acheteur
+            buyer_username: Username de l'acheteur
+            product_title: Titre du produit acheté
+            product_price_usd: Prix payé
+            payment_currency: Crypto utilisée
+            order_id: ID de la commande
+            seller_name: Nom du vendeur
+
+        Returns:
+            bool: True si envoi réussi
+        """
+        try:
+            email_subject = f"✅ Achat confirmé - {product_title}"
+
+            content_html = f"""
+                <div class="success-box">
+                    <h2>Merci pour votre achat !</h2>
+                    <p>Votre paiement a été confirmé avec succès. Votre produit est maintenant disponible dans votre bibliothèque.</p>
+                </div>
+
+                <div class="info-section">
+                    <div class="info-item">
+                        <div class="info-label">📦 Produit acheté</div>
+                        <div class="info-value"><strong>{product_title}</strong></div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">👤 Vendeur</div>
+                        <div class="info-value">{seller_name}</div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">💰 Montant payé</div>
+                        <div class="info-value"><strong>${product_price_usd:.2f} USD</strong></div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">💳 Méthode de paiement</div>
+                        <div class="info-value">{payment_currency}</div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">🆔 Numéro de commande</div>
+                        <div class="info-value" style="font-family: monospace; font-size: 12px;">{order_id}</div>
+                    </div>
+                </div>
+
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="https://t.me/uzeur_bot" class="cta-button">
+                        📚 Accéder à ma bibliothèque
+                    </a>
+                </div>
+
+                <div style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px;">
+                    <h3 style="margin: 0 0 15px 0; color: #065f46;">📥 Comment télécharger votre produit ?</h3>
+                    <ol style="margin: 0; padding-left: 20px; color: #064e3b;">
+                        <li style="margin-bottom: 8px;">Ouvrez le bot Telegram @uzeur_bot</li>
+                        <li style="margin-bottom: 8px;">Cliquez sur "📚 Ma Bibliothèque"</li>
+                        <li style="margin-bottom: 8px;">Sélectionnez votre produit</li>
+                        <li>Cliquez sur "📥 Télécharger" (limite: 5 téléchargements)</li>
+                    </ol>
+                </div>
+
+                <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 20px; text-align: center;">
+                    <p style="font-size: 14px; color: #1e40af; margin: 0;">
+                        💡 <strong>Besoin d'aide ?</strong><br>
+                        Contactez le vendeur directement depuis votre bibliothèque ou créez un ticket support.
+                    </p>
+                </div>
+            """
+
+            body = self._build_email_template(
+                header_title="✅ Achat Confirmé",
+                header_subtitle="Votre produit est prêt",
+                content_html=content_html
+            )
+
+            if not self.smtp_configured:
+                logger.info(f"📧 Email confirmation achat simulé - To: {buyer_email}")
+                print(f"📧 Purchase confirmation to @{buyer_username} ({buyer_email})")
+                print(f"   Product: {product_title}, Price: ${product_price_usd:.2f}")
+                return True
+
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            msg = MIMEMultipart('alternative')
+            msg['From'] = self.smtp_email
+            msg['To'] = buyer_email
+            msg['Subject'] = email_subject
+
+            html_part = MIMEText(body, 'html', 'utf-8')
+            msg.attach(html_part)
+
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                if self.smtp_port == 587:
+                    server.starttls()
+                server.login(self.smtp_email, self.smtp_password)
+                server.send_message(msg)
+                logger.info(f"📧 Email confirmation achat envoyé - To: {buyer_email}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Erreur envoi email confirmation achat: {e}")
+            logger.info(f"📧 Email confirmation achat simulé (fallback) - To: {buyer_email}")
+            return True

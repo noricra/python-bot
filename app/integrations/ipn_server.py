@@ -162,6 +162,64 @@ Votre formation est en cours d'envoi..."""
 
                     logger.info(f"✅ Formation automatically sent to user {buyer_user_id} for order {order_id}")
 
+                    # Send confirmation emails
+                    try:
+                        from app.core.email_service import EmailService
+                        email_service = EmailService()
+
+                        # Get seller and buyer info for emails
+                        cursor.execute('''
+                            SELECT
+                                u_seller.email as seller_email,
+                                u_seller.seller_name as seller_name,
+                                u_buyer.username as buyer_username,
+                                u_buyer.email as buyer_email,
+                                o.product_price_usd,
+                                o.seller_revenue_usd,
+                                o.platform_commission_usd,
+                                o.payment_currency,
+                                p.title as product_title
+                            FROM orders o
+                            JOIN users u_seller ON o.seller_user_id = u_seller.user_id
+                            LEFT JOIN users u_buyer ON o.buyer_user_id = u_buyer.user_id
+                            JOIN products p ON o.product_id = p.product_id
+                            WHERE o.nowpayments_id = %s
+                        ''', (payment_id,))
+                        email_data = cursor.fetchone()
+
+                        if email_data:
+                            # Email au vendeur (nouvelle vente)
+                            if email_data['seller_email']:
+                                email_service.send_sale_notification_seller(
+                                    seller_email=email_data['seller_email'],
+                                    seller_name=email_data['seller_name'] or 'Vendeur',
+                                    product_title=email_data['product_title'],
+                                    product_price_usd=float(email_data['product_price_usd']),
+                                    seller_revenue_usd=float(email_data['seller_revenue_usd']),
+                                    platform_commission_usd=float(email_data['platform_commission_usd']),
+                                    buyer_username=email_data['buyer_username'] or f'User_{buyer_user_id}',
+                                    order_id=order_id,
+                                    payment_currency=email_data['payment_currency']
+                                )
+                                logger.info(f"📧 Email vente envoyé au vendeur: {email_data['seller_email']}")
+
+                            # Email à l'acheteur (confirmation d'achat)
+                            if email_data['buyer_email']:
+                                email_service.send_purchase_confirmation_buyer(
+                                    buyer_email=email_data['buyer_email'],
+                                    buyer_username=email_data['buyer_username'] or f'User_{buyer_user_id}',
+                                    product_title=email_data['product_title'],
+                                    product_price_usd=float(email_data['product_price_usd']),
+                                    payment_currency=email_data['payment_currency'],
+                                    order_id=order_id,
+                                    seller_name=email_data['seller_name'] or 'Vendeur'
+                                )
+                                logger.info(f"📧 Email confirmation envoyé à l'acheteur: {email_data['buyer_email']}")
+
+                    except Exception as email_error:
+                        logger.error(f"Erreur lors de l'envoi des emails de confirmation: {email_error}")
+                        # Ne pas bloquer la livraison si erreur email
+
                     # Clean up temp file
                     try:
                         os.remove(local_path)
