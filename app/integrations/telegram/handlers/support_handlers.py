@@ -313,7 +313,7 @@ A: 24/7 ticket system."""
             # Store subject and move to content step
             user_state['ticket_subject'] = message_text.strip()[:100]
             user_state['step'] = 'content'
-            bot.state_manager.update_state(user_id, user_state)
+            bot.state_manager.update_state(user_id, **user_state)
 
             await update.message.reply_text(
                 f"✅ **Sujet :** {bot.escape_markdown(message_text.strip())}\n\n📝 Maintenant, décrivez votre problème en détail :",
@@ -328,7 +328,7 @@ A: 24/7 ticket system."""
             # Store content and move to email step
             user_state['ticket_content'] = message_text.strip()[:2000]
             user_state['step'] = 'email'
-            bot.state_manager.update_state(user_id, user_state)
+            bot.state_manager.update_state(user_id, **user_state)
 
             await update.message.reply_text(
                 "Veuillez entrer votre adresse email pour recevoir une réponse :" if lang == 'fr' else "Please enter your email address to receive a response:",

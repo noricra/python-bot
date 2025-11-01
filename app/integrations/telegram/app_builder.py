@@ -161,12 +161,17 @@ def build_application(bot_instance) -> Application:
 
         # Call the buy_handlers method to show seller shop
         class MockQuery:
-            def __init__(self, user):
+            def __init__(self, user, update_obj, bot):
                 self.from_user = user
+                self.effective_chat = update_obj.effective_chat
+                self.bot = bot
+                self._update = update_obj
+                # Add message attribute for fallback
+                self.message = update_obj.message
             async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
-                await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+                await self._update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
 
-        mock_query = MockQuery(update.effective_user)
+        mock_query = MockQuery(update.effective_user, update, context.bot)
         lang = bot_instance.get_user_language(update.effective_user.id)
 
         # Use existing show_seller_shop method
