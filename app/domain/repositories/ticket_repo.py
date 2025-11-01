@@ -30,15 +30,16 @@ class SupportTicketRepository:
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
-            # Include tickets where user is creator OR seller (recipient)
+            # Get tickets created by this user
             cursor.execute(
                 '''SELECT * FROM support_tickets
-                   WHERE user_id = %s OR seller_user_id = %s
+                   WHERE user_id = %s
                    ORDER BY created_at DESC LIMIT %s''',
-                (user_id, user_id, limit),
+                (user_id, limit),
             )
             return [dict(r) for r in cursor.fetchall()]
-        except psycopg2.Error:
+        except psycopg2.Error as e:
+            print(f"Error fetching tickets: {e}")
             return []
         finally:
             conn.close()

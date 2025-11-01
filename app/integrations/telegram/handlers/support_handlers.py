@@ -307,6 +307,8 @@ A: 24/7 ticket system."""
 
         if step == 'subject':
             if len(message_text.strip()) < 3:
+                # Preserve state on error
+                bot.state_manager.update_state(user_id, creating_ticket=True, step='subject', lang=lang)
                 await update.message.reply_text("❌ Le sujet doit contenir au moins 3 caractères.")
                 return
 
@@ -322,6 +324,9 @@ A: 24/7 ticket system."""
 
         elif step == 'content':
             if len(message_text.strip()) < 10:
+                # Preserve state on error - keep ticket_subject too
+                subject = user_state.get('ticket_subject', '')
+                bot.state_manager.update_state(user_id, creating_ticket=True, step='content', lang=lang, ticket_subject=subject)
                 await update.message.reply_text("Le message doit contenir au moins 10 caractères." if lang == 'fr' else "Message must contain at least 10 characters.")
                 return
 
@@ -339,6 +344,10 @@ A: 24/7 ticket system."""
             # Validate email format
             email = message_text.strip()
             if '@' not in email or '.' not in email.split('@')[-1]:
+                # Preserve state on error - keep subject and content
+                subject = user_state.get('ticket_subject', '')
+                content = user_state.get('ticket_content', '')
+                bot.state_manager.update_state(user_id, creating_ticket=True, step='email', lang=lang, ticket_subject=subject, ticket_content=content)
                 await update.message.reply_text("Adresse email invalide. Veuillez réessayer." if lang == 'fr' else "Invalid email address. Please try again.")
                 return
 
