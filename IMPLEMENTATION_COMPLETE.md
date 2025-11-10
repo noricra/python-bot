@@ -44,7 +44,7 @@ PGPASSWORD=your_password_here
 ```bash
 B2_KEY_ID=your_b2_key_id_here
 B2_APPLICATION_KEY=your_b2_application_key_here
-B2_BUCKET_NAME=Uzeur-bot
+B2_BUCKET_NAME=your_bucket_name_here
 B2_ENDPOINT=https://s3.eu-central-003.backblazeb2.com
 ```
 
@@ -159,7 +159,7 @@ IPN_CALLBACK_URL=https://votre-domaine.railway.app/ipn/nowpayments
 # Backblaze B2
 B2_KEY_ID=your_b2_key_id_here
 B2_APPLICATION_KEY=your_b2_application_key_here
-B2_BUCKET_NAME=Uzeur-bot
+B2_BUCKET_NAME=your_bucket_name_here
 B2_ENDPOINT=https://s3.eu-central-003.backblazeb2.com
 
 # SMTP

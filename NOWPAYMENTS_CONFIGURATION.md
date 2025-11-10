@@ -6,8 +6,8 @@ Ajoutez ces variables dans votre `.env`:
 
 ```bash
 # NowPayments API
-NOWPAYMENTS_API_KEY=your_nowpayments_api_key_here  # ✅ Déjà configuré
-NOWPAYMENTS_IPN_SECRET=your_nowpayments_ipn_secret_here  # ✅ Déjà configuré
+NOWPAYMENTS_API_KEY=your_nowpayments_api_key_here
+NOWPAYMENTS_IPN_SECRET=your_nowpayments_ipn_secret_here
 
 # IPN Callback URL (à mettre à jour avec votre URL Railway)
 IPN_CALLBACK_URL=https://votre-app.railway.app/ipn/nowpayments

@@ -45,7 +45,7 @@ IPN_CALLBACK_URL=https://VOTRE-DOMAINE.railway.app/ipn/nowpayments
 # Backblaze B2 Storage
 B2_KEY_ID=your_b2_key_id_here
 B2_APPLICATION_KEY=your_b2_application_key_here
-B2_BUCKET_NAME=Uzeur-bot
+B2_BUCKET_NAME=your_bucket_name_here
 B2_ENDPOINT=https://s3.eu-central-003.backblazeb2.com
 
 # SMTP Email
@@ -54,7 +54,7 @@ SMTP_PORT=587
 SMTP_USERNAME=your_email@gmail.com
 SMTP_PASSWORD=your_email_app_password_here
 FROM_EMAIL=your_email@gmail.com
-ADMIN_EMAIL=ferustech@proton.me
+ADMIN_EMAIL=your_admin_email_here
 
 # IPN Settings
 IPN_HOST=0.0.0.0
