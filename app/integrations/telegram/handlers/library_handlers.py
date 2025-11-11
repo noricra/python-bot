@@ -224,7 +224,10 @@ class LibraryHandlers:
                 )
                 return
 
-            b2_file_url, title, order_id = result
+            # Extraire les valeurs du dictionnaire (RealDictCursor retourne des dicts)
+            b2_file_url = result['main_file_url']
+            title = result['title']
+            order_id = result['order_id']
 
             # Incrémenter le compteur de téléchargements
             cursor.execute('''

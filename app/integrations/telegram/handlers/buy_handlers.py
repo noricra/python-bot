@@ -1483,8 +1483,10 @@ Contact support with your Order ID"""
                         cursor.execute('SELECT title, main_file_url FROM products WHERE product_id = %s', (order['product_id'],))
                         product_file = cursor.fetchone()
 
-                        if product_file and product_file[1]:
-                            product_title, file_url = product_file
+                        if product_file and product_file.get('main_file_url'):
+                            # Extraire les valeurs du dictionnaire (RealDictCursor retourne des dicts)
+                            product_title = product_file['title']
+                            file_url = product_file['main_file_url']
 
                             # Send success message first
                             success_text = f"""🎉 **FÉLICITATIONS !**

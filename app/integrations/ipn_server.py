@@ -244,7 +244,9 @@ async def send_formation_to_buyer(buyer_user_id: int, order_id: str, product_id:
             conn.commit()
             return
 
-        title, file_url = product_result
+        # Extraire les valeurs du dictionnaire (RealDictCursor retourne des dicts)
+        title = product_result['title']
+        file_url = product_result['main_file_url']
 
         # Send confirmation message with button to library
         success_message = f"""✅ **PAIEMENT CONFIRMÉ !**
