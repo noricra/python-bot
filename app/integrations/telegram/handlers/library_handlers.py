@@ -224,7 +224,7 @@ class LibraryHandlers:
                 )
                 return
 
-            file_path, title, order_id = result
+            b2_file_url, title, order_id = result
 
             # Incrémenter le compteur de téléchargements
             cursor.execute('''
@@ -236,15 +236,12 @@ class LibraryHandlers:
             conn.commit()
             put_connection(conn)
 
-            # Construire le chemin complet
-            from app.core.settings import settings
-            full_file_path = os.path.join(settings.UPLOADS_DIR, file_path) if file_path else None
-
-            if not file_path or not os.path.exists(full_file_path):
-                logger.error(f"File not found: {full_file_path}")
+            # Vérifier que l'URL B2 existe
+            if not b2_file_url:
+                logger.error(f"No B2 URL for product {product_id}")
                 await safe_transition_to_text(
                     query,
-                    "❌ File not found on server. Contact support." if lang == 'en' else "❌ Fichier introuvable sur le serveur. Contactez le support.",
+                    "❌ File not available. Contact support." if lang == 'en' else "❌ Fichier non disponible. Contactez le support.",
                     InlineKeyboardMarkup([[
                         InlineKeyboardButton(
                             " Support" if lang == 'en' else " Support",
@@ -257,6 +254,31 @@ class LibraryHandlers:
                     ]])
                 )
                 return
+
+            # Télécharger depuis B2
+            from app.core.file_utils import download_product_file_from_b2
+
+            local_path = await download_product_file_from_b2(b2_file_url, product_id)
+
+            if not local_path or not os.path.exists(local_path):
+                logger.error(f"Failed to download file from B2: {b2_file_url}")
+                await safe_transition_to_text(
+                    query,
+                    "❌ File download failed. Contact support." if lang == 'en' else "❌ Échec du téléchargement. Contactez le support.",
+                    InlineKeyboardMarkup([[
+                        InlineKeyboardButton(
+                            " Support" if lang == 'en' else " Support",
+                            callback_data='support_menu'
+                        ),
+                        InlineKeyboardButton(
+                            " Back" if lang == 'en' else " Retour",
+                            callback_data='library_menu'
+                        )
+                    ]])
+                )
+                return
+
+            full_file_path = local_path
 
             # Message de téléchargement en cours
             try:
@@ -286,6 +308,14 @@ class LibraryHandlers:
                     )
                 ]])
             )
+
+            # Nettoyer le fichier temporaire
+            try:
+                if local_path and os.path.exists(local_path):
+                    os.remove(local_path)
+                    logger.info(f"🗑️ Cleaned up temp file: {local_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"⚠️ Could not clean up temp file: {cleanup_error}")
 
         except Exception as e:
             logger.error(f"Error downloading product: {e}")

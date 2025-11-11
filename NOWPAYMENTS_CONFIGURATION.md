@@ -9,8 +9,8 @@ Ajoutez ces variables dans votre `.env`:
 NOWPAYMENTS_API_KEY=your_nowpayments_api_key_here
 NOWPAYMENTS_IPN_SECRET=your_nowpayments_ipn_secret_here
 
-# IPN Callback URL (à mettre à jour avec votre URL Railway)
-IPN_CALLBACK_URL=https://votre-app.railway.app/ipn/nowpayments
+# IPN Callback URL (Railway URL correcte)
+IPN_CALLBACK_URL=https://python-bot-production-312a.up.railway.app/ipn/nowpayments
 ```
 
 ---
@@ -77,7 +77,7 @@ payload = {
 if payment_status in ['finished', 'confirmed']:
     # Récupérer les infos
     order = get_order(order_id)
-    product_price = order['product_price_eur']
+    product_price = order['product_price_usd']
 
     # Calculer commission et revenus vendeur
     commission = product_price * 0.10  # 10%
@@ -140,7 +140,7 @@ response = nowpayments_api.create_payment(
 2. **Settings → Payment Settings:**
    - ✅ Activez **"IPN (Instant Payment Notifications)"**
    - ✅ Entrez votre **IPN Secret Key** (déjà dans .env)
-   - ✅ URL IPN: `https://votre-app.railway.app/ipn/nowpayments`
+   - ✅ URL IPN: `https://python-bot-production-312a.up.railway.app/ipn/nowpayments`
 
 3. **Settings → Wallets:**
    - ✅ Configurez votre **wallet principal** pour recevoir les commissions
@@ -213,7 +213,7 @@ NOWPAYMENTS_SANDBOX=true
 
 ### 3. Configurez l'URL IPN
 ```
-https://votre-app.railway.app/ipn/nowpayments
+https://python-bot-production-312a.up.railway.app/ipn/nowpayments
 ```
 
 ### 4. Testez avec une vraie transaction de 1$

@@ -187,7 +187,7 @@ async def nowpayments_ipn(request: Request):
                         'seller_user_id': seller_user_id
                     },
                     buyer_name=buyer_name,
-                    amount_eur=product_price_usd,
+                    amount_usd=product_price_usd,
                     crypto_code=payment_currency or 'CRYPTO',
                     tx_hash=None
                 )

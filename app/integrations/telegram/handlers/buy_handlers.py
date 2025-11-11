@@ -1452,7 +1452,7 @@ Contact support with your Order ID"""
                             seller_id=product_row['seller_user_id'],
                             product_data=product_data,
                             buyer_name=buyer_name,
-                            amount_eur=order['product_price_usd'],
+                            amount_usd=order['product_price_usd'],
                             crypto_code=order['payment_currency'],
                             tx_hash=payment_status.get('payment_hash')
                         )
@@ -1490,7 +1490,6 @@ Contact support with your Order ID"""
                             success_text = f"""🎉 **FÉLICITATIONS !**
 
 ✅ **Paiement confirmé** - Commande : {order_id}
-{"✅ Payout vendeur créé automatiquement" if payout_created else "⚠️ Payout vendeur en attente"}
 
 📚 **Envoi de votre formation en cours...**"""
 
@@ -1543,7 +1542,6 @@ Contact support with your Order ID"""
                 final_text = f"""🎉 **FÉLICITATIONS !**
 
 ✅ **Paiement confirmé** - Commande : {order_id}
-{"✅ Payout vendeur créé automatiquement" if payout_created else "⚠️ Payout vendeur en attente"}
 
 {"📚 **Votre formation a été envoyée ci-dessus !**" if file_sent else "📚 **ACCÈS À VOTRE FORMATION**"}"""
 
@@ -1551,6 +1549,8 @@ Contact support with your Order ID"""
                     InlineKeyboardButton(
                         "📥 Télécharger à nouveau" if file_sent else "📥 Télécharger maintenant",
                         callback_data=f'download_product_{order["product_id"]}')
+                ], [
+                    InlineKeyboardButton("⚠️ Signaler un problème", callback_data=f'report_problem_{order_id}')
                 ], [
                     InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')
                 ]]

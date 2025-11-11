@@ -16,7 +16,7 @@ class SellerNotifications:
     """Système de notifications en temps réel pour les vendeurs"""
 
     @staticmethod
-    async def notify_new_purchase(bot, seller_id: int, product_data: Dict, buyer_name: str, amount_eur: float, crypto_code: str):
+    async def notify_new_purchase(bot, seller_id: int, product_data: Dict, buyer_name: str, amount_usd: float, crypto_code: str):
         """
         Notification immédiate : Nouvel achat confirmé
 
@@ -25,7 +25,7 @@ class SellerNotifications:
             seller_id: Seller user ID
             product_data: Product information
             buyer_name: Buyer's name/username
-            amount_eur: Purchase amount in EUR
+            amount_usd: Purchase amount in USD
             crypto_code: Cryptocurrency used
         """
         try:
@@ -43,7 +43,7 @@ class SellerNotifications:
  **Produit:** {product_title}
  **ID:** `{product_id}`
 
- **Montant:** {amount_eur:.2f} $
+ **Montant:** {amount_usd:.2f} $
  **Crypto:** {crypto_code}
 
  **Acheteur:** {buyer_name}
@@ -75,7 +75,7 @@ Vous serez notifié dès confirmation blockchain.
             logger.error(f"❌ Error sending purchase notification: {e}")
 
     @staticmethod
-    async def notify_payment_confirmed(bot, seller_id: int, product_data: Dict, buyer_name: str, amount_eur: float, crypto_code: str, tx_hash: Optional[str] = None):
+    async def notify_payment_confirmed(bot, seller_id: int, product_data: Dict, buyer_name: str, amount_usd: float, crypto_code: str, tx_hash: Optional[str] = None):
         """
         Notification : Paiement confirmé sur la blockchain
 
@@ -84,7 +84,7 @@ Vous serez notifié dès confirmation blockchain.
             seller_id: Seller user ID
             product_data: Product information
             buyer_name: Buyer's name
-            amount_eur: Final amount in EUR
+            amount_usd: Final amount in USD
             crypto_code: Cryptocurrency used
             tx_hash: Blockchain transaction hash (optional)
         """
@@ -93,24 +93,27 @@ Vous serez notifié dès confirmation blockchain.
             telegram_id = seller_id
             product_title = product_data.get('title', 'Produit')
 
-            # Calculate seller revenue
-            # amount_eur est le montant total payé par l'acheteur (prix + frais)
-            # Vendeur reçoit = montant_total / 1.0278 (97.2951% du total)
+            # Calculate amounts
+            # amount_usd = Prix du produit (ex: $2.00)
+            # Client paie = Prix × 1.0278 (ex: $2.00 × 1.0278 = $2.0556)
+            # Vendeur reçoit = Prix (ex: $2.00 = 100% du prix affiché)
+            # Plateforme reçoit = Total payé - Prix vendeur (ex: $2.0556 - $2.00 = $0.0556)
             from app.core import settings as core_settings
             commission_percent = core_settings.PLATFORM_COMMISSION_PERCENT
-            seller_revenue = amount_eur / (1 + commission_percent / 100)
+            seller_revenue = amount_usd  # Vendeur reçoit 100% du prix affiché
+            total_paid_by_buyer = amount_usd * (1 + commission_percent / 100)  # Total payé par l'acheteur
+            buyer_fees = total_paid_by_buyer - seller_revenue  # Frais payés par l'acheteur
 
             notification_text = f"""
 **PAIEMENT CONFIRMÉ**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━
 
 **Produit:** {product_title}
 **Acheteur:** {buyer_name}
 
 **Prix du produit:** {seller_revenue:.2f} $
-**Frais acheteur:** {amount_eur - seller_revenue:.2f} $
-**Total payé:** {amount_eur:.2f} $
+**Frais acheteur:** {buyer_fees:.2f} $
+**Total payé:** {total_paid_by_buyer:.2f} $
 
 **Votre revenu:** {seller_revenue:.2f} $
 **Crypto:** {crypto_code}
@@ -121,8 +124,7 @@ Vous serez notifié dès confirmation blockchain.
 
             notification_text += f"""
 **Confirmé le:** {datetime.now().strftime('%d/%m/%Y à %H:%M')}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━
 
 **Le produit a été automatiquement livré à l'acheteur.**
 """

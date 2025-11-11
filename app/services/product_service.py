@@ -100,7 +100,7 @@ class ProductService:
                 'description': description,
                 'category': category,
                 'price_usd': price,  # Price in USDT
-                'main_file_url': file_path,
+                'main_file_url': None,  # Will be updated after B2 upload
                 'file_size_mb': 2.0,  # Default size
                 'status': 'active'
             }

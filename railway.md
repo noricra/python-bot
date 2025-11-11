@@ -456,7 +456,7 @@ B2_KEY_ID=<votre-clé-b2>
 B2_APPLICATION_KEY=<votre-secret-b2>
 B2_BUCKET_NAME=Uzeur-bot
 B2_ENDPOINT=https://s3.eu-central-003.backblazeb2.com
-IPN_CALLBACK_URL=https://<votre-app>.up.railway.app/ipn/nowpayments
+IPN_CALLBACK_URL=https://python-bot-production-312a.up.railway.app/ipn/nowpayments
 ```
 
 ### Auto-générées par Railway

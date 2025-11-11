@@ -690,6 +690,12 @@ class CallbackRouter:
             await self.bot.buy_handlers.check_payment_handler(self.bot, query, order_id, lang)
             return True
 
+        # Report order problem (within 24h)
+        if callback_data.startswith('report_problem_'):
+            order_id = callback_data.replace('report_problem_', '')
+            await self.bot.support_handlers.report_order_problem(self.bot, query, order_id, lang)
+            return True
+
         # Admin reply to ticket
         if callback_data.startswith('admin_reply_ticket_'):
             ticket_id = callback_data.replace('admin_reply_ticket_', '')

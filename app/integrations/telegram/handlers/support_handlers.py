@@ -30,6 +30,94 @@ class SupportHandlers:
                 await update.message.reply_text(*args, **kwargs)
         await self.create_ticket_prompt(bot, DummyQuery(user.id), lang)
 
+    async def report_order_problem(self, bot, query, order_id: str, lang: str) -> None:
+        """
+        Report a problem with a specific order (under 24h)
+
+        Args:
+            bot: Bot instance
+            query: Callback query
+            order_id: The order ID to report a problem for
+            lang: User language
+        """
+        user_id = query.from_user.id
+
+        try:
+            # Get order details
+            conn = bot.get_db_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            cursor.execute('''
+                SELECT o.order_id, o.product_id, p.title, o.completed_at
+                FROM orders o
+                JOIN products p ON p.product_id = o.product_id
+                WHERE o.order_id = %s AND o.buyer_user_id = %s
+            ''', (order_id, user_id))
+
+            order = cursor.fetchone()
+            put_connection(conn)
+
+            if not order:
+                await query.edit_message_text(
+                    "❌ Commande introuvable." if lang == 'fr' else "❌ Order not found.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')
+                    ]])
+                )
+                return
+
+            # Set state to wait for problem description
+            bot.state_manager.update_state(
+                user_id,
+                reporting_problem=True,
+                problem_order_id=order_id,
+                problem_product_title=order['title']
+            )
+
+            message_text = f"""⚠️ **SIGNALER UN PROBLÈME**
+
+📦 **Commande:** `{order_id}`
+📚 **Produit:** {order['title']}
+
+Décrivez le problème rencontré (sous 24H):
+• Fichier corrompu
+• Contenu manquant
+• Erreur de téléchargement
+• Autre problème...
+
+Envoyez votre message maintenant.""" if lang == 'fr' else f"""⚠️ **REPORT A PROBLEM**
+
+📦 **Order:** `{order_id}`
+📚 **Product:** {order['title']}
+
+Describe the problem (within 24h):
+• Corrupted file
+• Missing content
+• Download error
+• Other issue...
+
+Send your message now."""
+
+            await query.edit_message_text(
+                message_text,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='back_main')
+                ]])
+            )
+
+        except Exception as e:
+            from app.core.db_pool import put_connection
+            put_connection(conn)
+            import logging
+            logging.error(f"Error in report_order_problem: {e}")
+            await query.edit_message_text(
+                "❌ Erreur lors du signalement." if lang == 'fr' else "❌ Error reporting problem.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')
+                ]])
+            )
+
     async def contact_seller_start(self, bot, query, product_id: str, lang: str) -> None:
         buyer_id = query.from_user.id
         try:
@@ -372,6 +460,102 @@ A: 24/7 ticket system."""
 
             # Reset state
             bot.reset_user_state(user_id)
+
+    async def process_problem_report(self, bot, update, message_text: str):
+        """
+        Process problem report for an order
+        Creates a support ticket with order details automatically
+        """
+        user_id = update.effective_user.id
+        user_state = bot.state_manager.get_state(user_id)
+        order_id = user_state.get('problem_order_id')
+        product_title = user_state.get('problem_product_title', 'Produit')
+        lang = user_state.get('lang', 'fr')
+
+        # Validate description length
+        if len(message_text.strip()) < 10:
+            await update.message.reply_text(
+                "❌ La description doit contenir au moins 10 caractères." if lang == 'fr'
+                else "❌ Description must contain at least 10 characters."
+            )
+            return
+
+        # Get user email from database
+        user_data = self.user_repo.get_user(user_id)
+        user_email = user_data.get('email') if user_data else None
+
+        if not user_email:
+            # Fallback email if user doesn't have one
+            user_email = f"user{user_id}@telegram.temp"
+
+        # Create support ticket
+        try:
+            from app.core.utils import generate_ticket_id
+            ticket_id = generate_ticket_id()
+
+            # Format ticket content with order details
+            ticket_subject = f"Problème avec commande {order_id}"
+            ticket_content = f"""**Commande:** {order_id}
+**Produit:** {product_title}
+
+**Description du problème:**
+{message_text.strip()}
+
+---
+Signalé sous 24H après achat.
+"""
+
+            # Create ticket via support_service
+            success = self.support_service.create_ticket(
+                ticket_id=ticket_id,
+                user_id=user_id,
+                subject=ticket_subject,
+                message=ticket_content,
+                user_email=user_email
+            )
+
+            if success:
+                keyboard = [[InlineKeyboardButton(
+                    "🏠 Menu principal" if lang == 'fr' else "🏠 Main menu",
+                    callback_data='back_main'
+                )]]
+
+                await update.message.reply_text(
+                    f"""✅ **PROBLÈME SIGNALÉ**
+
+🎫 **Ticket créé:** `{ticket_id}`
+📦 **Commande:** `{order_id}`
+
+Notre équipe va examiner votre signalement et vous contactera rapidement.
+
+Vous recevrez une réponse à : {user_email}""" if lang == 'fr' else
+                    f"""✅ **PROBLEM REPORTED**
+
+🎫 **Ticket created:** `{ticket_id}`
+📦 **Order:** `{order_id}`
+
+Our team will review your report and contact you shortly.
+
+You will receive a response at: {user_email}""",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ Erreur lors de la création du ticket. Veuillez réessayer." if lang == 'fr'
+                    else "❌ Error creating ticket. Please try again."
+                )
+
+        except Exception as e:
+            import logging
+            logging.error(f"Error creating problem report ticket: {e}")
+            await update.message.reply_text(
+                "❌ Erreur lors de la création du ticket." if lang == 'fr'
+                else "❌ Error creating ticket."
+            )
+
+        # Reset state
+        bot.reset_user_state(user_id)
 
     async def admin_reply_ticket_prompt(self, query, ticket_id: str):
         """Admin reply to ticket prompt"""
