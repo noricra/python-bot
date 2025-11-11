@@ -4,11 +4,13 @@ import os
 import time
 from datetime import datetime
 from typing import Optional
+import psycopg2.extras
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.core.utils import logger, escape_markdown
 from app.core.i18n import t as i18n
+from app.core.db_pool import put_connection
 from app.integrations.telegram.keyboards import back_to_main_button
 from app.integrations.telegram.utils import safe_transition_to_text
 
@@ -25,7 +27,7 @@ class LibraryHandlers:
 
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Récupérer tous les achats pour carousel
             cursor.execute('''
@@ -48,7 +50,7 @@ class LibraryHandlers:
                 ORDER BY MAX(o.completed_at) DESC
             ''', (user_id,))
             purchases_raw = cursor.fetchall()
-            conn.close()
+            put_connection(conn)
 
             if not purchases_raw:
                 empty_text = (
@@ -195,7 +197,7 @@ class LibraryHandlers:
 
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Vérifier l'achat et récupérer le fichier
             cursor.execute('''
@@ -209,7 +211,7 @@ class LibraryHandlers:
             result = cursor.fetchone()
 
             if not result:
-                conn.close()
+                put_connection(conn)
                 await safe_transition_to_text(
                     query,
                     "❌ Product not purchased or not found." if lang == 'en' else "❌ Produit non acheté ou introuvable.",
@@ -232,7 +234,7 @@ class LibraryHandlers:
                 WHERE order_id = %s
             ''', (order_id,))
             conn.commit()
-            conn.close()
+            put_connection(conn)
 
             # Construire le chemin complet
             from app.core.settings import settings
@@ -338,7 +340,7 @@ class LibraryHandlers:
 
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Créer ou mettre à jour l'avis
             cursor.execute('''
@@ -348,7 +350,7 @@ class LibraryHandlers:
                 DO UPDATE SET rating = %s, updated_at = CURRENT_TIMESTAMP
             ''', (user_id, product_id, rating, rating))
             conn.commit()
-            conn.close()
+            put_connection(conn)
 
             # Demander un commentaire optionnel
             stars = "⭐" * rating
@@ -439,7 +441,7 @@ class LibraryHandlers:
 
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Créer ou mettre à jour la note
             cursor.execute('''
@@ -450,7 +452,7 @@ class LibraryHandlers:
             ''', (user_id, product_id, rating, rating))
 
             conn.commit()
-            conn.close()
+            put_connection(conn)
 
             # Demander maintenant le texte de l'avis
             bot.reset_conflicting_states(user_id, keep={'waiting_for_review'})
@@ -517,7 +519,7 @@ class LibraryHandlers:
 
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Mettre à jour l'avis
             cursor.execute('''
@@ -527,7 +529,7 @@ class LibraryHandlers:
             ''', (review_text, user_id, product_id))
 
             conn.commit()
-            conn.close()
+            put_connection(conn)
 
             # Réinitialiser l'état
             bot.reset_user_state_preserve_login(user_id)
@@ -560,7 +562,7 @@ class LibraryHandlers:
 
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Récupérer les infos du vendeur
             cursor.execute('''
@@ -573,7 +575,7 @@ class LibraryHandlers:
             ''', (user_id, product_id))
 
             result = cursor.fetchone()
-            conn.close()
+            put_connection(conn)
 
             if not result:
                 await safe_transition_to_text(

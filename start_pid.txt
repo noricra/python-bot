@@ -1,0 +1,1 @@
+ sleep 8 echo === Startup Log === tail -40 startup.log echo  echo === Running Processes === ps aux

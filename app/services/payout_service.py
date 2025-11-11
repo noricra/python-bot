@@ -18,8 +18,10 @@ class PayoutService:
     def __init__(self) -> None:
         self.repo = PayoutRepository()
 
-    def create_payout(self, seller_user_id: int, order_ids: List[str], total_amount_sol: float) -> Optional[int]:
-        return self.repo.insert_payout(seller_user_id, order_ids, total_amount_sol)
+    def create_payout(self, seller_user_id: int, order_ids: List[str], total_amount_usdt: float,
+                     seller_wallet_address: str, payment_currency: str = 'USDT') -> Optional[int]:
+        return self.repo.insert_payout(seller_user_id, order_ids, total_amount_usdt,
+                                      seller_wallet_address, payment_currency)
 
     def list_recent_for_seller(self, seller_user_id: int, limit: int = 10) -> List[Tuple]:
         return self.repo.list_recent_for_seller(seller_user_id, limit)

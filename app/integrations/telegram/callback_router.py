@@ -46,6 +46,7 @@ class CallbackRouter:
             'admin_mark_all_payouts_paid': lambda query, lang: self.bot.admin_handlers.admin_mark_all_payouts_paid(query, lang),
             'admin_export_users': lambda query, lang: self.bot.admin_handlers.admin_export_users(query, lang),
             'admin_export_payouts': lambda query, lang: self.bot.admin_handlers.admin_export_payouts(query, lang),
+            'admin_export_payouts_csv': lambda query, lang: self.bot.admin_handlers.admin_export_payouts_csv(query, lang),
             'admin_export_products': lambda query, lang: self.bot.admin_handlers.export_products(query, lang),
             'admin_export_products_csv': lambda query, lang: self.bot.admin_handlers.admin_export_products_csv(query, lang),
         }
@@ -62,6 +63,9 @@ class CallbackRouter:
             'delete_seller_confirm': lambda query, lang: self.bot.sell_handlers.delete_seller_confirm(self.bot, query),
             'seller_analytics': lambda query, lang: self.bot.sell_handlers.seller_analytics(self.bot, query, lang),
             'seller_analytics_visual': lambda query, lang: self.bot.sell_handlers.seller_analytics_visual(self.bot, query, lang),
+            'seller_analytics_enhanced': lambda query, lang: self.bot.sell_handlers.seller_analytics_enhanced(self.bot, query, lang),
+            'analytics_detailed_charts': lambda query, lang: self.bot.sell_handlers.analytics_detailed_charts(self.bot, query, lang),
+            'analytics_export_csv': lambda query, lang: self.bot.sell_handlers.analytics_export_csv(self.bot, query, lang),
             'seller_settings': lambda query, lang: self.bot.sell_handlers.seller_settings(self.bot, query, lang),
             'seller_messages': lambda query, lang: self.bot.sell_handlers.seller_messages(self.bot, query, lang),
             'seller_info': self._handle_seller_info,
@@ -189,6 +193,50 @@ class CallbackRouter:
         if callback_data == 'noop':
             await query.answer()
             return True
+
+        # Admin: User detail
+        if callback_data.startswith('admin_user_detail_'):
+            try:
+                user_id = int(callback_data.replace('admin_user_detail_', ''))
+                await self.bot.admin_handlers.admin_user_detail(query, lang, user_id)
+                return True
+            except (ValueError, Exception) as e:
+                logger.error(f"Error in admin_user_detail: {e}")
+                await query.answer("❌ Erreur", show_alert=True)
+                return True
+
+        # Admin: Suspend user prompt
+        if callback_data.startswith('admin_suspend_user_prompt_'):
+            try:
+                user_id = int(callback_data.replace('admin_suspend_user_prompt_', ''))
+                await self.bot.admin_handlers.admin_suspend_user_prompt(query, lang, user_id)
+                return True
+            except (ValueError, Exception) as e:
+                logger.error(f"Error in admin_suspend_user_prompt: {e}")
+                await query.answer("❌ Erreur", show_alert=True)
+                return True
+
+        # Admin: Restore user confirm
+        if callback_data.startswith('admin_restore_user_confirm_'):
+            try:
+                user_id = int(callback_data.replace('admin_restore_user_confirm_', ''))
+                await self.bot.admin_handlers.admin_restore_user_confirm(query, lang, user_id)
+                return True
+            except (ValueError, Exception) as e:
+                logger.error(f"Error in admin_restore_user_confirm: {e}")
+                await query.answer("❌ Erreur", show_alert=True)
+                return True
+
+        # Admin: Mark individual payout as paid
+        if callback_data.startswith('admin_mark_payout_paid:'):
+            try:
+                payout_id = int(callback_data.split(':')[1])
+                await self.bot.admin_handlers.admin_mark_payout_paid(query, lang, payout_id)
+                return True
+            except (ValueError, IndexError) as e:
+                logger.error(f"Error parsing payout_id from callback: {callback_data}, error: {e}")
+                await query.answer("❌ Erreur de format", show_alert=True)
+                return True
 
         # 🎠 Phase 2: Carousel navigation (carousel_{category}_{index})
         if callback_data.startswith('carousel_'):
@@ -357,7 +405,7 @@ class CallbackRouter:
 
                 # Get all purchases for this user
                 conn = self.bot.get_db_connection()
-                cursor = conn.cursor()
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 cursor.execute('''
                    SELECT
                         p.product_id,
@@ -378,7 +426,7 @@ class CallbackRouter:
                     ORDER BY MAX(o.completed_at) DESC
                 ''', (user_id,))
                 purchases_raw = cursor.fetchall()
-                conn.close()
+                put_connection(conn)
 
                 # Convert to dict
                 purchases = []

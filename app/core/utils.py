@@ -31,6 +31,7 @@ def escape_markdown(text: str) -> str:
 def generate_product_id() -> str:
     """Generate unique product ID using counter-based system"""
     from app.core.database_init import get_postgresql_connection
+    from app.core.db_pool import put_connection
     import psycopg2.extras
 
     conn = get_postgresql_connection()
@@ -70,14 +71,14 @@ def generate_product_id() -> str:
         product_id = f"TBF-{timestamp_hex}-{counter:06d}"
 
         conn.commit()
-        conn.close()
+        put_connection(conn)
 
         logger.info(f"Generated product ID: {product_id}")
         return product_id
 
     except psycopg2.Error as e:
         conn.rollback()
-        conn.close()
+        put_connection(conn)
         logger.error(f"Error generating product ID: {e}")
         raise e
 
@@ -85,6 +86,7 @@ def generate_product_id() -> str:
 def generate_ticket_id() -> str:
     """Generate unique ticket ID using counter-based system"""
     from app.core.database_init import get_postgresql_connection
+    from app.core.db_pool import put_connection
     import psycopg2.extras
 
     conn = get_postgresql_connection()
@@ -124,14 +126,14 @@ def generate_ticket_id() -> str:
         ticket_id = f"TKT-{timestamp_hex}-{counter:06d}"
 
         conn.commit()
-        conn.close()
+        put_connection(conn)
 
         logger.info(f"Generated ticket ID: {ticket_id}")
         return ticket_id
 
     except psycopg2.Error as e:
         conn.rollback()
-        conn.close()
+        put_connection(conn)
         logger.error(f"Error generating ticket ID: {e}")
         raise e
 

@@ -129,6 +129,7 @@ def build_application(bot_instance) -> Application:
             username = seller_identifier[1:]  # Remove @
             # Search by username (case-insensitive)
             from app.core.database_init import get_postgresql_connection
+            from app.core.db_pool import put_connection
             import psycopg2.extras
             conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -136,7 +137,7 @@ def build_application(bot_instance) -> Application:
             seller = cursor.fetchone()
             if seller:
                 seller = dict(seller)
-            conn.close()
+            put_connection(conn)
         else:
             try:
                 seller_id = int(seller_identifier)
@@ -209,14 +210,14 @@ def build_application(bot_instance) -> Application:
     async def post_init(app):
         try:
             commands = [
-                ("start", "🏠 Menu principal"),
-                ("achat", "🛒 Acheter des produits"),
-                ("vendre", "💼 Vendre mes produits"),
-                ("library", "📚 Ma bibliothèque"),
-                ("stats", "📊 Mes statistiques vendeur"),
-                ("shop", "🛍️ Voir boutique vendeur"),
-                ("help", "❓ Aide"),
-                ("support", "💬 Support"),
+                ("start", " Menu principal"),
+                ("achat", " Acheter des produits"),
+                ("vendre", " Vendre mes produits"),
+                ("library", " Ma bibliothèque"),
+                ("stats", " Mes statistiques vendeur"),
+                ("shop", " Voir boutique vendeur"),
+                ("help", " Aide"),
+                ("support", " Support"),
             ]
             await app.bot.set_my_commands([BotCommand(name, desc) for name, desc in commands])
         except Exception:

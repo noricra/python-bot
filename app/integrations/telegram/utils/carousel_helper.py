@@ -76,7 +76,7 @@ class CarouselHelper:
     @staticmethod
     def _get_image_path(product: Dict) -> Optional[str]:
         """
-        Récupère le chemin de l'image du produit avec fallback sur placeholder
+        Récupère le chemin de l'image du produit avec fallback B2 puis placeholder
 
         Args:
             product: Dictionnaire produit
@@ -85,18 +85,37 @@ class CarouselHelper:
             Chemin vers l'image ou None
         """
         thumbnail_url = product.get('thumbnail_url')
+        product_id = product.get('product_id')
+        seller_id = product.get('seller_user_id')
 
-        # Check if thumbnail exists
+        # Check if thumbnail exists locally
         if thumbnail_url and os.path.exists(thumbnail_url):
             return thumbnail_url
 
-        # Fallback: try to get placeholder
+        # Try to download from B2 if missing
+        if product_id and seller_id:
+            try:
+                from app.services.image_sync_service import ImageSyncService
+                logger.info(f"🔄 Image missing, downloading from B2: {product_id}")
+                image_sync = ImageSyncService()
+                b2_path = image_sync.get_image_path_with_fallback(
+                    product_id=product_id,
+                    seller_id=seller_id,
+                    image_type='thumb'
+                )
+                if b2_path and os.path.exists(b2_path):
+                    logger.info(f"✅ Downloaded from B2: {product_id}")
+                    return b2_path
+            except Exception as e:
+                logger.warning(f"⚠️ Could not download from B2: {e}")
+
+        # Fallback: generate placeholder
         try:
             from app.core.image_utils import ImageUtils
             placeholder_path = ImageUtils.create_or_get_placeholder(
                 product_title=product.get('title', 'Produit'),
                 category=product.get('category', 'General'),
-                product_id=product.get('product_id', 'unknown')
+                product_id=product_id or 'unknown'
             )
             if placeholder_path and os.path.exists(placeholder_path):
                 return placeholder_path

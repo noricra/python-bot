@@ -1,11 +1,13 @@
 """Support Handlers - Support and ticket management functions with dependency injection"""
 
 from typing import Optional
+import psycopg2.extras
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from app.services.messaging_service import MessagingService
 from app.core import settings as core_settings
+from app.core.db_pool import put_connection
 from app.integrations.telegram.keyboards import back_to_main_button
 
 
@@ -32,7 +34,7 @@ class SupportHandlers:
         buyer_id = query.from_user.id
         try:
             conn = bot.get_db_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute(
                 '''
                 SELECT o.order_id, p.seller_user_id, p.title
@@ -43,11 +45,11 @@ class SupportHandlers:
                 ''', (buyer_id, product_id)
             )
             row = cursor.fetchone()
-            conn.close()
+            put_connection(conn)
             if not row:
                 await query.edit_message_text("❌ Vous devez avoir acheté ce produit pour contacter le vendeur.")
                 return
-            order_id, seller_user_id, title = row
+            order_id, seller_user_id, title = row['order_id'], row['seller_user_id'], row['title']
         except Exception:
             await query.edit_message_text("❌ Erreur lors de l'initiation du contact.")
             return

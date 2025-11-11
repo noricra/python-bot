@@ -7,6 +7,7 @@ import psycopg2
 import psycopg2.extras
 from typing import Dict, Any, Optional, List
 from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import put_connection
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class ProductService:
             ''', (product_id,))
 
             product = cursor.fetchone()
-            conn.close()
+            put_connection(conn)
             return product
 
         except (psycopg2.Error, Exception) as e:
@@ -53,7 +54,7 @@ class ProductService:
             )
             success = cursor.rowcount > 0
             conn.commit()
-            conn.close()
+            put_connection(conn)
             return success
         except (psycopg2.Error, Exception) as e:
             logger.error(f"❌ Error incrementing views: {e}")
@@ -75,7 +76,7 @@ class ProductService:
             ''', (category, limit))
 
             products = cursor.fetchall()
-            conn.close()
+            put_connection(conn)
             return products
 
         except (psycopg2.Error, Exception) as e:
@@ -134,7 +135,7 @@ class ProductService:
             ''', (user_id, limit))
 
             purchases = cursor.fetchall()
-            conn.close()
+            put_connection(conn)
             return purchases
 
         except (psycopg2.Error, Exception) as e:
@@ -153,7 +154,7 @@ class ProductService:
             ''', (user_id, product_id))
 
             count = cursor.fetchone()['count']
-            conn.close()
+            put_connection(conn)
             return count > 0
 
         except (psycopg2.Error, Exception) as e:
@@ -173,7 +174,7 @@ class ProductService:
             ''', (user_id, product_id))
 
             result = cursor.fetchone()
-            conn.close()
+            put_connection(conn)
 
             if result:
                 return {

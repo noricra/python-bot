@@ -5,6 +5,7 @@ import psycopg2.extras
 from typing import List, Dict, Optional
 from app.core.utils import logger
 from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import put_connection
 
 
 class ReviewRepository:
@@ -55,7 +56,7 @@ class ReviewRepository:
 
             cursor.execute(query, (product_id, limit, offset))
             rows = cursor.fetchall()
-            conn.close()
+            put_connection(conn)
 
             reviews = []
             for row in rows:
@@ -87,7 +88,7 @@ class ReviewRepository:
 
             cursor.execute('SELECT COUNT(*) as count FROM reviews WHERE product_id = %s', (product_id,))
             count = cursor.fetchone()['count']
-            conn.close()
+            put_connection(conn)
 
             return count
 
@@ -129,7 +130,7 @@ class ReviewRepository:
                 count = cursor.fetchone()['count']
                 distribution[stars] = count
 
-            conn.close()
+            put_connection(conn)
 
             return {
                 'average_rating': round(avg_rating, 1),
@@ -172,7 +173,7 @@ class ReviewRepository:
             ''', (product_id, buyer_user_id, order_id, rating, comment, review_text))
 
             conn.commit()
-            conn.close()
+            put_connection(conn)
 
             logger.info(f"✅ Review added: product={product_id}, buyer={buyer_user_id}, rating={rating}")
             return True
@@ -197,7 +198,7 @@ class ReviewRepository:
             ''', (product_id, buyer_user_id))
 
             count = cursor.fetchone()['count']
-            conn.close()
+            put_connection(conn)
 
             return count > 0
 

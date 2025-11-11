@@ -57,12 +57,18 @@ class PaymentService:
             return None
 
         try:
-            # Calculate commission (2.78%)
-            commission_percent = core_settings.PLATFORM_COMMISSION_PERCENT
-            commission_amount = amount_usd * (commission_percent / 100)
-            seller_revenue = amount_usd - commission_amount
+            # Calculate commission (2.78% appliqué au prix de base)
+            # L'acheteur paie: prix × 1.0278
+            # Le vendeur reçoit: prix (100% du prix affiché)
+            # La plateforme prend: prix × 0.0278
+            # Sur le montant total payé, vendeur = 97.2951%, plateforme = 2.7049%
 
-            logger.info(f"Payment split: total={amount_usd} USD, commission={commission_amount:.2f} USD ({commission_percent}%), seller={seller_revenue:.2f} USD")
+            commission_percent = core_settings.PLATFORM_COMMISSION_PERCENT
+            # Vendeur reçoit = montant_total / 1.0278
+            seller_revenue = amount_usd / (1 + commission_percent / 100)
+            commission_amount = amount_usd - seller_revenue
+
+            logger.info(f"Payment split: total={amount_usd} USD, commission={commission_amount:.2f} USD (2.7049% du total), seller={seller_revenue:.2f} USD (97.2951% du total)")
 
             # Step 1: Get exact crypto amount using client
             exact_crypto_amount = self._get_exact_crypto_amount(amount_usd, pay_currency)

@@ -3,6 +3,7 @@ import psycopg2.extras
 from typing import Optional, Dict, List
 
 from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import put_connection
 
 
 class OrderRepository:
@@ -43,7 +44,7 @@ class OrderRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def get_order_by_id(self, order_id: str) -> Optional[Dict]:
         conn = get_postgresql_connection()
@@ -56,7 +57,7 @@ class OrderRepository:
         except psycopg2.Error:
             return None
         finally:
-            conn.close()
+            put_connection(conn)
 
     def update_payment_status(self, order_id: str, status: str) -> bool:
         conn = get_postgresql_connection()
@@ -99,7 +100,7 @@ class OrderRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def get_orders_by_buyer(self, buyer_user_id: int) -> List[Dict]:
         conn = get_postgresql_connection()
@@ -115,7 +116,7 @@ class OrderRepository:
         except psycopg2.Error:
             return []
         finally:
-            conn.close()
+            put_connection(conn)
 
     def get_orders_by_seller(self, seller_user_id: int) -> List[Dict]:
         conn = get_postgresql_connection()
@@ -131,7 +132,7 @@ class OrderRepository:
         except psycopg2.Error:
             return []
         finally:
-            conn.close()
+            put_connection(conn)
 
     def check_user_purchased_product(self, buyer_user_id: int, product_id: str) -> bool:
         conn = get_postgresql_connection()
@@ -146,7 +147,7 @@ class OrderRepository:
         except psycopg2.Error:
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def increment_download_count(self, product_id: str, buyer_user_id: int) -> bool:
         conn = get_postgresql_connection()
@@ -162,7 +163,7 @@ class OrderRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def create_order(self, order: Dict) -> bool:
         """Alias for insert_order to maintain compatibility"""
@@ -177,7 +178,7 @@ class OrderRepository:
           except psycopg2.Error:
               return 0
           finally:
-              conn.close()
+              put_connection(conn)
 
     def get_total_revenue(self) -> float:
           conn = get_postgresql_connection()
@@ -189,6 +190,6 @@ class OrderRepository:
           except psycopg2.Error:
               return 0.0
           finally:
-              conn.close()
+              put_connection(conn)
 
 

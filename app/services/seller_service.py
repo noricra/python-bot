@@ -6,6 +6,7 @@ import psycopg2.extras
 import logging
 from typing import Dict, Any, Optional
 from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import put_connection
 from app.core.validation import validate_solana_address
 
 logger = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ class SellerService:
             suspended_user = cursor.fetchone()
 
             if suspended_user:
-                conn.close()
+                put_connection(conn)
                 logger.warning(f"Blocked account creation for suspended user email: {email}")
                 return {'success': False, 'error': 'Cet email appartient à un compte suspendu. Contactez le support.'}
 
@@ -69,7 +70,7 @@ class SellerService:
             cursor.execute('SELECT user_id FROM users WHERE email = %s AND user_id != %s', (email, user_id))
             existing_email = cursor.fetchone()
             if existing_email:
-                conn.close()
+                put_connection(conn)
                 return {'success': False, 'error': 'Cet email est déjà utilisé par un autre vendeur'}
 
             try:
@@ -91,16 +92,16 @@ class SellerService:
 
                 if cursor.rowcount > 0:
                     conn.commit()
-                    conn.close()
+                    put_connection(conn)
                     logger.info(f"✅ Simplified seller account created for user {user_id} ({seller_name})")
                     return {'success': True}
                 else:
-                    conn.close()
+                    put_connection(conn)
                     return {'success': False, 'error': 'Échec mise à jour'}
 
             except psycopg2.Error as e:
                 logger.error(f"❌ Database error creating simplified seller: {e}")
-                conn.close()
+                put_connection(conn)
                 return {'success': False, 'error': 'Erreur interne'}
 
         except (psycopg2.Error, Exception) as e:
@@ -140,11 +141,11 @@ class SellerService:
             suspended_user = cursor.fetchone()
 
             if suspended_user:
-                conn.close()
+                put_connection(conn)
                 logger.warning(f"Blocked account creation for suspended user email: {email}")
                 return {'success': False, 'error': 'Cet email appartient à un compte suspendu. Contactez le support.'}
 
-            conn.close()
+            put_connection(conn)
 
             # Generate salt and hash password
             salt = generate_salt()
@@ -165,16 +166,16 @@ class SellerService:
 
                 if success:
                     conn.commit()
-                    conn.close()
+                    put_connection(conn)
                     logger.info(f"✅ Seller account created for user {user_id}")
                     return {'success': True}
                 else:
-                    conn.close()
+                    put_connection(conn)
                     return {'success': False, 'error': 'Échec mise à jour'}
 
             except psycopg2.Error as e:
                 logger.error(f"❌ Database error creating seller: {e}")
-                conn.close()
+                put_connection(conn)
                 return {'success': False, 'error': 'Erreur interne'}
 
         except (psycopg2.Error, Exception) as e:
@@ -234,7 +235,7 @@ class SellerService:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('SELECT is_seller FROM users WHERE user_id = %s', (user_id,))
             row = cursor.fetchone()
-            conn.close()
+            put_connection(conn)
             return bool(row and row['is_seller'])
         except psycopg2.Error as e:
             logger.error(f"❌ Error authenticating seller: {e}")
@@ -247,7 +248,7 @@ class SellerService:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('SELECT password_salt, password_hash, is_seller FROM users WHERE user_id = %s', (user_id,))
             row = cursor.fetchone()
-            conn.close()
+            put_connection(conn)
 
             if not row or not row['is_seller']:  # not a seller
                 return False
@@ -279,7 +280,7 @@ class SellerService:
             ''', (user_id,))
 
             row = cursor.fetchone()
-            conn.close()
+            put_connection(conn)
 
             return row if row else None
         except psycopg2.Error as e:

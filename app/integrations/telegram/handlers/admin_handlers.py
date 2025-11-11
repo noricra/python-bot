@@ -3,6 +3,7 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.core.i18n import t as i18n
 from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import put_connection
 from app.core.settings import settings
 import logging
 import psycopg2
@@ -85,7 +86,13 @@ class AdminHandlers:
 
                     username = user.get('username', 'N/A')
                     first_name = user.get('first_name', 'N/A')
-                    registration_date = user.get('registration_date', 'N/A')[:10] if user.get('registration_date') else 'N/A'
+
+                    # Fix datetime subscriptable error
+                    reg_date = user.get('registration_date')
+                    if reg_date:
+                        registration_date = str(reg_date)[:10] if isinstance(reg_date, str) else reg_date.strftime('%Y-%m-%d')
+                    else:
+                        registration_date = 'N/A'
 
                     # Additional stats
                     total_sales = user.get('total_sales', 0)
@@ -106,13 +113,33 @@ class AdminHandlers:
                 if len(users) > 30:
                     text += f"... et {len(users) - 30} autres utilisateurs\n" if lang == 'fr' else f"... and {len(users) - 30} more users\n"
 
-            text += "\n💡 Utilisez le bouton 🔍 pour rechercher un utilisateur spécifique par ID" if lang == 'fr' else "\n💡 Use the 🔍 button to search for a specific user by ID"
+            # Add action buttons
+            text += "\n💡 Cliquez sur un utilisateur pour voir les actions" if lang == 'fr' else "\n💡 Click on a user to see actions"
 
-            keyboard = [
-                [InlineKeyboardButton("🔍 Rechercher par ID" if lang == 'fr' else "🔍 Search by ID", callback_data='admin_search_user')],
-                [InlineKeyboardButton(" Export CSV", callback_data='admin_export_users')],
-                [InlineKeyboardButton("🔙 Menu Users" if lang == 'fr' else "🔙 Users Menu", callback_data='admin_users_menu')]
-            ]
+            # Create user buttons (show first 8 users as buttons)
+            keyboard = []
+            for i, user in enumerate(users[:8], 1):
+                user_id = user['user_id']
+                username = user.get('username', user.get('first_name', f'User_{user_id}'))
+                is_suspended = user.get('is_suspended', False)
+                emoji = "🚫" if is_suspended else ("🟢" if user.get('is_seller') else "🔵")
+
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"{emoji} {username[:20]}",
+                        callback_data=f'admin_user_detail_{user_id}'
+                    )
+                ])
+
+            # Navigation buttons
+            keyboard.append([
+                InlineKeyboardButton("🔍 Rechercher ID" if lang == 'fr' else "🔍 Search ID", callback_data='admin_search_user'),
+                InlineKeyboardButton("📊 Export CSV", callback_data='admin_export_users')
+            ])
+            keyboard.append([
+                InlineKeyboardButton("🔙 Menu Users" if lang == 'fr' else "🔙 Users Menu", callback_data='admin_users_menu')
+            ])
+
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
         except (psycopg2.Error, Exception) as e:
@@ -121,6 +148,173 @@ class AdminHandlers:
                 f"❌ Erreur lors du chargement des utilisateurs: {str(e)}" if lang == 'fr' else f"❌ Error loading users: {str(e)}",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]])
             )
+
+    async def admin_user_detail(self, query, lang, user_id: int):
+        """Détails et actions pour un utilisateur spécifique"""
+        try:
+            user = self.user_repo.get_user(user_id)
+
+            if not user:
+                await query.edit_message_text(
+                    f"❌ Utilisateur {user_id} introuvable." if lang == 'fr' else f"❌ User {user_id} not found.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='admin_users')
+                    ]])
+                )
+                return
+
+            # Format dates
+            reg_date = user.get('registration_date')
+            registration_date = reg_date.strftime('%Y-%m-%d') if reg_date else 'N/A'
+
+            suspended_at = user.get('suspended_at')
+            suspended_date = suspended_at.strftime('%Y-%m-%d') if suspended_at else 'N/A'
+
+            # Build user info
+            is_seller = user.get('is_seller', False)
+            is_suspended = user.get('is_suspended', False)
+            status_icon = "🚫 SUSPENDU" if is_suspended else ("🟢 Vendeur" if is_seller else "🔵 Acheteur")
+
+            text = f"👤 **DÉTAILS UTILISATEUR**\n\n"
+            text += f"**Statut:** {status_icon}\n"
+            text += f"**ID:** `{user_id}`\n"
+            text += f"**Nom:** {user.get('first_name', 'N/A')}\n"
+            text += f"**Username:** @{user.get('username', 'N/A')}\n"
+            text += f"**Email:** {user.get('email', 'Non défini')}\n"
+            text += f"**Inscrit le:** {registration_date}\n"
+
+            if is_seller:
+                text += f"\n**📊 STATS VENDEUR:**\n"
+                text += f"• Nom vendeur: {user.get('seller_name', 'N/A')}\n"
+                text += f"• Ventes totales: {user.get('total_sales', 0)}\n"
+                text += f"• Revenus: ${user.get('total_revenue', 0):.2f}\n"
+                text += f"• Note: {user.get('seller_rating', 0):.1f}/5\n"
+                text += f"• Stockage: {user.get('storage_used_mb', 0):.1f}MB / {user.get('storage_limit_mb', 100)}MB\n"
+
+            if is_suspended:
+                text += f"\n**⚠️ SUSPENSION:**\n"
+                text += f"• Raison: {user.get('suspension_reason', 'Non spécifiée')}\n"
+                text += f"• Date: {suspended_date}\n"
+                until = user.get('suspended_until')
+                if until:
+                    until_str = until.strftime('%Y-%m-%d') if hasattr(until, 'strftime') else str(until)
+                    text += f"• Jusqu'au: {until_str}\n"
+
+            # Action buttons
+            keyboard = []
+
+            if is_suspended:
+                keyboard.append([
+                    InlineKeyboardButton("✅ Rétablir utilisateur", callback_data=f'admin_restore_user_confirm_{user_id}')
+                ])
+            else:
+                keyboard.append([
+                    InlineKeyboardButton("🚫 Suspendre utilisateur", callback_data=f'admin_suspend_user_prompt_{user_id}')
+                ])
+
+            keyboard.append([
+                InlineKeyboardButton("📧 Voir email complet", callback_data=f'admin_show_email_{user_id}'),
+                InlineKeyboardButton("📊 Voir produits", callback_data=f'admin_user_products_{user_id}')
+            ])
+
+            keyboard.append([
+                InlineKeyboardButton("🔙 Liste utilisateurs" if lang == 'fr' else "🔙 Users List", callback_data='admin_users')
+            ])
+
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+        except (psycopg2.Error, Exception) as e:
+            logger.error(f"Error in admin_user_detail: {e}")
+            await query.edit_message_text(
+                f"❌ Erreur: {str(e)}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Retour", callback_data='admin_users')
+                ]])
+            )
+
+    async def admin_suspend_user_prompt(self, query, lang, user_id: int):
+        """Demander confirmation avant suspension"""
+        user = self.user_repo.get_user(user_id)
+
+        if not user:
+            await query.answer("❌ Utilisateur introuvable", show_alert=True)
+            return
+
+        username = user.get('username') or user.get('first_name') or f"ID {user_id}"
+
+        text = f"⚠️ **SUSPENDRE UTILISATEUR**\n\n"
+        text += f"Utilisateur: {username}\n"
+        text += f"ID: `{user_id}`\n\n"
+        text += f"Entrez la raison de suspension puis la durée (en jours).\n\n"
+        text += f"💡 Pour annuler, utilisez le bouton ci-dessous."
+
+        keyboard = [
+            [InlineKeyboardButton("❌ Annuler", callback_data=f'admin_user_detail_{user_id}')]
+        ]
+
+        # Set state for text input
+        from bot_mlt import MarketplaceBot
+        if hasattr(query, 'from_user'):
+            admin_id = query.from_user.id
+            # Use bot's state manager
+            self.bot = MarketplaceBot() if not hasattr(self, 'bot') else self.bot
+            # Note: This is a simplified approach - ideally should be handled via state
+            await query.edit_message_text(
+                f"🚫 **SUSPENSION EN DÉVELOPPEMENT**\n\n"
+                f"Cette fonctionnalité nécessite l'input admin.\n"
+                f"Pour l'instant, utilisez:\n\n"
+                f"`/admin_suspend {user_id} <raison> <jours>`\n\n"
+                f"Exemple: `/admin_suspend {user_id} spam 7`",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+
+    async def admin_restore_user_confirm(self, query, lang, user_id: int):
+        """Rétablir un utilisateur suspendu"""
+        try:
+            user = self.user_repo.get_user(user_id)
+
+            if not user:
+                await query.answer("❌ Utilisateur introuvable", show_alert=True)
+                return
+
+            if not user.get('is_suspended'):
+                await query.answer("ℹ️ Utilisateur non suspendu", show_alert=True)
+                return
+
+            # Restore user
+            success = self.user_repo.restore_user(user_id)
+
+            if success:
+                username = user.get('username') or user.get('first_name') or f"ID {user_id}"
+
+                await query.edit_message_text(
+                    f"✅ **UTILISATEUR RÉTABLI**\n\n"
+                    f"Utilisateur: {username}\n"
+                    f"ID: `{user_id}`\n\n"
+                    f"Le compte a été réactivé.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("👤 Détails user", callback_data=f'admin_user_detail_{user_id}'),
+                        InlineKeyboardButton("🔙 Liste", callback_data='admin_users')
+                    ]]),
+                    parse_mode='Markdown'
+                )
+
+                # Notify user (optional)
+                try:
+                    await self.bot.bot.send_message(
+                        chat_id=user_id,
+                        text="✅ Votre compte a été rétabli. Vous pouvez à nouveau utiliser la plateforme."
+                    )
+                except Exception:
+                    pass  # User might have blocked bot
+
+            else:
+                await query.answer("❌ Erreur lors du rétablissement", show_alert=True)
+
+        except (psycopg2.Error, Exception) as e:
+            logger.error(f"Error in admin_restore_user_confirm: {e}")
+            await query.answer("❌ Erreur système", show_alert=True)
 
     async def admin_products(self, query, lang):
         """Gestion produits"""
@@ -138,18 +332,53 @@ class AdminHandlers:
             await query.edit_message_text(f"❌ Erreur: {str(e)}")
 
     async def admin_payouts(self, query, lang):
-        """Gestion payouts"""
+        """Gestion payouts avec détails complets"""
         try:
-            payouts = self.payout_service.get_pending_payouts(limit=20)
-            text = i18n(lang, 'admin_payouts_title') + "\n\n"
+            from app.services.seller_payout_service import SellerPayoutService
+            seller_payout_service = SellerPayoutService()
+            payouts = seller_payout_service.get_all_pending_payouts_admin()
 
-            for payout in payouts:
-                text += f"User {payout['user_id']}: {payout['amount']}$\n"
+            if not payouts:
+                text = "💸 **PAYOUTS EN ATTENTE**\n\n✅ Aucun payout en attente"
+                keyboard = [[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]]
+            else:
+                text = f"💸 **PAYOUTS EN ATTENTE** ({len(payouts)})\n\n"
 
-            keyboard = [
-                [InlineKeyboardButton("✅ Mark All Paid", callback_data='admin_mark_all_payouts_paid')],
-                [InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]
-            ]
+                # Build keyboard with individual payout buttons
+                keyboard = []
+
+                for i, payout in enumerate(payouts[:5], 1):  # Limit to 5 for display + buttons
+                    user_id = payout.get('user_id')
+                    seller_name = payout.get('seller_name', 'Unknown')
+                    amount = payout.get('amount', 0)
+                    wallet = payout.get('seller_wallet_address', 'N/A')
+                    currency = payout.get('payment_currency', 'USDT')
+                    payout_id = payout.get('id')
+
+                    # Truncate wallet for display
+                    wallet_short = f"{wallet[:6]}...{wallet[-4:]}" if wallet and len(wallet) > 10 else wallet
+
+                    text += f"**{i}. {seller_name}** (ID: {user_id})\n"
+                    text += f"   💵 ${amount:.2f} {currency}\n"
+                    text += f"   📤 {wallet_short}\n"
+                    text += f"   🆔 Payout #{payout_id}\n\n"
+
+                    # Add button for this specific payout
+                    keyboard.append([InlineKeyboardButton(
+                        f"✅ Payer #{payout_id} - ${amount:.2f}",
+                        callback_data=f'admin_mark_payout_paid:{payout_id}'
+                    )])
+
+                if len(payouts) > 5:
+                    text += f"_...et {len(payouts) - 5} autres (voir export)_\n\n"
+
+                total_pending = sum(p.get('amount', 0) for p in payouts)
+                text += f"\n💰 **Total:** ${total_pending:.2f} USDT"
+
+                # Add "Mark All" and back buttons
+                keyboard.append([InlineKeyboardButton("✅ Tout Payer", callback_data='admin_mark_all_payouts_paid')])
+                keyboard.append([InlineKeyboardButton("📊 Export CSV", callback_data='admin_export_payouts_csv')])
+                keyboard.append([InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')])
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         except (psycopg2.Error, Exception) as e:
             await query.edit_message_text(f"❌ Erreur: {str(e)}")
@@ -298,7 +527,7 @@ class AdminHandlers:
             cursor.execute('UPDATE products SET status = "suspended" WHERE seller_user_id = %s', (user_id,))
 
             conn.commit()
-            conn.close()
+            put_connection(conn)
 
             # Send suspension notification email if email exists
             user_email = user_data.get('email')
@@ -343,7 +572,7 @@ class AdminHandlers:
                 LIMIT 20
             ''')
             suspended_users = cursor.fetchall()
-            conn.close()
+            put_connection(conn)
 
             text = "✅ **Rétablir Utilisateur**\n\n" if lang == 'fr' else "✅ **Restore User**\n\n"
 
@@ -410,7 +639,7 @@ class AdminHandlers:
             is_marked_suspended = seller_name.startswith('[SUSPENDED]')
 
             if not is_marked_suspended and suspended_products_count == 0:
-                conn.close()
+                put_connection(conn)
                 await update.message.reply_text(f"❌ L'utilisateur {user_id} n'est pas suspendu")
                 return
 
@@ -431,7 +660,7 @@ class AdminHandlers:
             cursor.execute('UPDATE products SET status = "active" WHERE seller_user_id = %s AND status = "suspended"', (user_id,))
 
             conn.commit()
-            conn.close()
+            put_connection(conn)
 
             username = user_data.get('username', 'N/A')
             first_name = user_data.get('first_name', 'N/A')
@@ -444,16 +673,33 @@ class AdminHandlers:
         except (psycopg2.Error, Exception) as e:
             await update.message.reply_text(f"❌ Erreur: {str(e)}")
 
+    async def admin_mark_payout_paid(self, query, lang, payout_id: int):
+        """Marquer un payout spécifique comme payé"""
+        try:
+            from app.services.seller_payout_service import SellerPayoutService
+            seller_payout_service = SellerPayoutService()
+
+            admin_user_id = query.from_user.id
+            success = seller_payout_service.mark_payout_as_completed(payout_id, admin_user_id)
+
+            if success:
+                await query.answer(f"✅ Payout #{payout_id} marqué comme payé", show_alert=True)
+                # Refresh the payout list
+                await self.admin_payouts(query, lang)
+            else:
+                await query.answer(f"❌ Erreur lors du marquage du payout #{payout_id}", show_alert=True)
+        except Exception as e:
+            await query.answer(f"❌ Erreur: {str(e)}", show_alert=True)
+
     async def admin_mark_all_payouts_paid(self, query, lang):
         """Marquer tous payouts comme payés"""
         try:
             count = self.payout_service.mark_all_payouts_paid()
-            await query.edit_message_text(
-                f"✅ {count} payouts marqués comme payés",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]])
-            )
+            await query.answer(f"✅ {count} payouts marqués comme payés", show_alert=True)
+            # Refresh the payout list
+            await self.admin_payouts(query, lang)
         except (psycopg2.Error, Exception) as e:
-            await query.edit_message_text(f"❌ Erreur: {str(e)}")
+            await query.answer(f"❌ Erreur: {str(e)}", show_alert=True)
 
     async def admin_export_users(self, query, lang):
         """Export utilisateurs en CSV"""
@@ -521,8 +767,90 @@ class AdminHandlers:
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]])
             )
 
+    async def admin_export_payouts_csv(self, query, lang):
+        """Export payouts en CSV avec tous les détails"""
+        try:
+            from app.services.seller_payout_service import SellerPayoutService
+            from app.domain.repositories.user_repo import UserRepository
+            import io
+            import csv
+            from datetime import datetime
+
+            seller_payout_service = SellerPayoutService()
+            user_repo = UserRepository()
+
+            # Get all payouts (not just pending)
+            conn = self.bot.get_db_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            try:
+                cursor.execute('''
+                    SELECT id, seller_user_id, total_amount_usdt, seller_wallet_address,
+                           payment_currency, payout_status, order_ids, created_at, processed_at
+                    FROM seller_payouts
+                    ORDER BY created_at DESC
+                    LIMIT 100
+                ''')
+                payouts = cursor.fetchall()
+            finally:
+                from app.core.db_pool import put_connection
+                put_connection(conn)
+
+            if not payouts:
+                await query.edit_message_text(
+                    "📄 Aucun payout à exporter",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]])
+                )
+                return
+
+            # Create CSV in memory
+            csv_buffer = io.StringIO()
+            csv_writer = csv.writer(csv_buffer)
+
+            # Header
+            csv_writer.writerow(['Payout ID', 'Seller ID', 'Seller Name', 'Amount (USDT)', 'Wallet Address',
+                                'Currency', 'Status', 'Order IDs', 'Created At', 'Processed At'])
+
+            # Data
+            for payout in payouts:
+                seller = user_repo.get_user_by_id(payout['seller_user_id'])
+                seller_name = seller.get('seller_name', 'Unknown') if seller else 'Unknown'
+
+                created_at = payout['created_at'].strftime('%Y-%m-%d %H:%M') if payout.get('created_at') else 'N/A'
+                processed_at = payout['processed_at'].strftime('%Y-%m-%d %H:%M') if payout.get('processed_at') else 'N/A'
+
+                csv_writer.writerow([
+                    payout['id'],
+                    payout['seller_user_id'],
+                    seller_name,
+                    f"${payout['total_amount_usdt']:.2f}",
+                    payout['seller_wallet_address'],
+                    payout['payment_currency'],
+                    payout['payout_status'],
+                    payout['order_ids'],
+                    created_at,
+                    processed_at
+                ])
+
+            # Send CSV as file
+            csv_content = csv_buffer.getvalue().encode('utf-8')
+            csv_file = io.BytesIO(csv_content)
+            csv_file.name = f"payouts_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+            await query.message.reply_document(
+                document=csv_file,
+                filename=csv_file.name,
+                caption=f"📊 Export de {len(payouts)} payouts"
+            )
+
+            await query.answer("✅ CSV généré", show_alert=False)
+
+        except Exception as e:
+            logger.error(f"Error exporting payouts CSV: {e}")
+            await query.answer(f"❌ Erreur: {str(e)}", show_alert=True)
+
     async def admin_export_payouts(self, query, lang):
-        """Export payouts"""
+        """Export payouts (legacy text format)"""
         try:
             payouts = self.payout_service.get_all_payouts()
             export_text = "📄 **EXPORT PAYOUTS**\n\n"

@@ -65,7 +65,8 @@ class Settings:
 
         # IPN server settings
         self.IPN_HOST: str = os.getenv("IPN_HOST", "0.0.0.0")
-        self.IPN_PORT: int = int(os.getenv("IPN_PORT", "8000"))
+        # Railway uses PORT, but allow IPN_PORT for local dev
+        self.IPN_PORT: int = int(os.getenv("PORT") or os.getenv("IPN_PORT", "8000"))
 
         # Backblaze B2 Object Storage
         self.B2_KEY_ID: Optional[str] = os.getenv("B2_KEY_ID")

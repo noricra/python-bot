@@ -3,6 +3,7 @@ import psycopg2.extras
 from typing import Optional, Dict, List
 
 from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import put_connection
 
 
 class SupportTicketRepository:
@@ -23,7 +24,7 @@ class SupportTicketRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def list_user_tickets(self, user_id: int, limit: int = 10) -> List[Dict]:
         conn = get_postgresql_connection()
@@ -42,5 +43,5 @@ class SupportTicketRepository:
             print(f"Error fetching tickets: {e}")
             return []
         finally:
-            conn.close()
+            put_connection(conn)
 

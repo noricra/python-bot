@@ -3,6 +3,7 @@ import psycopg2.extras
 from typing import Optional, List, Dict
 
 from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import put_connection
 from app.core import settings as core_settings
 
 
@@ -34,7 +35,7 @@ class MessagingRepository:
             conn.rollback()
             return None
         finally:
-            conn.close()
+            put_connection(conn)
 
     def set_ticket_status(self, ticket_id: str, status: str) -> bool:
         conn = get_postgresql_connection()
@@ -47,7 +48,7 @@ class MessagingRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     # Messages
     def insert_message(self, ticket_id: str, sender_user_id: int, sender_role: str, message: str) -> bool:
@@ -65,7 +66,7 @@ class MessagingRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def list_messages(self, ticket_id: str, limit: int = 10) -> List[Dict]:
         conn = get_postgresql_connection()
@@ -81,7 +82,7 @@ class MessagingRepository:
         except psycopg2.Error:
             return []
         finally:
-            conn.close()
+            put_connection(conn)
 
     def get_ticket_participants(self, ticket_id: str) -> Optional[Dict]:
         conn = get_postgresql_connection()
@@ -94,7 +95,7 @@ class MessagingRepository:
         except psycopg2.Error:
             return None
         finally:
-            conn.close()
+            put_connection(conn)
 
     def escalate_ticket(self, ticket_id: str, admin_user_id: int) -> bool:
         conn = get_postgresql_connection()
@@ -107,7 +108,7 @@ class MessagingRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def list_recent_tickets(self, limit: int = 10) -> List[Dict]:
         conn = get_postgresql_connection()
@@ -119,7 +120,7 @@ class MessagingRepository:
         except psycopg2.Error:
             return []
         finally:
-            conn.close()
+            put_connection(conn)
 
     def get_ticket(self, ticket_id: str) -> Optional[Dict]:
         conn = get_postgresql_connection()
@@ -132,4 +133,4 @@ class MessagingRepository:
         except psycopg2.Error:
             return None
         finally:
-            conn.close()
+            put_connection(conn)

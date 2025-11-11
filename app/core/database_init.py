@@ -7,32 +7,41 @@ import psycopg2.extras
 import logging
 import os
 from typing import Optional
+from app.core.db_pool import get_connection, put_connection, PooledConnection, init_connection_pool
 
 logger = logging.getLogger(__name__)
 
 
 def get_postgresql_connection():
     """
-    Get PostgreSQL connection using environment variables
+    Get PostgreSQL connection from connection pool.
+
+    IMPORTANT: You MUST call put_connection(conn) when done, or use PooledConnection context manager.
 
     Returns:
-        psycopg2.connection: PostgreSQL database connection
+        psycopg2.connection: PostgreSQL database connection from pool
+
+    Usage Option 1 (manual):
+        conn = get_postgresql_connection()
+        try:
+            cursor = conn.cursor()
+            # ... do work ...
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise
+        finally:
+            put_connection(conn)  # IMPORTANT: Always return to pool
+
+    Usage Option 2 (recommended - context manager):
+        with PooledConnection() as conn:
+            cursor = conn.cursor()
+            # ... do work ...
+            conn.commit()
+        # Connection automatically returned to pool
     """
     try:
-        pghost = os.getenv('PGHOST', 'localhost')
-
-        # Determine SSL mode: local dev = prefer, production = require
-        sslmode = 'prefer' if pghost in ['localhost', '127.0.0.1'] else 'require'
-
-        conn = psycopg2.connect(
-            host=pghost,
-            port=os.getenv('PGPORT', 5432),
-            database=os.getenv('PGDATABASE'),
-            user=os.getenv('PGUSER'),
-            password=os.getenv('PGPASSWORD', ''),
-            sslmode=sslmode
-        )
-        return conn
+        return get_connection()
     except Exception as e:
         logger.error(f"❌ PostgreSQL connection failed: {e}")
         raise
@@ -47,6 +56,7 @@ class DatabaseInitService:
 
     def init_all_tables(self):
         """Initialize all PostgreSQL database tables"""
+        conn = None
         try:
             logger.info("🗄️  Initializing PostgreSQL database...")
             conn = get_postgresql_connection()
@@ -69,12 +79,16 @@ class DatabaseInitService:
             logger.info("⚙️  Creating database triggers...")
             self._create_rating_triggers(cursor, conn)
 
-            conn.close()
             logger.info("✅ PostgreSQL database initialization completed successfully")
 
         except Exception as e:
             logger.error(f"❌ PostgreSQL database initialization failed: {e}")
+            if conn:
+                conn.rollback()
             raise
+        finally:
+            if conn:
+                put_connection(conn)  # Return connection to pool
 
     def _create_users_table(self, cursor, conn):
         """

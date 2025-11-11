@@ -127,11 +127,11 @@ class B2StorageService:
             # Ensure directory exists
             os.makedirs(os.path.dirname(destination_path), exist_ok=True)
 
-            # Download file
+            # Download file (using correct boto3 S3 API with named parameters)
             self.client.download_file(
-                self.bucket_name,
-                object_key,
-                destination_path
+                Bucket=self.bucket_name,
+                Key=object_key,
+                Filename=destination_path
             )
 
             logger.info(f"✅ File downloaded from B2: {object_key}")

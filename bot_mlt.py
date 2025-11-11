@@ -40,6 +40,8 @@ import re
 import base58 # Import manquant
 from app.core import settings as core_settings, configure_logging
 from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import init_connection_pool, put_connection
+from app.core.rate_limiter import init_rate_limiter
 from app.core.i18n import t as i18n
 from app.core.validation import validate_email, validate_solana_address
 from app.core.state_manager import StateManager
@@ -93,6 +95,20 @@ class MarketplaceBot:
 
     def __init__(self):
         logger.info("🚀 Initialisation MarketplaceBot optimisé...")
+
+        # Initialize PostgreSQL connection pool
+        logger.info("🔌 Initializing database connection pool...")
+        init_connection_pool(
+            min_connections=2,
+            max_connections=10  # Railway Hobby plan max: 20 connections
+        )
+
+        # Initialize rate limiter
+        logger.info("🛡️ Initializing rate limiter...")
+        init_rate_limiter(
+            max_requests=10,  # 10 requests per minute per user
+            window_seconds=60
+        )
 
         # PostgreSQL - No db_path needed anymore
         # Database initialization handled by DatabaseInitService
@@ -151,6 +167,9 @@ class MarketplaceBot:
         # Router centralisé pour callbacks
         self.callback_router = CallbackRouter(self)
 
+        # Telegram application (will be set by main.py after creation)
+        self.application = None
+
         logger.info("✅ MarketplaceBot optimisé initialisé avec succès")
 
     def get_db_connection(self):
@@ -193,181 +212,21 @@ class MarketplaceBot:
         self.seller_sessions.discard(user_id)
         logger.debug(f"Seller {user_id} logged out")
 
-    def update_user_mapping(self, from_user_id: int, to_user_id: int, account_name: str = None):
-        """
-        Update user mapping for multi-account support
-
-        Comportement:
-        - Si mapping existe déjà (telegram_id, seller_user_id) → met à jour last_login
-        - Sinon → crée nouveau mapping
-        - Désactive tous les autres comptes du même telegram_id
-        - Active le compte mappé
-        """
-        try:
-            conn = get_postgresql_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-            # 1. Désactiver tous les comptes de ce telegram_id
-            cursor.execute('''
-                UPDATE telegram_mappings
-                SET is_active = 0
-                WHERE telegram_id = %s
-            ''', (from_user_id,))
-
-            # 2. Insérer ou activer le compte
-            cursor.execute('''
-                INSERT INTO telegram_mappings (telegram_id, seller_user_id, is_active, account_name, last_login)
-                VALUES (%s, %s, 1, %s, CURRENT_TIMESTAMP)
-                ON CONFLICT(telegram_id, seller_user_id) DO UPDATE SET
-                    is_active = 1,
-                    account_name = COALESCE(excluded.account_name, account_name),
-                    last_login = CURRENT_TIMESTAMP
-            ''', (from_user_id, to_user_id, account_name))
-
-            conn.commit()
-            conn.close()
-
-            logger.info(f"✅ Activated account: Telegram {from_user_id} → Seller {to_user_id}")
-        except (psycopg2.Error, Exception) as e:
-            logger.error(f"❌ Error updating user mapping: {e}")
+    # REMOVED: update_user_mapping() - Multi-account support no longer needed
 
     def get_seller_id(self, telegram_id: int) -> int:
         """
-        Get the ACTIVE seller user_id for a telegram_id (multi-account support)
+        Get seller user_id from telegram_id (simplified - no multi-account)
 
-        Retourne:
-        - Le seller_user_id du compte actif (is_active=1) si existe
-        - Le premier compte si aucun actif (backward compatibility)
-        - telegram_id si aucun mapping (nouveau user)
+        Simply returns the telegram_id as seller_user_id since:
+        - Multi-account support has been removed
+        - user_id in users table = telegram_id
         """
-        try:
-            conn = get_postgresql_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        return telegram_id
 
-            # Try to get active account first
-            cursor.execute('''
-                SELECT seller_user_id FROM telegram_mappings
-                WHERE telegram_id = %s AND is_active = 1
-                ORDER BY last_login DESC
-                LIMIT 1
-            ''', (telegram_id,))
-            result = cursor.fetchone()
+    # REMOVED: get_user_accounts() - Multi-account support no longer needed
 
-            if result:
-                conn.close()
-                return result['seller_user_id']  # Return active account
-
-            # No active account, get the most recent one (backward compatibility)
-            cursor.execute('''
-                SELECT seller_user_id FROM telegram_mappings
-                WHERE telegram_id = %s
-                ORDER BY last_login DESC
-                LIMIT 1
-            ''', (telegram_id,))
-            result = cursor.fetchone()
-            conn.close()
-
-            if result:
-                return result['seller_user_id']  # Return most recent account
-            else:
-                return telegram_id  # No mapping, use telegram_id directly
-
-        except (psycopg2.Error, Exception) as e:
-            logger.error(f"❌ Error getting seller_id for telegram_id {telegram_id}: {e}")
-            return telegram_id  # Fallback to telegram_id
-
-    def get_user_accounts(self, telegram_id: int) -> list:
-        """
-        Liste tous les comptes vendeur associés à un telegram_id
-
-        Retourne: List[dict] avec:
-        - seller_user_id
-        - is_active (1 ou 0)
-        - account_name
-        - seller_name (depuis users table)
-        - created_at
-        - last_login
-        """
-        try:
-            conn = get_postgresql_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-            cursor.execute('''
-                SELECT
-                    tm.seller_user_id,
-                    tm.is_active,
-                    tm.account_name,
-                    u.seller_name,
-                    u.first_name,
-                    tm.created_at,
-                    tm.last_login
-                FROM telegram_mappings tm
-                JOIN users u ON tm.seller_user_id = u.user_id
-                WHERE tm.telegram_id = %s
-                ORDER BY tm.is_active DESC, tm.last_login DESC
-            ''', (telegram_id,))
-
-            accounts = []
-            for row in cursor.fetchall():
-                accounts.append({
-                    'seller_user_id': row['seller_user_id'],
-                    'is_active': bool(row['is_active']),
-                    'account_name': row['account_name'] or row['seller_name'] or row['first_name'] or f"Compte {row['seller_user_id']}",  # Fallback name
-                    'created_at': row['created_at'],
-                    'last_login': row['last_login']
-                })
-
-            conn.close()
-            return accounts
-
-        except (psycopg2.Error, Exception) as e:
-            logger.error(f"❌ Error getting user accounts: {e}")
-            return []
-
-    def switch_account(self, telegram_id: int, target_seller_id: int) -> bool:
-        """
-        Switch active account for a telegram_id
-
-        Returns: True si succès, False si compte n'existe pas
-        """
-        try:
-            conn = get_postgresql_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-            # Vérifier que le compte existe pour ce telegram_id
-            cursor.execute('''
-                SELECT 1 FROM telegram_mappings
-                WHERE telegram_id = %s AND seller_user_id = %s
-            ''', (telegram_id, target_seller_id))
-
-            if not cursor.fetchone():
-                conn.close()
-                logger.warning(f"⚠️ Account {target_seller_id} not found for telegram {telegram_id}")
-                return False
-
-            # Désactiver tous les comptes
-            cursor.execute('''
-                UPDATE telegram_mappings
-                SET is_active = 0
-                WHERE telegram_id = %s
-            ''', (telegram_id,))
-
-            # Activer le compte cible
-            cursor.execute('''
-                UPDATE telegram_mappings
-                SET is_active = 1, last_login = CURRENT_TIMESTAMP
-                WHERE telegram_id = %s AND seller_user_id = %s
-            ''', (telegram_id, target_seller_id))
-
-            conn.commit()
-            conn.close()
-
-            logger.info(f"✅ Switched to account {target_seller_id} for telegram {telegram_id}")
-            return True
-
-        except (psycopg2.Error, Exception) as e:
-            logger.error(f"❌ Error switching account: {e}")
-            return False
+    # REMOVED: switch_account() - Multi-account support no longer needed
 
     def reset_user_state_preserve_login(self, user_id: int) -> None:
         """Nettoie l'état utilisateur tout en préservant la langue"""
@@ -405,6 +264,7 @@ class MarketplaceBot:
 
     async def auto_create_seller_payout(self, order_id: str) -> bool:
         """Crée automatiquement un payout vendeur après confirmation paiement"""
+        conn = None
         try:
             conn = self.get_db_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -422,8 +282,11 @@ class MarketplaceBot:
 
             seller_user_id, total_amount_usd = result
 
-            # Calculer montant vendeur (95% - 5% commission plateforme)
-            seller_amount_usd = total_amount_usd * 0.95
+            # Calculer montant vendeur (97.2951% du montant total)
+            # Formule: vendeur = total / 1.0278
+            from app.core import settings as core_settings
+            commission_percent = core_settings.PLATFORM_COMMISSION_PERCENT
+            seller_amount_usd = total_amount_usd / (1 + commission_percent / 100)
 
             # Convertir USD → SOL (taux approximatif, à améliorer)
             sol_price_usd = 100  # À récupérer via API CoinGecko
@@ -436,12 +299,14 @@ class MarketplaceBot:
                 seller_amount_sol
             )
 
-            conn.close()
             return payout_id is not None
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Erreur auto payout: {e}")
             return False
+        finally:
+            if conn:
+                put_connection(conn)
 
 
     async def button_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -551,6 +416,7 @@ class MarketplaceBot:
         elif user_state.get('waiting_ticket_message'):
             ticket_id = user_state.get('waiting_ticket_message')
             lang = user_state.get('lang', 'fr')
+            conn = None
             try:
                 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
                 conn = self.get_db_connection()
@@ -563,7 +429,6 @@ class MarketplaceBot:
                 ''', (ticket_id, user_id, message_text))
 
                 conn.commit()
-                conn.close()
 
                 # Reset state
                 self.state_manager.reset_state(user_id, keep={'lang'})
@@ -595,18 +460,21 @@ class MarketplaceBot:
             except (psycopg2.Error, Exception) as e:
                 logger.error(f"Error sending ticket message: {e}")
                 await update.message.reply_text("❌ Error" if lang == 'en' else "❌ Erreur")
+            finally:
+                if conn:
+                    put_connection(conn)
         # === ÉDITION PRODUIT ===
         elif user_state.get('editing_product'):
             step = user_state.get('step')
             product_id = user_state.get('product_id')
             if step == 'edit_title_input':
                 new_title = message_text.strip()[:100]
+                conn = None
                 try:
                     conn = self.get_db_connection()
                     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                     cursor.execute('UPDATE products SET title = %s, updated_at = CURRENT_TIMESTAMP WHERE product_id = %s AND seller_user_id = %s', (new_title, product_id, user_id))
                     conn.commit()
-                    conn.close()
                     # Nettoyer uniquement le contexte d'édition produit
                     state = self.state_manager.get_state(user_id)
                     for k in ['editing_product', 'product_id', 'step']:
@@ -616,6 +484,9 @@ class MarketplaceBot:
                 except (psycopg2.Error, Exception) as e:
                     logger.error(f"Erreur maj titre produit: {e}")
                     await update.message.reply_text("❌ Erreur mise à jour titre.")
+                finally:
+                    if conn:
+                        put_connection(conn)
             elif step == 'edit_price_input':
                 lang = self.get_user_language(user_id)
                 success = await self.sell_handlers.process_product_price_update(self, update, product_id, message_text, lang)
@@ -652,6 +523,7 @@ class MarketplaceBot:
         elif user_state.get('editing_product_title'):
             product_id = user_state.get('editing_product_title')
             lang = self.get_user_language(user_id)
+            conn = None
             try:
                 new_title = message_text.strip()[:100]
                 if len(new_title) < 3:
@@ -660,7 +532,6 @@ class MarketplaceBot:
                 cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 cursor.execute('UPDATE products SET title = %s, updated_at = CURRENT_TIMESTAMP WHERE product_id = %s AND seller_user_id = %s', (new_title, product_id, user_id))
                 conn.commit()
-                conn.close()
                 state = self.state_manager.get_state(user_id)
                 state.pop('editing_product_title', None)
                 self.state_manager.update_state(user_id, **state)
@@ -682,6 +553,9 @@ class MarketplaceBot:
                         InlineKeyboardButton(i18n(lang, 'btn_back_dashboard'), callback_data='seller_dashboard')
                     ]])
                 )
+            finally:
+                if conn:
+                    put_connection(conn)
         elif user_state.get('editing_product_description'):
             product_id = user_state.get('editing_product_description')
             lang = self.get_user_language(user_id)
@@ -691,6 +565,7 @@ class MarketplaceBot:
                 state.pop('editing_product_description', None)
                 self.state_manager.update_state(user_id, **state)
         elif user_state.get('editing_seller_name'):
+            conn = None
             try:
                 new_name = message_text.strip()[:20]
                 if len(new_name) < 2:
@@ -699,7 +574,6 @@ class MarketplaceBot:
                 cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 cursor.execute('UPDATE users SET seller_name = %s WHERE user_id = %s', (new_name, user_id))
                 conn.commit()
-                conn.close()
                 state = self.state_manager.get_state(user_id)
                 state.pop('editing_seller_name', None)
                 self.state_manager.update_state(user_id, **state)
@@ -707,7 +581,11 @@ class MarketplaceBot:
             except (psycopg2.Error, Exception) as e:
                 logger.error(f"Erreur maj nom vendeur: {e}")
                 await update.message.reply_text("❌ Nom invalide (minimum 2 caractères) ou erreur mise à jour.")
+            finally:
+                if conn:
+                    put_connection(conn)
         elif user_state.get('editing_seller_bio'):
+            conn = None
             try:
                 new_bio = message_text.strip()[:300]
                 if len(new_bio) < 10:
@@ -716,7 +594,6 @@ class MarketplaceBot:
                 cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 cursor.execute('UPDATE users SET seller_bio = %s WHERE user_id = %s', (new_bio, user_id))
                 conn.commit()
-                conn.close()
                 state = self.state_manager.get_state(user_id)
                 state.pop('editing_seller_bio', None)
                 self.state_manager.update_state(user_id, **state)
@@ -724,6 +601,9 @@ class MarketplaceBot:
             except (psycopg2.Error, Exception) as e:
                 logger.error(f"Erreur maj bio vendeur: {e}")
                 await update.message.reply_text("❌ Biographie invalide (minimum 10 caractères) ou erreur mise à jour.")
+            finally:
+                if conn:
+                    put_connection(conn)
 
         # === DÉFAUT : Détection automatique d'ID produit ===
         else:

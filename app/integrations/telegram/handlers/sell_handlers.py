@@ -5,10 +5,13 @@ import logging
 import psycopg2
 import psycopg2.extras
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from app.core.db_pool import put_connection
 from app.core.i18n import t as i18n
 from app.integrations.telegram.keyboards import sell_menu_keyboard, back_to_main_button
 from app.core.validation import validate_email, validate_solana_address
 from app.integrations.telegram.utils import safe_transition_to_text
+from app.services.chart_service import ChartService
+from app.services.export_service import ExportService
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +20,8 @@ class SellHandlers:
         self.user_repo = user_repo
         self.product_repo = product_repo
         self.payment_service = payment_service
+        self.chart_service = ChartService()
+        self.export_service = ExportService()
 
     # ==================== HELPER FUNCTIONS ====================
 
@@ -59,8 +64,26 @@ class SellHandlers:
             field: Field name (e.g., 'product_title', 'seller_name', etc.)
             value: Value to set (True, product_id, etc.)
         """
+        # Map field names to step names for seller settings
+        seller_field_to_step = {
+            'seller_name': 'edit_name',
+            'seller_bio': 'edit_bio',
+            'seller_email': 'edit_email',
+            'solana_address': 'edit_solana_address'
+        }
+
         bot.reset_conflicting_states(user_id, keep={f'editing_{field}'})
-        bot.state_manager.update_state(user_id, **{f'editing_{field}': value})
+
+        # If editing seller settings, also set editing_settings=True and step
+        if field in seller_field_to_step:
+            bot.state_manager.update_state(
+                user_id,
+                editing_settings=True,
+                step=seller_field_to_step[field],
+                **{f'editing_{field}': value}
+            )
+        else:
+            bot.state_manager.update_state(user_id, **{f'editing_{field}': value})
 
     # ==================== PUBLIC METHODS ====================
 
@@ -142,6 +165,7 @@ class SellHandlers:
 
         # Calculer revenu réel depuis la table orders (source de vérité)
         from app.core.database_init import get_postgresql_connection
+        from app.core.db_pool import put_connection
         from app.core import settings as core_settings
         conn = get_postgresql_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -159,7 +183,7 @@ class SellHandlers:
             WHERE seller_user_id = %s
         """, (seller_id,))
         storage_used_mb = cursor.fetchone()['storage_used']
-        conn.close()
+        put_connection(conn)
 
         # Storage limit: 100MB
         storage_limit_mb = 100
@@ -176,7 +200,7 @@ class SellHandlers:
         # Simplified layout: 6 lignes → 4 lignes (SELLER_WORKFLOW_SPEC)
         keyboard = [
             [InlineKeyboardButton(i18n(lang, 'btn_my_products'), callback_data='my_products'),
-             InlineKeyboardButton("📊 Analytics", callback_data='seller_analytics_visual')],
+             InlineKeyboardButton("📊 Analytics", callback_data='seller_analytics_enhanced')],
             [InlineKeyboardButton(i18n(lang, 'btn_add_product'), callback_data='add_product')],
             [InlineKeyboardButton(i18n(lang, 'btn_logout'), callback_data='seller_logout'),
              InlineKeyboardButton(i18n(lang, 'btn_seller_settings'), callback_data='seller_settings')],
@@ -192,6 +216,7 @@ class SellHandlers:
         """Affiche les analytics avec statistiques textuelles (graphiques désactivés temporairement)"""
         from datetime import datetime, timedelta
         from app.core.database_init import get_postgresql_connection
+        from app.core.db_pool import put_connection
 
         seller_id = query.from_user.id
 
@@ -223,7 +248,7 @@ class SellHandlers:
                 LIMIT 5
             """, (seller_id,))
             top_products = cursor.fetchall()
-            conn.close()
+            put_connection(conn)
 
             # Construire le message
             text = f"""📊 **Statistiques de vente**
@@ -249,6 +274,440 @@ class SellHandlers:
             await query.message.reply_text(
                 "❌ Erreur lors de la génération des statistiques.\n\n"
                 f"Détails: {str(e)}",
+                parse_mode='Markdown'
+            )
+
+    async def seller_analytics_enhanced(self, bot, query, lang: str = 'fr'):
+        """
+        Affiche les analytics vendeur avec graphiques visuels
+
+        Envoie:
+        - Texte avec stats résumées
+        - Image du graphique combiné (revenus + ventes)
+        - Boutons pour export CSV et autres graphiques
+        """
+        from datetime import datetime, timedelta
+        from app.core.database_init import get_postgresql_connection
+        from app.core.db_pool import put_connection
+
+        seller_id = query.from_user.id
+
+        try:
+            # Notifier l'utilisateur
+            await query.answer("📊 Génération des graphiques...")
+
+            # ═══════════════════════════════════════════════════════
+            # RÉCUPÉRER LES DONNÉES
+            # ═══════════════════════════════════════════════════════
+            conn = get_postgresql_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            # Stats globales
+            cursor.execute("""
+                SELECT
+                    COALESCE(SUM(product_price_usd), 0) as total_revenue,
+                    COALESCE(SUM(seller_revenue_usd), 0) as net_revenue,
+                    COALESCE(SUM(platform_commission_usd), 0) as total_commission,
+                    COUNT(*) as total_sales
+                FROM orders
+                WHERE seller_user_id = %s AND payment_status = 'completed'
+            """, (seller_id,))
+            global_stats = cursor.fetchone()
+
+            # Données 30 derniers jours pour graphiques
+            cursor.execute("""
+                SELECT
+                    DATE(completed_at) as date,
+                    COALESCE(SUM(product_price_usd), 0) as revenue,
+                    COUNT(*) as sales
+                FROM orders
+                WHERE seller_user_id = %s
+                  AND payment_status = 'completed'
+                  AND completed_at >= NOW() - INTERVAL '30 days'
+                GROUP BY DATE(completed_at)
+                ORDER BY date ASC
+            """, (seller_id,))
+            daily_stats = cursor.fetchall()
+
+            # Top 5 produits
+            cursor.execute("""
+                SELECT
+                    p.title,
+                    p.price_usd,
+                    COUNT(o.order_id) as sales,
+                    COALESCE(SUM(o.seller_revenue_usd), 0) as revenue
+                FROM products p
+                LEFT JOIN orders o ON p.product_id = o.product_id
+                  AND o.payment_status = 'completed'
+                WHERE p.seller_user_id = %s
+                GROUP BY p.product_id, p.title, p.price_usd
+                ORDER BY revenue DESC
+                LIMIT 5
+            """, (seller_id,))
+            top_products = cursor.fetchall()
+
+            # Nombre de produits
+            cursor.execute("""
+                SELECT COUNT(*) as total,
+                       COUNT(*) FILTER (WHERE status = 'active') as active
+                FROM products
+                WHERE seller_user_id = %s
+            """, (seller_id,))
+            product_count = cursor.fetchone()
+
+            put_connection(conn)
+
+            # ═══════════════════════════════════════════════════════
+            # PRÉPARER LES DONNÉES POUR GRAPHIQUE
+            # ═══════════════════════════════════════════════════════
+
+            # Compléter avec zéros pour jours manquants (30 derniers jours)
+            dates_dict = {row['date'].strftime('%m-%d'): row for row in daily_stats}
+
+            dates_labels = []
+            revenues_data = []
+            sales_data = []
+
+            for i in range(29, -1, -1):
+                date = datetime.now().date() - timedelta(days=i)
+                date_label = date.strftime('%m-%d')
+                dates_labels.append(date_label)
+
+                if date_label in dates_dict:
+                    revenues_data.append(float(dates_dict[date_label]['revenue']))
+                    sales_data.append(int(dates_dict[date_label]['sales']))
+                else:
+                    revenues_data.append(0)
+                    sales_data.append(0)
+
+            # ═══════════════════════════════════════════════════════
+            # GÉNÉRER LE GRAPHIQUE
+            # ═══════════════════════════════════════════════════════
+
+            if sum(revenues_data) > 0:  # Seulement si données disponibles
+                chart_url = self.chart_service.generate_combined_dashboard_chart(
+                    dates=dates_labels,
+                    revenues=revenues_data,
+                    sales=sales_data,
+                    width=800,
+                    height=400
+                )
+            else:
+                chart_url = None
+
+            # ═══════════════════════════════════════════════════════
+            # CONSTRUIRE LE MESSAGE TEXTE
+            # ═══════════════════════════════════════════════════════
+
+            text = f"""📊 **TABLEAU DE BORD VENDEUR**
+
+💰 **Revenus nets**
+└─ ${global_stats['net_revenue']:.2f}
+
+📦 **Produits & Ventes**
+├─ Produits: {product_count['active']}/{product_count['total']} actifs
+└─ Ventes: {global_stats['total_sales']} commandes
+
+🏆 **Top 5 Produits**"""
+
+            if top_products:
+                for i, p in enumerate(top_products, 1):
+                    title_truncated = p['title'][:25] + '...' if len(p['title']) > 25 else p['title']
+                    text += f"\n{i}. {title_truncated}"
+                    text += f"\n   💵 ${p['revenue']:.2f} • 📦 {p['sales']} ventes"
+            else:
+                text += "\n\n_Aucun produit vendu pour le moment_"
+
+            text += "\n\n📈 Graphique ci-dessous pour les 30 derniers jours"
+
+            # ═══════════════════════════════════════════════════════
+            # KEYBOARD
+            # ═══════════════════════════════════════════════════════
+
+            keyboard = [
+                [
+                    InlineKeyboardButton("📊 Graphiques détaillés", callback_data='analytics_detailed_charts'),
+                    InlineKeyboardButton("📥 Export CSV", callback_data='analytics_export_csv')
+                ],
+                [
+                    InlineKeyboardButton("🔄 Rafraîchir", callback_data='seller_analytics_enhanced'),
+                    InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            # ═══════════════════════════════════════════════════════
+            # ENVOYER LE MESSAGE
+            # ═══════════════════════════════════════════════════════
+
+            # Supprimer le message précédent
+            try:
+                await query.message.delete()
+            except:
+                pass
+
+            # Envoyer le texte
+            if chart_url:
+                # Envoyer graphique en photo
+                await query.message.reply_photo(
+                    photo=chart_url,
+                    caption=text,
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
+                )
+            else:
+                # Pas encore de données, juste texte
+                await query.message.reply_text(
+                    text=text + "\n\n_Pas encore de données de vente pour afficher un graphique_",
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
+                )
+
+        except Exception as e:
+            logger.error(f"Error in seller_analytics_enhanced: {e}", exc_info=True)
+            await query.message.reply_text(
+                "❌ Erreur lors de la génération des statistiques.\n\n"
+                "Veuillez réessayer dans quelques instants.",
+                parse_mode='Markdown'
+            )
+
+    async def analytics_detailed_charts(self, bot, query, lang: str = 'fr'):
+        """
+        Affiche plusieurs graphiques détaillés
+
+        Envoie :
+        - Graphique revenus seuls
+        - Graphique ventes seules
+        - Graphique performance par produit
+        """
+        from datetime import datetime, timedelta
+        from app.core.database_init import get_postgresql_connection
+        from app.core.db_pool import put_connection
+
+        seller_id = query.from_user.id
+
+        try:
+            await query.answer("📊 Génération des graphiques détaillés...")
+
+            # ═══════════════════════════════════════════════════════
+            # RÉCUPÉRER LES DONNÉES
+            # ═══════════════════════════════════════════════════════
+            conn = get_postgresql_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            # Données 30 derniers jours
+            cursor.execute("""
+                SELECT
+                    DATE(completed_at) as date,
+                    COALESCE(SUM(product_price_usd), 0) as revenue,
+                    COUNT(*) as sales
+                FROM orders
+                WHERE seller_user_id = %s
+                  AND payment_status = 'completed'
+                  AND completed_at >= NOW() - INTERVAL '30 days'
+                GROUP BY DATE(completed_at)
+                ORDER BY date ASC
+            """, (seller_id,))
+            daily_stats = cursor.fetchall()
+
+            # Performance par produit (top 10)
+            cursor.execute("""
+                SELECT
+                    p.title,
+                    COUNT(o.order_id) as sales,
+                    COALESCE(SUM(o.seller_revenue_usd), 0) as revenue
+                FROM products p
+                LEFT JOIN orders o ON p.product_id = o.product_id
+                  AND o.payment_status = 'completed'
+                WHERE p.seller_user_id = %s
+                GROUP BY p.product_id, p.title
+                ORDER BY revenue DESC
+                LIMIT 10
+            """, (seller_id,))
+            product_performance = cursor.fetchall()
+
+            put_connection(conn)
+
+            # ═══════════════════════════════════════════════════════
+            # PRÉPARER LES DONNÉES
+            # ═══════════════════════════════════════════════════════
+
+            # Compléter avec zéros
+            dates_dict = {row['date'].strftime('%m-%d'): row for row in daily_stats}
+            dates_labels = []
+            revenues_data = []
+            sales_data = []
+
+            for i in range(29, -1, -1):
+                date = datetime.now().date() - timedelta(days=i)
+                date_label = date.strftime('%m-%d')
+                dates_labels.append(date_label)
+
+                if date_label in dates_dict:
+                    revenues_data.append(float(dates_dict[date_label]['revenue']))
+                    sales_data.append(int(dates_dict[date_label]['sales']))
+                else:
+                    revenues_data.append(0)
+                    sales_data.append(0)
+
+            # ═══════════════════════════════════════════════════════
+            # GÉNÉRER LES GRAPHIQUES
+            # ═══════════════════════════════════════════════════════
+
+            charts_to_send = []
+
+            # Graphique 1 : Revenus (toujours générer)
+            revenue_chart_url = self.chart_service.generate_revenue_chart(
+                dates=dates_labels,
+                revenues=revenues_data
+            )
+            charts_to_send.append(('Revenus (30 jours)', revenue_chart_url))
+
+            # Graphique 2 : Ventes (toujours générer)
+            sales_chart_url = self.chart_service.generate_sales_chart(
+                dates=dates_labels,
+                sales=sales_data
+            )
+            charts_to_send.append(('Ventes (30 jours)', sales_chart_url))
+
+            # Graphique 3 : Performance produits (si au moins 1 produit)
+            if product_performance and len(product_performance) > 0:
+                product_titles = [p['title'][:20] for p in product_performance]
+                product_sales = [int(p['sales']) for p in product_performance]
+                product_revenues = [float(p['revenue']) for p in product_performance]
+
+                product_chart_url = self.chart_service.generate_product_performance_chart(
+                    product_titles=product_titles,
+                    sales_counts=product_sales,
+                    revenues=product_revenues
+                )
+                charts_to_send.append(('Performance Produits (Top 10)', product_chart_url))
+
+            # ═══════════════════════════════════════════════════════
+            # ENVOYER LES GRAPHIQUES
+            # ═══════════════════════════════════════════════════════
+
+            if charts_to_send:
+                await query.message.reply_text("📊 Graphiques détaillés :")
+
+                for title, url in charts_to_send:
+                    await query.message.reply_photo(
+                        photo=url,
+                        caption=f"**{title}**",
+                        parse_mode='Markdown'
+                    )
+
+                # Bouton retour
+                keyboard = [[InlineKeyboardButton("🔙 Retour Analytics", callback_data='seller_analytics_enhanced')]]
+                await query.message.reply_text(
+                    text="✅ Tous les graphiques ont été générés",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            else:
+                await query.message.reply_text(
+                    "ℹ️ Pas encore de données suffisantes pour générer des graphiques détaillés.\n\n"
+                    "Créez des produits et attendez vos premières ventes !",
+                    parse_mode='Markdown'
+                )
+
+        except Exception as e:
+            logger.error(f"Error in analytics_detailed_charts: {e}", exc_info=True)
+            await query.message.reply_text(
+                "❌ Erreur lors de la génération des graphiques.",
+                parse_mode='Markdown'
+            )
+
+    async def analytics_export_csv(self, bot, query, lang: str = 'fr'):
+        """
+        Exporte les statistiques vendeur en CSV et envoie le fichier
+        """
+        from datetime import datetime
+        from app.core.database_init import get_postgresql_connection
+        from app.core.db_pool import put_connection
+
+        seller_id = query.from_user.id
+
+        try:
+            await query.answer("📥 Génération du fichier CSV...")
+
+            # ═══════════════════════════════════════════════════════
+            # RÉCUPÉRER LES DONNÉES
+            # ═══════════════════════════════════════════════════════
+            conn = get_postgresql_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            # Infos vendeur
+            cursor.execute("""
+                SELECT seller_name, email
+                FROM users
+                WHERE user_id = %s
+            """, (seller_id,))
+            seller_info = cursor.fetchone()
+            seller_name = seller_info['seller_name'] if seller_info else f"Seller_{seller_id}"
+
+            # Tous les produits
+            cursor.execute("""
+                SELECT * FROM products
+                WHERE seller_user_id = %s
+                ORDER BY created_at DESC
+            """, (seller_id,))
+            products = cursor.fetchall()
+
+            # Toutes les commandes
+            cursor.execute("""
+                SELECT * FROM orders
+                WHERE seller_user_id = %s
+                ORDER BY created_at DESC
+            """, (seller_id,))
+            orders = cursor.fetchall()
+
+            put_connection(conn)
+
+            # ═══════════════════════════════════════════════════════
+            # GÉNÉRER LE CSV
+            # ═══════════════════════════════════════════════════════
+
+            csv_file = self.export_service.export_seller_stats_to_csv(
+                seller_user_id=seller_id,
+                seller_name=seller_name,
+                products=products,
+                orders=orders
+            )
+
+            # Nom du fichier
+            filename = self.export_service.generate_filename('seller_stats', str(seller_id))
+
+            # ═══════════════════════════════════════════════════════
+            # ENVOYER LE FICHIER
+            # ═══════════════════════════════════════════════════════
+
+            await query.message.reply_document(
+                document=csv_file,
+                filename=filename,
+                caption=f"📊 **Export de vos statistiques**\n\n"
+                        f"Fichier : `{filename}`\n"
+                        f"Date : {datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
+                        f"Le fichier contient :\n"
+                        f"• Résumé global\n"
+                        f"• Détail de tous vos produits\n"
+                        f"• Historique complet des ventes\n"
+                        f"• Performance par catégorie\n"
+                        f"• Top 10 produits",
+                parse_mode='Markdown'
+            )
+
+            # Message de confirmation
+            keyboard = [[InlineKeyboardButton("🔙 Retour Analytics", callback_data='seller_analytics_enhanced')]]
+            await query.message.reply_text(
+                text="✅ Export CSV terminé avec succès !",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
+        except Exception as e:
+            logger.error(f"Error in analytics_export_csv: {e}", exc_info=True)
+            await query.message.reply_text(
+                "❌ Erreur lors de l'export CSV.\n\n"
+                "Veuillez réessayer dans quelques instants.",
                 parse_mode='Markdown'
             )
 
@@ -446,6 +905,7 @@ class SellHandlers:
 
         # Calculer ventes et revenu réels depuis la table orders (source de vérité)
         from app.core.database_init import get_postgresql_connection
+        from app.core.db_pool import put_connection
         from app.core import settings as core_settings
         conn = get_postgresql_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -457,7 +917,7 @@ class SellHandlers:
             WHERE seller_user_id = %s AND payment_status = 'completed'
         """, (seller_id,))
         total_sales, total_revenue = cursor.fetchone()
-        conn.close()
+        put_connection(conn)
 
         analytics_text = i18n(lang, 'analytics_title').format(
             products=len(products),
@@ -761,8 +1221,10 @@ class SellHandlers:
 
         elif step == 'price':
             try:
-                price = float(message_text.replace(',', '.'))
-                if price < 1 or price > 5000:
+                # Remove $ symbol if present, then parse
+                price_text_clean = message_text.replace('$', '').replace(',', '.').strip()
+                price = float(price_text_clean)
+                if price < 5 or price > 5000:
                     raise ValueError()
 
                 # 🔍 DEBUG: État AVANT modification
@@ -801,7 +1263,7 @@ class SellHandlers:
                     parse_mode='Markdown'
                 )
             except (ValueError, TypeError):
-                await update.message.reply_text("❌ Prix invalide. Entrez un nombre entre 1 et 5000.")
+                await update.message.reply_text("❌ Prix invalide. Entrez un nombre entre $5 et $5000.")
 
     async def _show_category_selection(self, bot, update, lang):
         """Affiche le menu de sélection de catégorie lors de l'ajout de produit"""
@@ -1027,6 +1489,7 @@ class SellHandlers:
             # Ajouter le fichier aux données produit (temporaire, sera uploadé sur B2)
             product_data['file_name'] = document.file_name
             product_data['file_size'] = document.file_size
+            product_data['file_path'] = filename  # FIX: Set file_path for product creation
 
             # Créer le produit avec le seller_id mappé
             product_data['seller_id'] = seller_id
@@ -1121,6 +1584,7 @@ class SellHandlers:
         try:
             import shutil
             from app.core.database_init import get_postgresql_connection
+            from app.core.db_pool import put_connection
             from app.core import settings as core_settings
 
             old_dir = os.path.join('data', 'product_images', str(seller_id), temp_product_id)
@@ -1163,7 +1627,7 @@ class SellHandlers:
                         logger.error(f"❌ DB update failed: {db_error}")
                         conn.rollback()
                     finally:
-                        conn.close()
+                        put_connection(conn)
 
                 logger.info(f"✅ Renamed product images: {temp_product_id} -> {final_product_id}")
             else:
@@ -1178,15 +1642,16 @@ class SellHandlers:
         step = state.get('step')
 
         lang = state.get('lang', 'fr')
+        logger.info(f"🔧 process_seller_settings called - step: {step}, user: {user_id}")
 
         if step == 'edit_name':
             new_name = message_text.strip()[:50]
             success = self.user_repo.update_seller_name(user_id, new_name)
             bot.state_manager.reset_state(user_id, keep={'lang'})
             await update.message.reply_text(
-                "Nom mis a jour." if success else "Erreur mise a jour nom.",
+                "✅ Nom mis à jour !" if success else "❌ Erreur mise à jour nom.",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("Retour Dashboard", callback_data='seller_dashboard')
+                    InlineKeyboardButton("📊 Dashboard", callback_data='seller_dashboard')
                 ]])
             )
 
@@ -1195,37 +1660,37 @@ class SellHandlers:
             success = self.user_repo.update_seller_bio(user_id, new_bio)
             bot.state_manager.reset_state(user_id, keep={'lang'})
             await update.message.reply_text(
-                "Biographie mise a jour." if success else "Erreur mise a jour bio.",
+                "✅ Biographie mise à jour !" if success else "❌ Erreur mise à jour bio.",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("Retour Dashboard", callback_data='seller_dashboard')
+                    InlineKeyboardButton("📊 Dashboard", callback_data='seller_dashboard')
                 ]])
             )
 
         elif step == 'edit_email':
             new_email = message_text.strip().lower()
             if not validate_email(new_email):
-                await update.message.reply_text("Email invalide")
+                await update.message.reply_text("❌ Email invalide")
                 return
             success = self.user_repo.update_seller_email(user_id, new_email)
             bot.state_manager.reset_state(user_id, keep={'lang'})
             await update.message.reply_text(
-                "Email mis a jour." if success else "Erreur mise a jour email.",
+                "✅ Email mis à jour !" if success else "❌ Erreur mise à jour email.",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("Retour Dashboard", callback_data='seller_dashboard')
+                    InlineKeyboardButton("📊 Dashboard", callback_data='seller_dashboard')
                 ]])
             )
 
         elif step == 'edit_solana_address':
             new_address = message_text.strip()
             if not validate_solana_address(new_address):
-                await update.message.reply_text("Adresse Solana invalide (32-44 caracteres)")
+                await update.message.reply_text("❌ Adresse Solana invalide (32-44 caractères)")
                 return
             success = self.user_repo.update_seller_solana_address(user_id, new_address)
             bot.state_manager.reset_state(user_id, keep={'lang'})
             await update.message.reply_text(
-                "Adresse Solana mise a jour." if success else "Erreur mise a jour adresse.",
+                "✅ Adresse Solana mise à jour !" if success else "❌ Erreur mise à jour adresse.",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("Retour Dashboard", callback_data='seller_dashboard')
+                    InlineKeyboardButton("📊 Dashboard", callback_data='seller_dashboard')
                 ]])
             )
 
@@ -1244,7 +1709,7 @@ class SellHandlers:
                 LIMIT 10
             ''', (user_id,))
             payouts = cursor.fetchall()
-            conn.close()
+            put_connection(conn)
 
             if not payouts:
                 text = "💰 Aucun payout trouvé." if lang == 'fr' else "💰 No payouts found."
@@ -1844,16 +2309,14 @@ class SellHandlers:
                 await update.message.reply_text(i18n(lang, 'err_product_not_found'))
                 return False
 
-            # Parse and validate price
-            price = float(price_text.replace(',', '.'))
-            if price < 1 or price > 5000:
+            # Parse and validate price (remove $ symbol if present)
+            price_text_clean = price_text.replace('$', '').replace(',', '.').strip()
+            price_usd = float(price_text_clean)
+            if price_usd < 5 or price_usd > 5000:
                 raise ValueError("Prix hors limites")
 
-            # Calculate USD price
-            price_usd = price * bot.payment_service.get_exchange_rate()
-
-            # Update price
-            success = self.product_repo.update_price(product_id, user_id, price, price_usd)
+            # Update price (price is already in USD, no conversion needed)
+            success = self.product_repo.update_price(product_id, user_id, price_usd)
 
             if success:
                 await update.message.reply_text(
@@ -1966,7 +2429,7 @@ class SellHandlers:
             ''', (seller_id,))
             
             tickets = cursor.fetchall()
-            conn.close()
+            put_connection(conn)
             
             if not tickets:
                 text = (

@@ -4,6 +4,7 @@ import logging
 from typing import Optional, Dict, List, Tuple
 
 from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import put_connection
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ class ProductRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def get_product_by_id(self, product_id: str) -> Optional[Dict]:
         conn = get_postgresql_connection()
@@ -76,7 +77,7 @@ class ProductRepository:
         except psycopg2.Error:
             return None
         finally:
-            conn.close()
+            put_connection(conn)
 
     def get_product_with_seller_info(self, product_id: str) -> Optional[Dict]:
         """Récupère un produit avec les informations du vendeur"""
@@ -99,7 +100,7 @@ class ProductRepository:
             logger.error(f"Erreur récupération produit avec seller: {e}")
             return None
         finally:
-            conn.close()
+            put_connection(conn)
 
     def increment_views(self, product_id: str) -> bool:
         conn = get_postgresql_connection()
@@ -115,7 +116,7 @@ class ProductRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def update_status(self, product_id: str, status: str) -> bool:
         conn = get_postgresql_connection()
@@ -131,7 +132,7 @@ class ProductRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def delete_product(self, product_id: str, seller_user_id: int) -> bool:
         conn = get_postgresql_connection()
@@ -175,7 +176,7 @@ class ProductRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def get_products_by_seller(self, seller_user_id: int, limit: int = None, offset: int = 0) -> List[Dict]:
         conn = get_postgresql_connection()
@@ -210,7 +211,7 @@ class ProductRepository:
         except psycopg2.Error:
             return []
         finally:
-            conn.close()
+            put_connection(conn)
 
     def count_products_by_seller(self, seller_user_id: int) -> int:
         """Count total products by seller"""
@@ -225,7 +226,7 @@ class ProductRepository:
         except psycopg2.Error:
             return 0
         finally:
-            conn.close()
+            put_connection(conn)
 
     def get_products_by_category(self, category: str, limit: int = 10, offset: int = 0) -> List[Dict]:
         conn = get_postgresql_connection()
@@ -248,7 +249,7 @@ class ProductRepository:
         except psycopg2.Error:
             return []
         finally:
-            conn.close()
+            put_connection(conn)
 
     def count_products_by_category(self, category: str) -> int:
         """Count total products in a category"""
@@ -263,7 +264,7 @@ class ProductRepository:
         except psycopg2.Error:
             return 0
         finally:
-            conn.close()
+            put_connection(conn)
 
     def update_price(self, product_id: str, seller_user_id: int, price_usd: float) -> bool:
         """Update product price (USDT only, EUR shown in UI)"""
@@ -283,7 +284,7 @@ class ProductRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def update_title(self, product_id: str, seller_user_id: int, title: str) -> bool:
         conn = get_postgresql_connection()
@@ -302,7 +303,7 @@ class ProductRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def update_description(self, product_id: str, seller_user_id: int, description: str) -> bool:
         conn = get_postgresql_connection()
@@ -321,7 +322,7 @@ class ProductRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def update_product_file_url(self, product_id: str, file_url: str) -> bool:
         """Update product's main file URL after B2 upload"""
@@ -339,7 +340,7 @@ class ProductRepository:
             conn.rollback()
             return False
         finally:
-            conn.close()
+            put_connection(conn)
 
     def get_all_products(self, limit: int = 100):
         conn = get_postgresql_connection()
@@ -352,7 +353,7 @@ class ProductRepository:
         except psycopg2.Error:
             return []
         finally:
-            conn.close()
+            put_connection(conn)
 
     def count_products(self) -> int:
         conn = get_postgresql_connection()
@@ -363,7 +364,7 @@ class ProductRepository:
         except psycopg2.Error:
             return 0
         finally:
-            conn.close()
+            put_connection(conn)
 
     def search_products(self, query: str, limit: int = 10):
         """
@@ -395,7 +396,7 @@ class ProductRepository:
             logging.error(f"Search error: {e}")
             return []
         finally:
-            conn.close()
+            put_connection(conn)
 
     def create_product(self, product_data: Dict) -> Optional[str]:
         """Create a new product with auto-generated ID"""
@@ -459,4 +460,4 @@ class ProductRepository:
             logger.error(f"Error recalculating category counts: {e}")
             return False
         finally:
-            conn.close()
+            put_connection(conn)

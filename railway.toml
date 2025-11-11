@@ -1,0 +1,21 @@
+# Railway Configuration
+# Documentation: https://docs.railway.app/deploy/config-as-code
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+# Command to start the application (launches both bot and IPN server)
+startCommand = "bash start.sh"
+
+# Healthcheck configuration
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+
+# Restart policy
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[env]
+# Python version (Railway auto-detects but we specify for consistency)
+PYTHON_VERSION = "3.11"

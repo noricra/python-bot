@@ -19,6 +19,7 @@ from app.core.i18n import t as i18n
 from app.core import settings as core_settings
 from app.core.error_messages import get_error_message
 from app.core.seller_notifications import SellerNotifications
+from app.core.db_pool import put_connection
 from app.integrations.telegram.keyboards import buy_menu_keyboard, back_to_main_button
 from app.integrations.telegram.utils import safe_transition_to_text
 
@@ -169,6 +170,7 @@ class BuyHandlers:
     def _get_product_image_or_placeholder(self, product: Dict) -> str:
         """
         Get product image path or generate placeholder
+        NOW WITH B2 FALLBACK: Downloads from B2 if local file missing
 
         Args:
             product: Product dict
@@ -178,11 +180,14 @@ class BuyHandlers:
         """
         from app.core.image_utils import ImageUtils
         from app.core.settings import get_absolute_path
+        from app.services.image_sync_service import ImageSyncService
         import os
 
         thumbnail_path = product.get('thumbnail_url')
+        product_id = product.get('product_id')
+        seller_id = product.get('seller_user_id')
 
-        logger.info(f"🖼️ Image lookup - Product: {product['product_id']}, thumbnail_url (raw): {thumbnail_path}")
+        logger.info(f"🖼️ Image lookup - Product: {product_id}, thumbnail_url (raw): {thumbnail_path}")
 
         # Convert to absolute path if relative
         if thumbnail_path:
@@ -191,24 +196,33 @@ class BuyHandlers:
         else:
             thumbnail_path_abs = None
 
-        # Check if file exists (with absolute path)
-        if not thumbnail_path_abs or not os.path.exists(thumbnail_path_abs):
-            if thumbnail_path_abs:
-                logger.warning(f"⚠️ Image not found at: {thumbnail_path_abs}")
-            else:
-                logger.warning(f"⚠️ No thumbnail_url in product")
-
-            logger.info(f"🎨 Generating placeholder...")
-            placeholder_path = ImageUtils.create_or_get_placeholder(
-                product_title=product['title'],
-                category=product.get('category', 'General'),
-                product_id=product['product_id']
-            )
-            # Placeholder paths are already absolute
-            return placeholder_path if placeholder_path else None
-        else:
+        # Check if file exists locally
+        if thumbnail_path_abs and os.path.exists(thumbnail_path_abs):
             logger.info(f"✅ Using stored image: {thumbnail_path_abs}")
             return thumbnail_path_abs
+
+        # File missing - try to download from B2
+        if product_id and seller_id:
+            logger.warning(f"⚠️ Image not found locally: {thumbnail_path_abs}, trying B2...")
+            image_sync = ImageSyncService()
+            b2_thumbnail_path = image_sync.get_image_path_with_fallback(
+                product_id=product_id,
+                seller_id=seller_id,
+                image_type='thumb'
+            )
+
+            if b2_thumbnail_path and os.path.exists(b2_thumbnail_path):
+                logger.info(f"✅ Downloaded image from B2: {b2_thumbnail_path}")
+                return b2_thumbnail_path
+
+        # Still no image - generate placeholder
+        logger.info(f"🎨 Generating placeholder (B2 download failed or no product_id)...")
+        placeholder_path = ImageUtils.create_or_get_placeholder(
+            product_title=product['title'],
+            category=product.get('category', 'General'),
+            product_id=product_id or 'unknown'
+        )
+        return placeholder_path if placeholder_path else None
 
     def _build_product_keyboard(self, product: Dict, context: str, lang: str = 'fr',
                                  category_key: str = None, index: int = 0,
@@ -406,7 +420,7 @@ class BuyHandlers:
             # Get first category (ordered by products_count DESC = most popular)
             cursor.execute('SELECT name FROM categories ORDER BY products_count DESC LIMIT 1')
             first_category = cursor.fetchone()
-            conn.close()
+            put_connection(conn)
 
             if first_category:
                 category_name = first_category['name']
@@ -860,7 +874,7 @@ Contact support with your Order ID"""
                 ''', (category_key,))
 
             rows = cursor.fetchall()
-            conn.close()
+            put_connection(conn)
 
             # RealDictCursor already returns dict-like objects
             products = [dict(row) for row in rows]
@@ -931,7 +945,7 @@ Contact support with your Order ID"""
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('SELECT name FROM categories ORDER BY products_count DESC')
             all_categories = [row['name'] for row in cursor.fetchall()]
-            conn.close()
+            put_connection(conn)
 
             # Use existing helper
             keyboard_markup = self._build_product_keyboard(
@@ -1340,7 +1354,7 @@ Contact support with your Order ID"""
             cursor.execute('SELECT * FROM orders WHERE order_id = %s', (order_id, ))
             order = cursor.fetchone()
         except (psycopg2.Error, Exception) as e:
-            conn.close()
+            put_connection(conn)
             return
 
         if not order:
@@ -1353,7 +1367,7 @@ Contact support with your Order ID"""
 
         # Check if payment_id exists
         if not payment_id:
-            conn.close()
+            put_connection(conn)
             logger.error(f"No payment_id for order {order_id}")
             try:
                 error_keyboard = InlineKeyboardMarkup([[
@@ -1411,7 +1425,7 @@ Contact support with your Order ID"""
                     conn.commit()
                 except (psycopg2.Error, Exception) as e:
                     conn.rollback()
-                    conn.close()
+                    put_connection(conn)
                     return
 
                 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1523,7 +1537,7 @@ Contact support with your Order ID"""
                 except Exception as delivery_error:
                     logger.error(f"Error in automatic file delivery: {delivery_error}")
                 finally:
-                    conn.close()
+                    put_connection(conn)
 
                 # Send final confirmation with buttons
                 final_text = f"""🎉 **FÉLICITATIONS !**
@@ -1543,13 +1557,13 @@ Contact support with your Order ID"""
 
                 await query.message.reply_text(final_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
             else:
-                conn.close()
+                put_connection(conn)
                 status_text = (f"⏳ **PAYMENT IN PROGRESS**\n\n🔍 **Status:** {status}\n\n💡 Confirmations can take 5-30 min" if lang == 'en' else f"⏳ **PAIEMENT EN COURS**\n\n🔍 **Statut :** {status}\n\n💡 Les confirmations peuvent prendre 5-30 min")
                 keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(
                     "🔄 Refresh" if lang == 'en' else "🔄 Rafraîchir", callback_data=f'check_payment_{order_id}')]])
                 await query.message.reply_text(status_text, reply_markup=keyboard, parse_mode='Markdown')
         else:
-            conn.close()
+            put_connection(conn)
             error_keyboard = InlineKeyboardMarkup([[
                 InlineKeyboardButton("🔄 Retry" if lang == 'en' else "🔄 Réessayer",
                                      callback_data=f'check_payment_{order_id}')
@@ -1745,6 +1759,7 @@ Contact support with your Order ID"""
 
             # Store order in database
             from app.core.database_init import get_postgresql_connection
+            from app.core.db_pool import put_connection
 
             conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -1757,29 +1772,13 @@ Contact support with your Order ID"""
                   price_usd, payment_data.get('payment_id'), crypto_code, 'waiting',
                   payment_data.get('payment_id')))
             conn.commit()
-            conn.close()
+            put_connection(conn)
 
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 📢 NOTIFICATION VENDEUR : Nouvel achat initié
+            # 📢 NOTIFICATION VENDEUR : Désactivée ici, sera envoyée APRÈS confirmation paiement dans IPN
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            try:
-                buyer_name = query.from_user.first_name or query.from_user.username or "Acheteur anonyme"
-
-                await SellerNotifications.notify_new_purchase(
-                    bot=bot,
-                    seller_id=product.get('seller_user_id'),
-                    product_data={
-                        'product_id': product_id,
-                        'title': title
-                    },
-                    buyer_name=buyer_name,
-                    amount_eur=price_usd,
-                    crypto_code=crypto_code
-                )
-                logger.info(f"✅ New purchase notification sent to seller for order {order_id}")
-            except Exception as notif_error:
-                logger.error(f"❌ Failed to send new purchase notification: {notif_error}")
-                # Don't fail the purchase if notification fails
+            # La notification sera envoyée via notify_payment_confirmed() dans ipn_server.py
+            logger.info(f"⏳ Order created {order_id} - Notification will be sent after payment confirmation")
 
             # Display comprehensive payment info with QR code
             await self._display_payment_details(query, payment_data, title, price_usd, order_id, product_id, crypto_code, lang)
@@ -1996,7 +1995,7 @@ Contact support with your Order ID"""
             ''', (order_id, user_id, product_id, 'completed', datetime.now().isoformat()))
 
             conn.commit()
-            conn.close()
+            put_connection(conn)
 
             # Get product details for confirmation
             product = bot.get_product_by_id(product_id)

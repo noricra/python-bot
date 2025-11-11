@@ -93,38 +93,43 @@ Vous serez notifié dès confirmation blockchain.
             telegram_id = seller_id
             product_title = product_data.get('title', 'Produit')
 
-            # Calculate seller revenue (minus fees)
-            platform_fee_rate = 0.05  # 5% platform fee
-            seller_revenue = amount_eur * (1 - platform_fee_rate)
+            # Calculate seller revenue
+            # amount_eur est le montant total payé par l'acheteur (prix + frais)
+            # Vendeur reçoit = montant_total / 1.0278 (97.2951% du total)
+            from app.core import settings as core_settings
+            commission_percent = core_settings.PLATFORM_COMMISSION_PERCENT
+            seller_revenue = amount_eur / (1 + commission_percent / 100)
 
             notification_text = f"""
-✅ **PAIEMENT CONFIRMÉ !**
+**PAIEMENT CONFIRMÉ**
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
- **Produit:** {product_title}
- **Acheteur:** {buyer_name}
+**Produit:** {product_title}
+**Acheteur:** {buyer_name}
 
- **Montant total:** {amount_eur:.2f} $
- **Votre revenu:** {seller_revenue:.2f} $ _(après frais 5%)_
+**Prix du produit:** {seller_revenue:.2f} $
+**Frais acheteur:** {amount_eur - seller_revenue:.2f} $
+**Total payé:** {amount_eur:.2f} $
 
- **Crypto:** {crypto_code}
+**Votre revenu:** {seller_revenue:.2f} $
+**Crypto:** {crypto_code}
 """
 
             if tx_hash:
-                notification_text += f"🔗 **TX Hash:** `{tx_hash[:16]}...`\n"
+                notification_text += f"**TX Hash:** `{tx_hash[:16]}...`\n"
 
             notification_text += f"""
- **Confirmé le:** {datetime.now().strftime('%d/%m/%Y à %H:%M')}
+**Confirmé le:** {datetime.now().strftime('%d/%m/%Y à %H:%M')}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
- **Le produit a été automatiquement livré à l'acheteur !**
+**Le produit a été automatiquement livré à l'acheteur.**
 """
 
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(" Voir Mes Revenus", callback_data='my_revenue')],
-                [InlineKeyboardButton(" Analytics", callback_data='analytics_dashboard')]
+                [InlineKeyboardButton("Voir Mes Revenus", callback_data='my_revenue')],
+                [InlineKeyboardButton("Analytics", callback_data='analytics_dashboard')]
             ])
 
             await bot.application.bot.send_message(

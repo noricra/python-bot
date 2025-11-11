@@ -12,6 +12,7 @@ from io import BytesIO
 from app.services.chart_service import ChartService
 from app.services.export_service import ExportService
 from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import put_connection
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ class SellerAnalyticsEnhanced:
             """, (seller_id,))
             product_count = cursor.fetchone()
 
-            conn.close()
+            put_connection(conn)
 
             # ═══════════════════════════════════════════════════════
             # PRÉPARER LES DONNÉES POUR GRAPHIQUE
@@ -271,7 +272,7 @@ class SellerAnalyticsEnhanced:
             """, (seller_id,))
             product_performance = cursor.fetchall()
 
-            conn.close()
+            put_connection(conn)
 
             # ═══════════════════════════════════════════════════════
             # PRÉPARER LES DONNÉES
@@ -406,7 +407,7 @@ class SellerAnalyticsEnhanced:
             """, (seller_id,))
             orders = cursor.fetchall()
 
-            conn.close()
+            put_connection(conn)
 
             # ═══════════════════════════════════════════════════════
             # GÉNÉRER LE CSV
