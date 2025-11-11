@@ -70,8 +70,8 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'err_verify': "❌ Erreur de vérification. Réessayez.",
         'err_update_error': "❌ Erreur lors de la mise à jour.",
         'err_purchase_error': "❌ Erreur lors de l'achat.",
-        'err_invalid_price': "❌ Prix invalide ($5-5000).",
-        'err_price_update_error': "❌ Prix invalide ($5-5000) ou erreur mise à jour.",
+        'err_invalid_price': "❌ Prix invalide ($2-5000).",
+        'err_price_update_error': "❌ Prix invalide ($2-5000) ou erreur mise à jour.",
         'err_payment_creation': "💳 **Erreur de paiement**\n\n⚠️ Impossible de créer votre transaction crypto.\n\n🔧 **Solutions possibles :**\n• Vérifiez votre connexion internet\n• Réessayez avec une autre crypto\n• Contactez le support si le problème persiste\n\n💬 **Support disponible 24/7**",
 
         # Succès
@@ -162,8 +162,8 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'err_verify': "❌ Verification error. Please try again.",
         'err_update_error': "❌ Update error.",
         'err_purchase_error': "❌ Purchase error.",
-        'err_invalid_price': "❌ Invalid price ($5-5000).",
-        'err_price_update_error': "❌ Invalid price ($5-5000) or update error.",
+        'err_invalid_price': "❌ Invalid price ($2-5000).",
+        'err_price_update_error': "❌ Invalid price ($2-5000) or update error.",
         'err_payment_creation': "❌ Error creating payment.",
 
         # Success

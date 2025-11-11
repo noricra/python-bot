@@ -255,20 +255,32 @@ class PaymentService:
     def _enhance_payment_data(self, payment_data: Dict, exact_crypto_amount: float) -> Dict:
         """Enhance payment data with QR code, exact amount, and professional details"""
         try:
+            # CRITIQUE: Utiliser le montant EXACT retourné par NOWPayments (pay_amount)
+            # Si absent, fallback sur notre estimation (exact_crypto_amount)
+            nowpayments_amount = payment_data.get('pay_amount')
+            if nowpayments_amount:
+                # Utiliser le montant de NOWPayments (PRIORITAIRE)
+                final_amount = float(nowpayments_amount)
+                logger.info(f"Using NOWPayments exact amount: {final_amount}")
+            else:
+                # Fallback sur notre estimation
+                final_amount = exact_crypto_amount
+                logger.warning(f"NOWPayments pay_amount not found, using estimate: {final_amount}")
+
             # Add exact crypto amount
-            payment_data['exact_crypto_amount'] = exact_crypto_amount
-            payment_data['formatted_amount'] = f"{exact_crypto_amount:.8f}"
+            payment_data['exact_crypto_amount'] = final_amount
+            payment_data['formatted_amount'] = f"{final_amount:.8f}"
 
             # Generate QR code for payment address
             payment_address = payment_data.get('pay_address', '')
             if payment_address:
-                qr_code_base64 = self._generate_qr_code(payment_address, exact_crypto_amount, payment_data.get('pay_currency', ''))
+                qr_code_base64 = self._generate_qr_code(payment_address, final_amount, payment_data.get('pay_currency', ''))
                 payment_data['qr_code'] = qr_code_base64
 
             # Add professional payment details
             payment_data['payment_details'] = {
                 'address': payment_address,
-                'amount': exact_crypto_amount,
+                'amount': final_amount,
                 'currency': payment_data.get('pay_currency', '').upper(),
                 'network': payment_data.get('pay_currency', '').upper(),
                 'expires_at': payment_data.get('created_at', ''),  # Add expiration logic if needed
