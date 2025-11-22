@@ -4,7 +4,7 @@ import psycopg2
 import psycopg2.extras
 from typing import List, Dict, Optional
 from app.core.utils import logger
-from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import get_connection
 from app.core.db_pool import put_connection
 
 
@@ -16,7 +16,7 @@ class ReviewRepository:
 
     def _get_connection(self):
         """Create database connection"""
-        return get_postgresql_connection()
+        return get_connection()
 
     def get_product_reviews(self, product_id: str, limit: int = 5, offset: int = 0) -> List[Dict]:
         """

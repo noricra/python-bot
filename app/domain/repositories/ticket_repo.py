@@ -2,7 +2,7 @@ import psycopg2
 import psycopg2.extras
 from typing import Optional, Dict, List
 
-from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import get_connection
 from app.core.db_pool import put_connection
 
 
@@ -11,7 +11,7 @@ class SupportTicketRepository:
         pass
 
     def create_ticket(self, user_id: int, ticket_id: str, subject: str, message: str, client_email: str = None) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -27,7 +27,7 @@ class SupportTicketRepository:
             put_connection(conn)
 
     def list_user_tickets(self, user_id: int, limit: int = 10) -> List[Dict]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:

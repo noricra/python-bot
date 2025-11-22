@@ -3,8 +3,7 @@ import psycopg2.extras
 import logging
 from typing import Optional, Dict, List, Tuple
 
-from app.core.database_init import get_postgresql_connection
-from app.core.db_pool import put_connection
+from app.core.db_pool import get_connection, put_connection
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +13,7 @@ class ProductRepository:
         pass
 
     def insert_product(self, product: Dict) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -61,7 +60,7 @@ class ProductRepository:
             put_connection(conn)
 
     def get_product_by_id(self, product_id: str) -> Optional[Dict]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
@@ -81,7 +80,7 @@ class ProductRepository:
 
     def get_product_with_seller_info(self, product_id: str) -> Optional[Dict]:
         """Récupère un produit avec les informations du vendeur"""
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -103,7 +102,7 @@ class ProductRepository:
             put_connection(conn)
 
     def increment_views(self, product_id: str) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -119,7 +118,7 @@ class ProductRepository:
             put_connection(conn)
 
     def update_status(self, product_id: str, status: str) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -135,7 +134,7 @@ class ProductRepository:
             put_connection(conn)
 
     def delete_product(self, product_id: str, seller_user_id: int) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             # DEBUG: Check what exists
@@ -179,7 +178,7 @@ class ProductRepository:
             put_connection(conn)
 
     def get_products_by_seller(self, seller_user_id: int, limit: int = None, offset: int = 0) -> List[Dict]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
@@ -215,7 +214,7 @@ class ProductRepository:
 
     def count_products_by_seller(self, seller_user_id: int) -> int:
         """Count total products by seller"""
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -229,7 +228,7 @@ class ProductRepository:
             put_connection(conn)
 
     def get_products_by_category(self, category: str, limit: int = 10, offset: int = 0) -> List[Dict]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
@@ -253,7 +252,7 @@ class ProductRepository:
 
     def count_products_by_category(self, category: str) -> int:
         """Count total products in a category"""
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -268,7 +267,7 @@ class ProductRepository:
 
     def update_price(self, product_id: str, seller_user_id: int, price_usd: float) -> bool:
         """Update product price (USDT only, EUR shown in UI)"""
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -287,7 +286,7 @@ class ProductRepository:
             put_connection(conn)
 
     def update_title(self, product_id: str, seller_user_id: int, title: str) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -306,7 +305,7 @@ class ProductRepository:
             put_connection(conn)
 
     def update_description(self, product_id: str, seller_user_id: int, description: str) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -326,7 +325,7 @@ class ProductRepository:
 
     def update_product_file_url(self, product_id: str, file_url: str) -> bool:
         """Update product's main file URL after B2 upload"""
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -343,7 +342,7 @@ class ProductRepository:
             put_connection(conn)
 
     def get_all_products(self, limit: int = 100):
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
@@ -356,7 +355,7 @@ class ProductRepository:
             put_connection(conn)
 
     def count_products(self) -> int:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute("SELECT COUNT(*) as count FROM products")
@@ -377,7 +376,7 @@ class ProductRepository:
         Returns:
             Liste de produits correspondants
         """
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
@@ -427,7 +426,7 @@ class ProductRepository:
 
     def recalculate_category_counts(self) -> bool:
         """Recalcule tous les comptages de produits par catégorie"""
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             # Reset all counts to 0

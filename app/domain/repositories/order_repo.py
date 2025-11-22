@@ -2,7 +2,7 @@ import psycopg2
 import psycopg2.extras
 from typing import Optional, Dict, List
 
-from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import get_connection
 from app.core.db_pool import put_connection
 
 
@@ -11,7 +11,7 @@ class OrderRepository:
         pass
 
     def insert_order(self, order: Dict) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -47,7 +47,7 @@ class OrderRepository:
             put_connection(conn)
 
     def get_order_by_id(self, order_id: str) -> Optional[Dict]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
@@ -60,7 +60,7 @@ class OrderRepository:
             put_connection(conn)
 
     def update_payment_status(self, order_id: str, status: str) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             # Mettre à jour le statut
@@ -103,7 +103,7 @@ class OrderRepository:
             put_connection(conn)
 
     def get_orders_by_buyer(self, buyer_user_id: int) -> List[Dict]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
@@ -119,7 +119,7 @@ class OrderRepository:
             put_connection(conn)
 
     def get_orders_by_seller(self, seller_user_id: int) -> List[Dict]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
@@ -135,7 +135,7 @@ class OrderRepository:
             put_connection(conn)
 
     def check_user_purchased_product(self, buyer_user_id: int, product_id: str) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -150,7 +150,7 @@ class OrderRepository:
             put_connection(conn)
 
     def increment_download_count(self, product_id: str, buyer_user_id: int) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -170,7 +170,7 @@ class OrderRepository:
         return self.insert_order(order)
 
     def count_orders(self) -> int:
-          conn = get_postgresql_connection()
+          conn = get_connection()
           cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
           try:
               cursor.execute('SELECT COUNT(*) as count FROM orders')
@@ -181,10 +181,11 @@ class OrderRepository:
               put_connection(conn)
 
     def get_total_revenue(self) -> float:
-          conn = get_postgresql_connection()
+          """Get total revenue from all completed orders (seller revenue only)"""
+          conn = get_connection()
           cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
           try:
-              cursor.execute('SELECT SUM(seller_revenue) as total FROM orders WHERE payment_status = %s', ('completed',))
+              cursor.execute('SELECT SUM(seller_revenue_usd) as total FROM orders WHERE payment_status = %s', ('completed',))
               result = cursor.fetchone()['total']
               return result if result else 0.0
           except psycopg2.Error:

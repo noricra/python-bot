@@ -2,7 +2,7 @@ import psycopg2
 import psycopg2.extras
 from typing import Optional, List, Tuple
 
-from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import get_connection
 from app.core.db_pool import put_connection
 
 
@@ -12,7 +12,7 @@ class PayoutRepository:
 
     def insert_payout(self, seller_user_id: int, order_ids: List[str], total_amount_usdt: float,
                      seller_wallet_address: str, payment_currency: str = 'USDT') -> Optional[int]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             import json
@@ -38,7 +38,7 @@ class PayoutRepository:
             put_connection(conn)
 
     def mark_all_pending_as_completed(self) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -56,7 +56,7 @@ class PayoutRepository:
             put_connection(conn)
 
     def list_recent_for_seller(self, seller_user_id: int, limit: int = 10) -> List[Tuple]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -78,7 +78,7 @@ class PayoutRepository:
 
     def get_pending_payouts(self, limit: int = 20) -> List[dict]:
         """Get pending payouts for admin with full details"""
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -102,7 +102,7 @@ class PayoutRepository:
 
     def get_all_payouts(self, limit: int = 50) -> List[dict]:
         """Get all payouts for export"""
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -124,7 +124,7 @@ class PayoutRepository:
 
     def mark_payout_completed(self, payout_id: int) -> bool:
         """Mark a specific payout as completed"""
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(

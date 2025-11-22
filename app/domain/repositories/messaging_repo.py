@@ -2,7 +2,7 @@ import psycopg2
 import psycopg2.extras
 from typing import Optional, List, Dict
 
-from app.core.database_init import get_postgresql_connection
+from app.core.db_pool import get_connection
 from app.core.db_pool import put_connection
 from app.core import settings as core_settings
 
@@ -13,7 +13,7 @@ class MessagingRepository:
 
     # Tickets
     def get_or_create_ticket(self, buyer_user_id: int, order_id: str, seller_user_id: int, subject: str) -> Optional[str]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -38,7 +38,7 @@ class MessagingRepository:
             put_connection(conn)
 
     def set_ticket_status(self, ticket_id: str, status: str) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute('UPDATE support_tickets SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE ticket_id = %s', (status, ticket_id))
@@ -52,7 +52,7 @@ class MessagingRepository:
 
     # Messages
     def insert_message(self, ticket_id: str, sender_user_id: int, sender_role: str, message: str) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(
@@ -69,7 +69,7 @@ class MessagingRepository:
             put_connection(conn)
 
     def list_messages(self, ticket_id: str, limit: int = 10) -> List[Dict]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
@@ -85,7 +85,7 @@ class MessagingRepository:
             put_connection(conn)
 
     def get_ticket_participants(self, ticket_id: str) -> Optional[Dict]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
@@ -98,7 +98,7 @@ class MessagingRepository:
             put_connection(conn)
 
     def escalate_ticket(self, ticket_id: str, admin_user_id: int) -> bool:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute('UPDATE support_tickets SET assigned_to_user_id = %s, status = %s, updated_at = CURRENT_TIMESTAMP WHERE ticket_id = %s', (admin_user_id, 'pending_admin', ticket_id))
@@ -111,7 +111,7 @@ class MessagingRepository:
             put_connection(conn)
 
     def list_recent_tickets(self, limit: int = 10) -> List[Dict]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
@@ -123,7 +123,7 @@ class MessagingRepository:
             put_connection(conn)
 
     def get_ticket(self, ticket_id: str) -> Optional[Dict]:
-        conn = get_postgresql_connection()
+        conn = get_connection()
         # PostgreSQL uses RealDictCursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
