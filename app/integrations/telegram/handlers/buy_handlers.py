@@ -167,43 +167,71 @@ class BuyHandlers:
 
         return caption
 
-    def _get_product_image_or_placeholder(self, product: Dict) -> str:
+    def _get_product_image_for_telegram(self, product: Dict):
         """
-        Get product image path or generate placeholder
-        NOW WITH B2 FALLBACK: Downloads from B2 if local file missing
+        Get product image optimized for Telegram with multi-layer caching (Railway-proof)
+
+        Priority order (fastest to slowest):
+        1. Telegram file_id (instant, free, survives Railway restarts)
+        2. Local cache (fast)
+        3. Download from B2 (first time only)
+        4. Placeholder (fallback)
 
         Args:
             product: Product dict
 
         Returns:
-            Path to image file (absolute path)
+            tuple: (image_source, is_file_id)
+                - image_source: Either Telegram file_id (str) or local file path (str)
+                - is_file_id: True if Telegram file_id, False if local path
         """
         from app.core.image_utils import ImageUtils
         from app.core.settings import get_absolute_path
         from app.services.image_sync_service import ImageSyncService
+        from app.services.telegram_cache_service import get_telegram_cache_service
         import os
 
-        thumbnail_path = product.get('thumbnail_url')
         product_id = product.get('product_id')
         seller_id = product.get('seller_user_id')
+        thumbnail_path = product.get('thumbnail_url')
 
-        logger.info(f"🖼️ Image lookup - Product: {product_id}, thumbnail_url (raw): {thumbnail_path}")
+        logger.info(f"🖼️ Image lookup - Product: {product_id}")
 
-        # Convert to absolute path if relative
+        # 1. PRIORITY: Check Telegram file_id cache (instantaneous, free)
+        if product_id:
+            telegram_cache = get_telegram_cache_service()
+            file_id = telegram_cache.get_product_image_file_id(product_id, 'thumb')
+
+            if file_id:
+                logger.info(f"⚡ Using cached Telegram file_id: {product_id}")
+                return (file_id, True)
+
+        # 2. Check if thumbnail_url is already a B2 URL (starts with https://)
+        if thumbnail_path and thumbnail_path.startswith('https://'):
+            logger.info(f"🌐 Thumbnail is B2 URL: {thumbnail_path}")
+            # Try to download from B2 to local cache
+            if product_id and seller_id:
+                image_sync = ImageSyncService()
+                local_path = image_sync.get_image_path_with_fallback(
+                    product_id=product_id,
+                    seller_id=seller_id,
+                    image_type='thumb'
+                )
+                if local_path and os.path.exists(local_path):
+                    logger.info(f"📥 Downloaded from B2 to cache: {local_path}")
+                    return (local_path, False)
+
+        # 3. Check local cache (legacy or recent downloads)
         if thumbnail_path:
-            thumbnail_path_abs = get_absolute_path(thumbnail_path)
-            logger.info(f"📁 Resolved absolute path: {thumbnail_path_abs}")
-        else:
-            thumbnail_path_abs = None
+            thumbnail_path_abs = get_absolute_path(thumbnail_path) if not thumbnail_path.startswith('https://') else None
 
-        # Check if file exists locally
-        if thumbnail_path_abs and os.path.exists(thumbnail_path_abs):
-            logger.info(f"✅ Using stored image: {thumbnail_path_abs}")
-            return thumbnail_path_abs
+            if thumbnail_path_abs and os.path.exists(thumbnail_path_abs):
+                logger.info(f"✅ Using cached local image: {thumbnail_path_abs}")
+                return (thumbnail_path_abs, False)
 
-        # File missing - try to download from B2
+        # 4. Try to download from B2 if we have the IDs
         if product_id and seller_id:
-            logger.warning(f"⚠️ Image not found locally: {thumbnail_path_abs}, trying B2...")
+            logger.warning(f"⚠️ Image not in cache, downloading from B2...")
             image_sync = ImageSyncService()
             b2_thumbnail_path = image_sync.get_image_path_with_fallback(
                 product_id=product_id,
@@ -212,17 +240,131 @@ class BuyHandlers:
             )
 
             if b2_thumbnail_path and os.path.exists(b2_thumbnail_path):
-                logger.info(f"✅ Downloaded image from B2: {b2_thumbnail_path}")
-                return b2_thumbnail_path
+                logger.info(f"✅ Downloaded from B2: {b2_thumbnail_path}")
+                return (b2_thumbnail_path, False)
 
-        # Still no image - generate placeholder
-        logger.info(f"🎨 Generating placeholder (B2 download failed or no product_id)...")
+        # 5. FALLBACK: Generate placeholder
+        logger.info(f"🎨 Generating placeholder for {product_id}")
         placeholder_path = ImageUtils.create_or_get_placeholder(
             product_title=product['title'],
             category=product.get('category', 'General'),
             product_id=product_id or 'unknown'
         )
-        return placeholder_path if placeholder_path else None
+        return (placeholder_path, False) if placeholder_path else (None, False)
+
+    async def _send_product_photo_with_cache(self, query_or_message, product: Dict, caption: str, keyboard_markup, parse_mode='HTML'):
+        """
+        Send product photo with automatic Telegram file_id caching
+
+        This function:
+        1. Checks if Telegram file_id is cached (instant)
+        2. If not, sends photo from local/B2 and caches the file_id
+        3. Automatically saves file_id for future use (Railway-proof)
+
+        Args:
+            query_or_message: CallbackQuery or Message object
+            product: Product dict
+            caption: Photo caption
+            keyboard_markup: Inline keyboard
+            parse_mode: Parse mode (default: HTML)
+
+        Returns:
+            Sent message object
+        """
+        from telegram import InputMediaPhoto
+        from app.services.telegram_cache_service import get_telegram_cache_service
+        import os
+
+        product_id = product.get('product_id')
+
+        # Get image (file_id or local path)
+        image_source, is_file_id = self._get_product_image_for_telegram(product)
+
+        if not image_source:
+            logger.error(f"❌ No image available for product {product_id}")
+            return None
+
+        try:
+            # Determine if this is an edit or a new message
+            is_edit = hasattr(query_or_message, 'edit_message_media')
+
+            if is_file_id:
+                # Use cached file_id (instant, no upload)
+                logger.info(f"⚡ Sending with cached file_id: {product_id}")
+
+                if is_edit:
+                    sent_message = await query_or_message.edit_message_media(
+                        media=InputMediaPhoto(media=image_source, caption=caption, parse_mode=parse_mode),
+                        reply_markup=keyboard_markup
+                    )
+                else:
+                    sent_message = await query_or_message.reply_photo(
+                        photo=image_source,
+                        caption=caption,
+                        parse_mode=parse_mode,
+                        reply_markup=keyboard_markup
+                    )
+            else:
+                # Send from local file and cache the file_id
+                logger.info(f"📤 Sending from local file: {image_source}")
+
+                if not os.path.exists(image_source):
+                    logger.error(f"❌ File not found: {image_source}")
+                    return None
+
+                with open(image_source, 'rb') as photo_file:
+                    if is_edit:
+                        sent_message = await query_or_message.edit_message_media(
+                            media=InputMediaPhoto(media=photo_file, caption=caption, parse_mode=parse_mode),
+                            reply_markup=keyboard_markup
+                        )
+                    else:
+                        sent_message = await query_or_message.reply_photo(
+                            photo=photo_file,
+                            caption=caption,
+                            parse_mode=parse_mode,
+                            reply_markup=keyboard_markup
+                        )
+
+                # Extract and cache the file_id from sent message
+                if sent_message and product_id:
+                    try:
+                        # Get the file_id from the sent photo
+                        if hasattr(sent_message, 'photo') and sent_message.photo:
+                            file_id = sent_message.photo[-1].file_id  # Largest size
+                            telegram_cache = get_telegram_cache_service()
+                            telegram_cache.save_telegram_file_id(product_id, file_id, 'thumb')
+                            logger.info(f"💾 Cached new file_id for {product_id}")
+                    except Exception as cache_error:
+                        logger.error(f"⚠️ Failed to cache file_id: {cache_error}")
+
+            return sent_message
+
+        except Exception as e:
+            logger.error(f"❌ Error sending product photo: {e}")
+            return None
+
+    def _get_product_image_or_placeholder(self, product: Dict) -> str:
+        """
+        LEGACY WRAPPER: Get product image path (for backward compatibility)
+        Prefer using _get_product_image_for_telegram() for new code
+
+        Args:
+            product: Product dict
+
+        Returns:
+            Path to image file (absolute path)
+        """
+        image_source, is_file_id = self._get_product_image_for_telegram(product)
+
+        # If it's a file_id, we can't return it as a path
+        # This shouldn't happen with the legacy wrapper, but handle it gracefully
+        if is_file_id:
+            logger.warning(f"⚠️ Legacy wrapper got file_id, need to re-fetch as file")
+            # Return None to force fallback behavior
+            return None
+
+        return image_source
 
     def _build_product_keyboard(self, product: Dict, context: str, lang: str = 'fr',
                                  category_key: str = None, index: int = 0,
@@ -542,13 +684,13 @@ class BuyHandlers:
         """
         from app.core.settings import settings
 
-        # Calcul des frais (2.78% de frais NowPayments)
-        fees = round(price_usd * 0.0278, 2)
+        # Calcul des frais ($1.49 fixe si < $48, sinon 3.14%)
+        fees = round(settings.calculate_platform_commission(price_usd), 2)
         total = round(price_usd + fees, 2)
 
         # Construire la liste des cryptos depuis settings.CRYPTO_DISPLAY_INFO
         crypto_lines = []
-        priority_order = ['btc', 'eth', 'sol', 'usdc', 'usdt']  # Ordre d'affichage
+        priority_order = ['btc', 'eth', 'sol', 'usdcsol', 'usdtsol']  # Ordre d'affichage
 
         for crypto_code in priority_order:
             if crypto_code in settings.CRYPTO_DISPLAY_INFO:
@@ -576,7 +718,7 @@ class BuyHandlers:
 {crypto_list_text}
 
 ────────────────
-💡 <b>Recommandé : Solana</b> (le plus rapide)"""
+💡 <b>Recommandé : USDT</b> (le plus rapide)"""
         else:
             return f"""💳 <b>CHOOSE YOUR CRYPTO</b>
 
@@ -592,7 +734,7 @@ class BuyHandlers:
 {crypto_list_text}
 
 ────────────────
-💡 <b>Recommended: Solana</b> (fastest)"""
+💡 <b>Recommended: USDT</b> (fastest)"""
 
     def _build_payment_confirmation_text(self, title: str, price_usd: float,
                                          exact_amount: str, crypto_code: str, payment_address: str,
@@ -613,11 +755,24 @@ class BuyHandlers:
         Returns:
             Texte formaté pour la confirmation de paiement (HTML)
         """
-        crypto_upper = crypto_code.upper()
-        network_display = network or crypto_upper
+        # Get proper display name for crypto
+        from app.core.settings import settings
+        crypto_lower = crypto_code.lower()
 
-        # Calcul des frais (2.78%)
-        fees = round(price_usd * 0.0278, 2)
+        # Map crypto codes to display names
+        crypto_display_map = {
+            'usdcsol': 'USDC (SOL)',
+            'usdtsol': 'USDT (SOL)',
+            'btc': 'BTC',
+            'eth': 'ETH',
+            'sol': 'SOL'
+        }
+
+        crypto_display = crypto_display_map.get(crypto_lower, crypto_code.upper())
+        network_display = network or crypto_display
+
+        # Calcul des frais ($1.49 fixe si < $48, sinon 3.14%)
+        fees = round(settings.calculate_platform_commission(price_usd), 2)
         total_usd = round(price_usd + fees, 2)
 
         if lang == 'fr':
@@ -626,7 +781,7 @@ Prix total : <b>${total_usd:.2f}</b>
 <i>Frais inclus</i>
 
 <b>Envoyez EXACTEMENT :</b>
-<code>{exact_amount} {crypto_upper}</code>
+<code>{exact_amount} {crypto_display}</code>
 
 <b>ADRESSE DE PAIEMENT {network_display} :</b>
 <code>{payment_address}</code>
@@ -645,7 +800,7 @@ Total Price: <b>${total_usd:.2f}</b>
 <i>Fees included</i>
 
 <b>Send EXACTLY:</b>
-<code>{exact_amount} {crypto_upper}</code>
+<code>{exact_amount} {crypto_display}</code>
 
 <b>{network_display} PAYMENT ADDRESS:</b>
 <code>{payment_address}</code>
@@ -1073,21 +1228,11 @@ Contact support with your Order ID"""
 
     async def _show_product_visual_v2(self, bot, query, product: dict, lang: str, category_key: str = None, index: int = None):
         """
-        V2: Visual product display with FULL description + V2 features
+        V2: Visual product display with FULL description + V2 features + Telegram file_id caching
         Uses helper functions + supports "Réduire" button with context
         """
-        from telegram import InputMediaPhoto
-        import os
-
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # V2: USE HELPER FUNCTIONS
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
         # Build caption with FULL description (mode='full')
         caption = self._build_product_caption(product, mode='full', lang=lang)
-
-        # Get image or placeholder
-        thumbnail_path = self._get_product_image_or_placeholder(product)
 
         # Build keyboard using helper with 'details' context
         # This will include: ACHETER, Avis, Preview, Réduire (if context provided), Précédent
@@ -1100,27 +1245,27 @@ Contact support with your Order ID"""
         )
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # DISPLAY
+        # DISPLAY WITH TELEGRAM FILE_ID CACHE (Railway-proof, instant)
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
         try:
-            if thumbnail_path and os.path.exists(thumbnail_path):
-                with open(thumbnail_path, 'rb') as photo_file:
-                    await query.edit_message_media(
-                        media=InputMediaPhoto(
-                            media=photo_file,
-                            caption=caption,
-                            parse_mode='HTML'
-                        ),
-                        reply_markup=keyboard_markup
-                    )
-            else:
+            # Use new cache-enabled function (auto-saves file_id)
+            sent_message = await self._send_product_photo_with_cache(
+                query_or_message=query,
+                product=product,
+                caption=caption,
+                keyboard_markup=keyboard_markup,
+                parse_mode='HTML'
+            )
+
+            if not sent_message:
                 # Fallback to text only if image completely fails
                 await query.edit_message_text(
                     caption,
                     reply_markup=keyboard_markup,
                     parse_mode='HTML'
                 )
+
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error displaying product details V2: {e}")
             # Final fallback
@@ -1283,16 +1428,28 @@ Contact support with your Order ID"""
         keyboard_markup = InlineKeyboardMarkup(keyboard)
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # DISPLAY
+        # DISPLAY WITH TELEGRAM FILE_ID CACHE
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            await update.message.reply_photo(
-                photo=open(thumbnail_path, 'rb'),
+        try:
+            sent_message = await self._send_product_photo_with_cache(
+                query_or_message=update.message,
+                product=product,
                 caption=caption_with_header,
-                reply_markup=keyboard_markup,
+                keyboard_markup=keyboard_markup,
                 parse_mode='HTML'
             )
-        else:
+
+            if not sent_message:
+                # Fallback to text only
+                await update.message.reply_text(
+                    caption_with_header,
+                    reply_markup=keyboard_markup,
+                    parse_mode='HTML'
+                )
+
+        except Exception as e:
+            logger.error(f"Error displaying search carousel: {e}")
+            # Fallback to text only
             await update.message.reply_text(
                 caption_with_header,
                 reply_markup=keyboard_markup,
@@ -1300,43 +1457,44 @@ Contact support with your Order ID"""
             )
 
     async def show_product_details_from_search(self, bot, update, product):
-        """Affiche les détails d'un produit trouvé par recherche - STRUCTURE IDENTIQUE À MODE 'FULL'"""
+        """Affiche les détails d'un produit trouvé par recherche avec cache Telegram file_id"""
         user_id = update.effective_user.id
         user_data = bot.user_repo.get_user(user_id)
         lang = user_data['language_code'] if user_data else 'fr'
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # CAPTION : Utiliser la fonction unifiée en mode 'full'
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Build caption with FULL description
         caption = self._build_product_caption(product, mode='full', lang=lang)
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # IMAGE : Utiliser la fonction unifiée
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        thumbnail_path = self._get_product_image_or_placeholder(product)
-
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # KEYBOARD : Utiliser la fonction unifiée avec contexte 'search'
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Build keyboard with 'search' context
         keyboard_markup = self._build_product_keyboard(
             product,
-            context='search',  # Contexte spécifique pour recherche
+            context='search',
             lang=lang
         )
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # DISPLAY : Envoyer avec image ou texte
+        # DISPLAY WITH TELEGRAM FILE_ID CACHE (Railway-proof, instant)
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            with open(thumbnail_path, 'rb') as photo_file:
-                await update.message.reply_photo(
-                    photo=photo_file,
-                    caption=caption,
+        try:
+            sent_message = await self._send_product_photo_with_cache(
+                query_or_message=update.message,
+                product=product,
+                caption=caption,
+                keyboard_markup=keyboard_markup,
+                parse_mode='HTML'
+            )
+
+            if not sent_message:
+                # Fallback to text only if image completely fails
+                await update.message.reply_text(
+                    caption,
                     reply_markup=keyboard_markup,
-                    parse_mode='HTML'  # Mode 'full' utilise HTML
+                    parse_mode='HTML'
                 )
-        else:
-            # Fallback to text only if image completely fails
+
+        except Exception as e:
+            logger.error(f"Error displaying search result: {e}")
+            # Fallback to text only
             await update.message.reply_text(
                 caption,
                 reply_markup=keyboard_markup,
@@ -1670,17 +1828,19 @@ Contact support with your Order ID"""
                     callback_data=f'pay_crypto_sol_{product_id}'
                 )])
 
-            # Row 3: USDC + USDT (stablecoins)
+            # Row 3: USDC + USDT (Solana stablecoins)
             row3 = []
-            if 'usdc' in settings.CRYPTO_DISPLAY_INFO:
+            if 'usdcsol' in settings.CRYPTO_DISPLAY_INFO:
+                display_name, time_info = settings.CRYPTO_DISPLAY_INFO['usdcsol']
                 row3.append(InlineKeyboardButton(
-                    " USDC",
-                    callback_data=f'pay_crypto_usdc_{product_id}'
+                    f"USDC",
+                    callback_data=f'pay_crypto_usdcsol_{product_id}'
                 ))
-            if 'usdt' in settings.CRYPTO_DISPLAY_INFO:
+            if 'usdtsol' in settings.CRYPTO_DISPLAY_INFO:
+                display_name, time_info = settings.CRYPTO_DISPLAY_INFO['usdtsol']
                 row3.append(InlineKeyboardButton(
-                    "₮ USDT",
-                    callback_data=f'pay_crypto_usdt_{product_id}'
+                    f"USDT",
+                    callback_data=f'pay_crypto_usdtsol_{product_id}'
                 ))
             if row3:
                 keyboard.append(row3)
@@ -1734,9 +1894,13 @@ Contact support with your Order ID"""
             title = product.get('title', 'Produit')
             price_usd = product.get('price_usd', 0)
 
-            # Calculate total with platform fees (2.78%)
-            platform_fee = round(price_usd * 0.0278, 2)
+            # Calculate total with platform fees ($1.49 if < $48, else 3.14%)
+            platform_fee = round(core_settings.calculate_platform_commission(price_usd), 2)
             total_amount = round(price_usd + platform_fee, 2)
+
+            # Calculate seller revenue (product price without platform fee)
+            # Seller gets 100% of product_price_usd, platform gets platform_fee
+            seller_revenue_usd = price_usd
 
             # Create order in database
             order_id = f"TBO-{user_id}-{int(time.time())}"
@@ -1767,12 +1931,13 @@ Contact support with your Order ID"""
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute('''
                 INSERT INTO orders (order_id, buyer_user_id, seller_user_id, product_id,
-                                  product_title, product_price_usd, payment_id, payment_currency,
+                                  product_title, product_price_usd, seller_revenue_usd,
+                                  platform_commission_usd, payment_id, payment_currency,
                                   payment_status, created_at, nowpayments_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, %s)
             ''', (order_id, user_id, product.get('seller_user_id'), product_id, title,
-                  price_usd, payment_data.get('payment_id'), crypto_code, 'waiting',
-                  payment_data.get('payment_id')))
+                  price_usd, seller_revenue_usd, platform_fee, payment_data.get('payment_id'),
+                  crypto_code, 'waiting', payment_data.get('payment_id')))
             conn.commit()
             put_connection(conn)
 
@@ -1831,19 +1996,21 @@ Contact support with your Order ID"""
             import os
             from io import BytesIO
             from app.core.settings import settings
+            from app.core.file_utils import download_product_file_from_b2
 
-            main_path = product.get('main_file_path') or ''
-            logger.info(f"[Preview] Product main_file_path: {main_path}")
-            logger.info(f"[Preview] UPLOADS_DIR: {settings.UPLOADS_DIR}")
+            main_file_url = product.get('main_file_url') or ''
+            logger.info(f"[Preview] Product main_file_url: {main_file_url}")
 
-            if isinstance(main_path, str) and main_path:
-                # Construire le chemin complet
-                full_path = os.path.join(settings.UPLOADS_DIR, main_path)
-                logger.info(f"[Preview] Full path constructed: {full_path}")
-                logger.info(f"[Preview] File exists check: {os.path.exists(full_path)}")
+            if isinstance(main_file_url, str) and main_file_url:
+                # Download file from B2 temporarily
+                logger.info(f"[Preview] Downloading file from B2: {main_file_url}")
+                full_path = await download_product_file_from_b2(main_file_url, product_id)
 
-                if os.path.exists(full_path):
-                    file_ext = main_path.lower().split('.')[-1]
+                if not full_path or not os.path.exists(full_path):
+                    logger.warning(f"[Preview] Failed to download file from B2: {main_file_url}")
+                else:
+                    logger.info(f"[Preview] File downloaded successfully to: {full_path}")
+                    file_ext = main_file_url.lower().split('.')[-1]
 
                     # ═══════════════════════════════════════
                     # PDF PREVIEW (first page as image)
@@ -1946,8 +2113,20 @@ Contact support with your Order ID"""
                             media_preview_sent = True
                         except (psycopg2.Error, Exception) as e:
                             logger.error(f"[Archive Preview] Error: {e}")
-                else:
-                    logger.warning(f"[Preview] File does not exist: {full_path}")
+
+                    # Cleanup temporary file after preview generation
+                    try:
+                        if os.path.exists(full_path):
+                            # Remove downloaded file
+                            os.remove(full_path)
+                            # Remove temp directory if empty
+                            temp_dir = os.path.dirname(full_path)
+                            if os.path.exists(temp_dir) and not os.listdir(temp_dir):
+                                os.rmdir(temp_dir)
+                            logger.info(f"[Preview] Temporary file cleaned up: {full_path}")
+                    except Exception as e:
+                        logger.warning(f"[Preview] Failed to cleanup temp file: {e}")
+
         except (psycopg2.Error, Exception) as e:
             logger.error(f"[Preview] General error: {e}")
 

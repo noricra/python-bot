@@ -1224,7 +1224,7 @@ class SellHandlers:
                 # Remove $ symbol if present, then parse
                 price_text_clean = message_text.replace('$', '').replace(',', '.').strip()
                 price = float(price_text_clean)
-                if price < 2 or price > 5000:
+                if price < 10 or price > 5000:
                     raise ValueError()
 
                 # 🔍 DEBUG: État AVANT modification
@@ -1263,7 +1263,7 @@ class SellHandlers:
                     parse_mode='Markdown'
                 )
             except (ValueError, TypeError):
-                await update.message.reply_text("❌ Prix invalide. Entrez un nombre entre 2 et $5000.")
+                await update.message.reply_text("❌ Prix invalide. Entrez un nombre entre $10 et $5000.")
 
     async def _show_category_selection(self, bot, update, lang):
         """Affiche le menu de sélection de catégorie lors de l'ajout de produit"""
@@ -1362,7 +1362,7 @@ class SellHandlers:
             'title': f"📝 **Étape 1/6 :** Titre du produit\n\n{i18n(lang, 'product_step1_prompt')}",
             'description': f"📋 **Étape 2/6 :** Description du produit\n\nTitre actuel: {product_data.get('title', 'N/A')}",
             'category': None,  # Will show category selection
-            'price': f"💰 **Étape 4/6 :** Prix en $\n\nCatégorie actuelle: {product_data.get('category', 'N/A')}",
+            'price': f"💰 **Étape 4/6 :** Prix en $ (minimum $10)\n\nCatégorie actuelle: {product_data.get('category', 'N/A')}",
             'cover_image': (
                 f"📸 **Étape 5/6 :** Image de couverture (optionnel)\n\n"
                 f"Prix actuel: ${product_data.get('price_usd', 0):.2f}\n\n"
@@ -1580,12 +1580,13 @@ class SellHandlers:
             await update.message.reply_text("Erreur lors du traitement du fichier")
 
     def _rename_product_images(self, seller_id, temp_product_id, final_product_id, product_data):
-        """Rename product image directory from temp to final product_id and UPDATE DATABASE"""
+        """Rename product image directory, upload to B2, and UPDATE DATABASE with B2 URLs"""
         try:
             import shutil
             from app.core.database_init import get_postgresql_connection
             from app.core.db_pool import put_connection
             from app.core import settings as core_settings
+            from app.services.b2_storage_service import B2StorageService
 
             old_dir = os.path.join('data', 'product_images', str(seller_id), temp_product_id)
             new_dir = os.path.join('data', 'product_images', str(seller_id), final_product_id)
@@ -1595,21 +1596,38 @@ class SellHandlers:
                 shutil.move(old_dir, new_dir)
                 logger.info(f"📁 Renamed directory: {old_dir} -> {new_dir}")
 
-                # Update paths in product_data (for logging)
-                new_cover_path = None
-                new_thumbnail_url = None
+                # Initialize B2 service
+                b2_service = B2StorageService()
 
-                if 'cover_image_url' in product_data:
-                    new_cover_path = product_data['cover_image_url'].replace(
-                        temp_product_id, final_product_id
-                    )
-                if 'thumbnail_url' in product_data:
-                    new_thumbnail_url = product_data['thumbnail_url'].replace(
-                        temp_product_id, final_product_id
-                    )
+                # Upload images to B2 and get URLs
+                cover_b2_url = None
+                thumb_b2_url = None
 
-                # 🔧 CRITICAL FIX: Update paths in DATABASE
-                if new_cover_path or new_thumbnail_url:
+                cover_local_path = os.path.join(new_dir, 'cover.jpg')
+                thumb_local_path = os.path.join(new_dir, 'thumb.jpg')
+
+                # Upload cover image to B2
+                if os.path.exists(cover_local_path):
+                    cover_b2_key = f"products/{final_product_id}/cover.jpg"
+                    cover_b2_url = b2_service.upload_file(cover_local_path, cover_b2_key)
+                    if cover_b2_url:
+                        logger.info(f"📤 Cover uploaded to B2: {cover_b2_url}")
+                    else:
+                        logger.warning(f"⚠️ Failed to upload cover to B2, using local path")
+                        cover_b2_url = cover_local_path
+
+                # Upload thumbnail to B2
+                if os.path.exists(thumb_local_path):
+                    thumb_b2_key = f"products/{final_product_id}/thumb.jpg"
+                    thumb_b2_url = b2_service.upload_file(thumb_local_path, thumb_b2_key)
+                    if thumb_b2_url:
+                        logger.info(f"📤 Thumbnail uploaded to B2: {thumb_b2_url}")
+                    else:
+                        logger.warning(f"⚠️ Failed to upload thumbnail to B2, using local path")
+                        thumb_b2_url = thumb_local_path
+
+                # Update DATABASE with B2 URLs (or local paths as fallback)
+                if cover_b2_url or thumb_b2_url:
                     conn = get_postgresql_connection()
                     cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                     try:
@@ -1619,21 +1637,21 @@ class SellHandlers:
                             SET cover_image_url = %s, thumbnail_url = %s
                             WHERE product_id = %s
                             ''',
-                            (new_cover_path, new_thumbnail_url, final_product_id)
+                            (cover_b2_url, thumb_b2_url, final_product_id)
                         )
                         conn.commit()
-                        logger.info(f"✅ Updated DB paths: cover={new_cover_path}, thumb={new_thumbnail_url}")
+                        logger.info(f"✅ Updated DB with B2 URLs: cover={cover_b2_url}, thumb={thumb_b2_url}")
                     except Exception as db_error:
                         logger.error(f"❌ DB update failed: {db_error}")
                         conn.rollback()
                     finally:
                         put_connection(conn)
 
-                logger.info(f"✅ Renamed product images: {temp_product_id} -> {final_product_id}")
+                logger.info(f"✅ Product images processed: {temp_product_id} -> {final_product_id} (B2 + local cache)")
             else:
                 logger.warning(f"⚠️ Old directory not found: {old_dir}")
         except (psycopg2.Error, Exception) as e:
-            logger.error(f"❌ Error renaming product images: {e}")
+            logger.error(f"❌ Error processing product images: {e}")
 
     async def process_seller_settings(self, bot, update, message_text: str):
         """Process paramètres vendeur"""
@@ -2131,10 +2149,10 @@ class SellHandlers:
                 query,
                 f"💰 **Modifier le prix de:** {product.get('title', 'N/A')}\n\n"
                 f"Prix actuel: ${product.get('price_usd', 0):.2f}\n\n"
-                f"Entrez le nouveau prix en $ (1-5000):" if lang == 'fr' else
+                f"Entrez le nouveau prix en $ (10-5000):" if lang == 'fr' else
                 f"💰 **Edit price for:** {product.get('title', 'N/A')}\n\n"
                 f"Current price: ${product.get('price_usd', 0):.2f}\n\n"
-                f"Enter new price in $ (1-5000):",
+                f"Enter new price in $ (10-5000):",
                 InlineKeyboardMarkup([[
                     InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data=f'edit_product_{product_id}')
                 ]])
@@ -2312,7 +2330,7 @@ class SellHandlers:
             # Parse and validate price (remove $ symbol if present)
             price_text_clean = price_text.replace('$', '').replace(',', '.').strip()
             price_usd = float(price_text_clean)
-            if price_usd < 2 or price_usd > 5000:
+            if price_usd < 10 or price_usd > 5000:
                 raise ValueError("Prix hors limites")
 
             # Update price (price is already in USD, no conversion needed)
