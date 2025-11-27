@@ -331,57 +331,113 @@ class AdminHandlers:
         except (psycopg2.Error, Exception) as e:
             await query.edit_message_text(f"❌ Erreur: {str(e)}")
 
-    async def admin_payouts(self, query, lang):
-        """Gestion payouts avec détails complets"""
+    async def admin_payouts(self, query, lang, page: int = 1):
+        """Liste paginée des vendeurs à payer"""
         try:
             from app.services.seller_payout_service import SellerPayoutService
             seller_payout_service = SellerPayoutService()
             payouts = seller_payout_service.get_all_pending_payouts_admin()
 
             if not payouts:
-                text = "💸 **PAYOUTS EN ATTENTE**\n\n✅ Aucun payout en attente"
-                keyboard = [[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]]
+                text = "PAYOUTS EN ATTENTE\n\nAucun payout en attente"
+                keyboard = [[InlineKeyboardButton("Retour Admin", callback_data='admin_menu')]]
             else:
-                text = f"💸 **PAYOUTS EN ATTENTE** ({len(payouts)})\n\n"
-
-                # Build keyboard with individual payout buttons
-                keyboard = []
-
-                for i, payout in enumerate(payouts[:5], 1):  # Limit to 5 for display + buttons
-                    user_id = payout.get('user_id')
-                    seller_name = payout.get('seller_name', 'Unknown')
-                    amount = payout.get('amount', 0)
-                    wallet = payout.get('seller_wallet_address', 'N/A')
-                    currency = payout.get('payment_currency', 'USDT')
-                    payout_id = payout.get('id')
-
-                    # Truncate wallet for display
-                    wallet_short = f"{wallet[:6]}...{wallet[-4:]}" if wallet and len(wallet) > 10 else wallet
-
-                    text += f"**{i}. {seller_name}** (ID: {user_id})\n"
-                    text += f"   💵 ${amount:.2f} {currency}\n"
-                    text += f"   📤 {wallet_short}\n"
-                    text += f"   🆔 Payout #{payout_id}\n\n"
-
-                    # Add button for this specific payout
-                    keyboard.append([InlineKeyboardButton(
-                        f"✅ Payer #{payout_id} - ${amount:.2f}",
-                        callback_data=f'admin_mark_payout_paid:{payout_id}'
-                    )])
-
-                if len(payouts) > 5:
-                    text += f"_...et {len(payouts) - 5} autres (voir export)_\n\n"
+                # Pagination setup
+                per_page = 10
+                total_pages = (len(payouts) + per_page - 1) // per_page
+                page = max(1, min(page, total_pages))
+                start_idx = (page - 1) * per_page
+                end_idx = start_idx + per_page
+                page_payouts = payouts[start_idx:end_idx]
 
                 total_pending = sum(p.get('amount', 0) for p in payouts)
-                text += f"\n💰 **Total:** ${total_pending:.2f} USDT"
 
-                # Add "Mark All" and back buttons
-                keyboard.append([InlineKeyboardButton("✅ Tout Payer", callback_data='admin_mark_all_payouts_paid')])
-                keyboard.append([InlineKeyboardButton("📊 Export CSV", callback_data='admin_export_payouts_csv')])
-                keyboard.append([InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')])
+                text = f"PAYOUTS EN ATTENTE ({len(payouts)} vendeurs)\n\n"
+                text += f"Total: ${total_pending:.2f} USDT\n"
+                text += f"Page {page}/{total_pages}\n\n"
+                text += "Cliquez sur un vendeur pour voir les details:"
+
+                # Boutons vendeurs (un par ligne)
+                keyboard = []
+                for payout in page_payouts:
+                    seller_name = payout.get('seller_name', 'Unknown')
+                    amount = payout.get('amount', 0)
+                    payout_id = payout.get('id')
+
+                    # Un bouton par vendeur
+                    keyboard.append([InlineKeyboardButton(
+                        f"{seller_name} - ${amount:.2f}",
+                        callback_data=f'admin_payout_details:{payout_id}'
+                    )])
+
+                # Pagination buttons
+                nav_buttons = []
+                if page > 1:
+                    nav_buttons.append(InlineKeyboardButton("< Page prec", callback_data=f'admin_payouts_page:{page-1}'))
+                if page < total_pages:
+                    nav_buttons.append(InlineKeyboardButton("Page suiv >", callback_data=f'admin_payouts_page:{page+1}'))
+                if nav_buttons:
+                    keyboard.append(nav_buttons)
+
+                # Action buttons
+                keyboard.append([InlineKeyboardButton("Tout Payer", callback_data='admin_mark_all_payouts_paid')])
+                keyboard.append([InlineKeyboardButton("Export CSV", callback_data='admin_export_payouts_csv')])
+                keyboard.append([InlineKeyboardButton("Retour Admin", callback_data='admin_menu')])
+
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         except (psycopg2.Error, Exception) as e:
-            await query.edit_message_text(f"❌ Erreur: {str(e)}")
+            await query.edit_message_text(f"Erreur: {str(e)}")
+
+    async def admin_payout_details(self, query, lang, payout_id: int):
+        """Afficher les détails complets d'un payout"""
+        try:
+            from app.services.seller_payout_service import SellerPayoutService
+            seller_payout_service = SellerPayoutService()
+            details = seller_payout_service.get_payout_details(payout_id)
+
+            if not details:
+                await query.answer("Payout introuvable", show_alert=True)
+                return
+
+            # Build text
+            seller_name = details['seller_name']
+            seller_username = details['seller_username']
+            wallet = details['seller_wallet_address']
+            total = details['total_amount_usdt']
+            currency = details['payment_currency']
+            orders = details['orders']
+
+            text = f"DETAILS PAYOUT #{payout_id}\n\n"
+            text += f"Vendeur: {seller_name}"
+            if seller_username:
+                text += f" (@{seller_username})"
+            text += f"\nID: {details['seller_user_id']}\n\n"
+
+            text += "COMMANDES:\n"
+            for i, order in enumerate(orders, 1):
+                product_title = order['product_title']
+                price = order['product_price_usd']
+                revenue = order['seller_revenue_usd']
+                order_id = order['order_id']
+
+                text += f"{i}. {product_title}\n"
+                text += f"   Prix: ${price:.2f}\n"
+                text += f"   Revenu vendeur: ${revenue:.2f}\n"
+                text += f"   Order: {order_id}\n\n"
+
+            text += f"TOTAL A PAYER: ${total:.2f} {currency}\n\n"
+            text += f"ADRESSE WALLET:\n`{wallet}`\n\n"
+            text += "(Cliquer sur l'adresse pour copier)"
+
+            # Keyboard
+            keyboard = [
+                [InlineKeyboardButton("Marquer comme paye", callback_data=f'admin_mark_payout_paid:{payout_id}')],
+                [InlineKeyboardButton("Retour liste", callback_data='admin_payouts')]
+            ]
+
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        except Exception as e:
+            await query.edit_message_text(f"Erreur: {str(e)}")
 
     async def admin_marketplace_stats(self, query, lang):
         """Stats marketplace"""
@@ -533,10 +589,16 @@ class AdminHandlers:
             user_email = user_data.get('email')
             if user_email:
                 try:
-                    from app.services.smtp_service import SMTPService
-                    smtp_service = SMTPService()
+                    from app.core.email_service import EmailService
+                    email_service = EmailService()
 
-                    success = smtp_service.send_suspension_notification(user_email, first_name or 'Utilisateur')
+                    success = email_service.send_account_suspended_notification(
+                        to_email=user_email,
+                        user_name=first_name or 'Utilisateur',
+                        reason="Violation des règles de la plateforme",
+                        duration="indéterminée",
+                        is_permanent=False
+                    )
                     email_status = "✅ Email de suspension envoyé" if success else "❌ Échec envoi email"
                 except (psycopg2.Error, Exception) as e:
                     email_status = f"❌ Erreur email: {str(e)}"

@@ -1,0 +1,416 @@
+/**
+ * UZEUR - FIXES CRITIQUES
+ * Corrections chirurgicales sans casser le reste
+ * @version 1.0.0
+ */
+
+/* ============================================
+   FIX 1: Landscape Mobile - Éléments superposés
+   ============================================ */
+
+@media (max-width: 1023px) and (orientation: landscape) {
+    /* Header plus compact en landscape */
+    header {
+        padding: 0.5rem 0 !important;
+    }
+
+    .header-inner {
+        padding: 0 1rem !important;
+        min-height: 50px;
+    }
+
+    .logo {
+        font-size: 1.1rem !important;
+    }
+
+    /* Language switcher ajusté */
+    .language-switcher {
+        top: 12px !important;
+        right: 70px !important;
+    }
+
+    .language-switcher button {
+        padding: 0.35rem 0.65rem !important;
+        font-size: 0.7rem !important;
+    }
+
+    /* Mobile menu button ajusté */
+    .mobile-menu-btn {
+        width: 40px !important;
+        height: 40px !important;
+        font-size: 1.3rem !important;
+    }
+
+    /* Solana widget ajusté */
+    .solana-widget {
+        top: 55px !important;
+        padding: 0.4rem 1rem !important;
+        font-size: 0.75rem !important;
+    }
+
+    .solana-widget-content {
+        gap: 0.75rem !important;
+    }
+
+    /* Hero section ajustée */
+    .hero {
+        min-height: auto !important;
+        padding-top: 6rem !important;
+        padding-bottom: 2rem !important;
+    }
+
+    .hero-content h1 {
+        font-size: 1.75rem !important;
+        line-height: 1.3 !important;
+        margin-bottom: 0.75rem !important;
+    }
+
+    .hero-subtitle {
+        font-size: 0.95rem !important;
+        line-height: 1.4 !important;
+        margin-bottom: 1.5rem !important;
+    }
+
+    .hero-cta {
+        gap: 0.75rem !important;
+    }
+
+    .hero-cta .btn {
+        padding: 0.75rem 1.25rem !important;
+        font-size: 0.9rem !important;
+    }
+
+    /* Nav links menu ajusté */
+    .nav-links {
+        top: 55px !important;
+        padding: 1.5rem !important;
+        gap: 0.75rem !important;
+        max-height: calc(100vh - 55px);
+        overflow-y: auto;
+    }
+
+    .nav-links a {
+        padding: 0.75rem !important;
+        font-size: 0.95rem !important;
+    }
+
+    /* Sections spacing réduit */
+    section {
+        padding: 2.5rem 0 !important;
+    }
+
+    .section-header {
+        margin-bottom: 2rem !important;
+    }
+
+    .section-header h2 {
+        font-size: 1.5rem !important;
+        line-height: 1.2 !important;
+    }
+
+    .section-header p {
+        font-size: 0.9rem !important;
+    }
+}
+
+/* ============================================
+   FIX 2: Sections - Espaces cohérents
+   ============================================ */
+
+/* Mobile portrait */
+@media (max-width: 639px) and (orientation: portrait) {
+    section {
+        padding: 3rem 0 !important;
+    }
+
+    .section-header {
+        margin-bottom: 2.5rem !important;
+    }
+}
+
+/* Tablet portrait */
+@media (min-width: 640px) and (max-width: 1023px) and (orientation: portrait) {
+    section {
+        padding: 4rem 0 !important;
+    }
+
+    .section-header {
+        margin-bottom: 3rem !important;
+    }
+}
+
+/* Desktop */
+@media (min-width: 1024px) {
+    section {
+        padding: 5rem 0 !important;
+    }
+
+    .section-header {
+        margin-bottom: 4rem !important;
+    }
+}
+
+/* ============================================
+   FIX 3: Images tronquées
+   ============================================ */
+
+/* Toutes les images doivent être contenues */
+img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* Feature cards - Images */
+.feature-card img,
+.core-card img {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    border-radius: 12px;
+}
+
+/* Hero visual */
+.hero-visual {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.hero-visual img {
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+}
+
+/* Visual section images */
+.visual-image {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.visual-image img,
+.visual-image > * {
+    max-width: 100%;
+    height: auto;
+}
+
+/* ============================================
+   FIX 4: Carousel - Performance optimisée
+   ============================================ */
+
+/* Smooth scrolling avec GPU acceleration */
+.carousel-container {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    will-change: scroll-position;
+    transform: translateZ(0); /* Force GPU */
+    backface-visibility: hidden;
+}
+
+/* Cards dans carousel - Performance */
+.carousel-container .feature-card,
+.carousel-container .core-card {
+    will-change: transform, opacity;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+/* Réduire les transitions pendant le scroll */
+.carousel-container.scrolling .feature-card,
+.carousel-container.scrolling .core-card {
+    transition: none !important;
+}
+
+/* Optimiser les dots */
+.carousel-dots {
+    will-change: auto;
+}
+
+.carousel-dot {
+    transition: all 0.2s ease !important; /* Plus rapide */
+}
+
+/* ============================================
+   FIX 5: Grid responsive cohérent
+   ============================================ */
+
+/* Mobile - 1 colonne */
+@media (max-width: 639px) {
+    .feature-grid,
+    .core-grid,
+    .pricing-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+}
+
+/* Tablet portrait - 2 colonnes */
+@media (min-width: 640px) and (max-width: 1023px) and (orientation: portrait) {
+    .feature-grid,
+    .core-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 2rem;
+    }
+
+    .pricing-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        max-width: 500px;
+        margin: 0 auto;
+        gap: 2rem;
+    }
+}
+
+/* Tablet landscape et desktop - 3 colonnes */
+@media (min-width: 1024px) {
+    .feature-grid,
+    .core-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2.5rem;
+    }
+
+    .pricing-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2rem;
+    }
+}
+
+/* ============================================
+   FIX 6: Cards padding cohérent
+   ============================================ */
+
+.feature-card,
+.core-card,
+.pricing-card {
+    padding: 2rem;
+}
+
+@media (max-width: 639px) and (orientation: landscape) {
+    .feature-card,
+    .core-card,
+    .pricing-card {
+        padding: 1.5rem !important;
+    }
+}
+
+@media (min-width: 1024px) {
+    .feature-card,
+    .core-card,
+    .pricing-card {
+        padding: 2.5rem;
+    }
+}
+
+/* ============================================
+   FIX 7: Typography cohérente
+   ============================================ */
+
+/* Mobile landscape - Texte plus petit */
+@media (max-width: 1023px) and (orientation: landscape) {
+    h1 {
+        font-size: 1.75rem !important;
+    }
+
+    h2 {
+        font-size: 1.5rem !important;
+    }
+
+    h3 {
+        font-size: 1.25rem !important;
+    }
+
+    p {
+        font-size: 0.9rem !important;
+    }
+
+    .feature-card p,
+    .core-card p {
+        font-size: 0.875rem !important;
+        line-height: 1.5 !important;
+    }
+}
+
+/* ============================================
+   FIX 8: Z-index propre
+   ============================================ */
+
+header {
+    z-index: 1000 !important;
+}
+
+.language-switcher {
+    z-index: 1002 !important;
+}
+
+.mobile-menu-btn {
+    z-index: 1001 !important;
+}
+
+.nav-links {
+    z-index: 999 !important;
+}
+
+.solana-widget {
+    z-index: 998 !important;
+}
+
+/* ============================================
+   FIX 9: Buttons responsive
+   ============================================ */
+
+.btn {
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@media (max-width: 1023px) and (orientation: landscape) {
+    .btn {
+        padding: 0.75rem 1.25rem !important;
+        font-size: 0.9rem !important;
+    }
+
+    .btn-large {
+        padding: 0.875rem 1.5rem !important;
+        font-size: 0.95rem !important;
+    }
+}
+
+/* ============================================
+   FIX 10: Container cohérent
+   ============================================ */
+
+.container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+@media (max-width: 639px) {
+    .container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+    .container {
+        padding-left: 2rem;
+        padding-right: 2rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .container {
+        max-width: 1400px;
+        padding-left: 3rem;
+        padding-right: 3rem;
+    }
+}

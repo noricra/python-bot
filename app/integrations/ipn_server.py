@@ -431,7 +431,8 @@ Votre formation est en cours d'envoi..."""
                                     product_price_usd=float(email_data['product_price_usd']),
                                     payment_currency=email_data['payment_currency'],
                                     order_id=order_id,
-                                    seller_name=email_data['seller_name'] or 'Vendeur'
+                                    seller_name=email_data['seller_name'] or 'Vendeur',
+                                    platform_commission_usd=float(email_data['platform_commission_usd'])
                                 )
                                 if buyer_email_sent:
                                     if email_service.smtp_configured:

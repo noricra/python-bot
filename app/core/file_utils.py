@@ -123,7 +123,7 @@ async def upload_product_file_to_b2(local_file_path: str, product_id: str) -> Op
         object_key = f"products/{product_id}/{filename}"
 
         # Upload to B2
-        b2_url = b2_service.upload_file(local_file_path, object_key)
+        b2_url = await b2_service.upload_file(local_file_path, object_key)
 
         if b2_url:
             # Delete local file after successful upload
@@ -169,7 +169,7 @@ async def download_product_file_from_b2(b2_url: str, product_id: str) -> Optiona
         filename = os.path.basename(object_key)
         local_path = os.path.join(temp_dir, filename)
 
-        if b2_service.download_file(object_key, local_path):
+        if await b2_service.download_file(object_key, local_path):
             logger.info(f"✅ File downloaded from B2 to: {local_path}")
             return local_path
         else:

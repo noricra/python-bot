@@ -181,11 +181,11 @@ class OrderRepository:
               put_connection(conn)
 
     def get_total_revenue(self) -> float:
-          """Get total revenue from all completed orders (seller revenue only)"""
+          """Get total revenue from all completed orders (total transaction volume)"""
           conn = get_connection()
           cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
           try:
-              cursor.execute('SELECT SUM(seller_revenue_usd) as total FROM orders WHERE payment_status = %s', ('completed',))
+              cursor.execute('SELECT SUM(product_price_usd) as total FROM orders WHERE payment_status = %s', ('completed',))
               result = cursor.fetchone()['total']
               return result if result else 0.0
           except psycopg2.Error:

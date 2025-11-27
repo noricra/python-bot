@@ -72,7 +72,7 @@ class SellerPayoutService:
 
             # Get seller info for wallet address
             seller_user_id = order['seller_user_id']
-            seller = self.user_repo.get_user_by_id(seller_user_id)
+            seller = self.user_repo.get_user(seller_user_id)
 
             if not seller:
                 logger.error(f"Seller {seller_user_id} not found")
@@ -124,7 +124,7 @@ class SellerPayoutService:
             wallet_short = f"{wallet_address[:6]}...{wallet_address[-4:]}" if len(wallet_address) > 10 else wallet_address
 
             message = f"""
-💰 **NOUVEAU PAYOUT CRÉÉ**
+ **NOUVEAU PAYOUT CRÉÉ**
 
 ✅ Votre payout a été créé avec succès !
 
@@ -197,7 +197,7 @@ class SellerPayoutService:
             for payout in payouts:
                 seller_user_id = payout.get('user_id')
                 if seller_user_id:
-                    seller = self.user_repo.get_user_by_id(seller_user_id)
+                    seller = self.user_repo.get_user(seller_user_id)
                     payout_dict = dict(payout)
                     payout_dict['seller_name'] = seller.get('seller_name', 'Unknown') if seller else 'Unknown'
                     payout_dict['seller_username'] = seller.get('username', '') if seller else ''
@@ -208,6 +208,69 @@ class SellerPayoutService:
         except Exception as e:
             logger.error(f"Error getting pending payouts for admin: {e}")
             return []
+
+    def get_payout_details(self, payout_id: int) -> Optional[Dict]:
+        """
+        Get detailed information about a payout including order breakdown
+
+        Args:
+            payout_id: Payout ID
+
+        Returns:
+            Dict with payout details and order breakdown, or None if not found
+        """
+        try:
+            import json
+
+            # Get payout from repo
+            payouts = self.payout_repo.get_pending_payouts(limit=100)
+            payout = next((p for p in payouts if p.get('id') == payout_id), None)
+
+            if not payout:
+                return None
+
+            # Get seller info
+            seller_user_id = payout.get('user_id')
+            seller = self.user_repo.get_user(seller_user_id) if seller_user_id else None
+
+            # Parse order_ids from JSON
+            order_ids_json = payout.get('order_ids', '[]')
+            if isinstance(order_ids_json, str):
+                order_ids = json.loads(order_ids_json)
+            else:
+                order_ids = order_ids_json
+
+            # Get order details
+            orders_details = []
+            for order_id in order_ids:
+                order = self.order_repo.get_order_by_id(order_id)
+                if order:
+                    orders_details.append({
+                        'order_id': order_id,
+                        'product_title': order.get('product_title', 'Unknown'),
+                        'product_price_usd': order.get('product_price_usd', 0),
+                        'seller_revenue_usd': order.get('seller_revenue_usd', 0),
+                        'created_at': order.get('created_at')
+                    })
+
+            # Build result
+            result = {
+                'id': payout_id,
+                'seller_user_id': seller_user_id,
+                'seller_name': seller.get('seller_name', 'Unknown') if seller else 'Unknown',
+                'seller_username': seller.get('username', '') if seller else '',
+                'seller_wallet_address': payout.get('seller_wallet_address', 'N/A'),
+                'total_amount_usdt': payout.get('amount', 0),
+                'payment_currency': payout.get('payment_currency', 'USDT'),
+                'orders': orders_details,
+                'created_at': payout.get('created_at')
+            }
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error getting payout details for {payout_id}: {e}")
+            return None
 
     def mark_payout_as_completed(self, payout_id: int, admin_user_id: int) -> bool:
         """

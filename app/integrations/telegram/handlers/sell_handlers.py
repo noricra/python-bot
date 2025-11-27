@@ -253,8 +253,8 @@ class SellHandlers:
             # Construire le message
             text = f"""📊 **Statistiques de vente**
 
-💰 **Revenus totaux:** ${stats['total_revenue']:.2f}
-📦 **Ventes totales:** {stats['total_sales']}
+ **Revenus totaux:** ${stats['total_revenue']:.2f}
+ **Ventes totales:** {stats['total_sales']}
 
 🏆 **Top 5 Produits:**
 """
@@ -401,10 +401,10 @@ class SellHandlers:
 
             text = f"""📊 **TABLEAU DE BORD VENDEUR**
 
-💰 **Revenus nets**
+ **Revenus nets**
 └─ ${global_stats['net_revenue']:.2f}
 
-📦 **Produits & Ventes**
+ **Produits & Ventes**
 ├─ Produits: {product_count['active']}/{product_count['total']} actifs
 └─ Ventes: {global_stats['total_sales']} commandes
 
@@ -414,7 +414,7 @@ class SellHandlers:
                 for i, p in enumerate(top_products, 1):
                     title_truncated = p['title'][:25] + '...' if len(p['title']) > 25 else p['title']
                     text += f"\n{i}. {title_truncated}"
-                    text += f"\n   💵 ${p['revenue']:.2f} • 📦 {p['sales']} ventes"
+                    text += f"\n    ${p['revenue']:.2f} •  {p['sales']} ventes"
             else:
                 text += "\n\n_Aucun produit vendu pour le moment_"
 
@@ -777,7 +777,7 @@ class SellHandlers:
             breadcrumb = f"📂 _Mes Produits" + (f" › {category}_" if category else "_")
             caption += f"{breadcrumb}\n\n"
             caption += f"{status_icon} **{product['title']}**\n\n"
-            caption += f"💰 **${product['price_usd']:.2f}**  •  {status_text}\n"
+            caption += f" **${product['price_usd']:.2f}**  •  {status_text}\n"
             caption += "────────────────\n\n"
             caption += "📊 **PERFORMANCE**\n"
             caption += f"• **{product.get('sales_count', 0)}** ventes"
@@ -939,22 +939,25 @@ class SellHandlers:
         solana_addr = user_data.get('seller_solana_address', '')
         solana_display = f"{solana_addr[:8]}..." if solana_addr and len(solana_addr) > 8 else solana_addr or "Non configurée"
 
+        email_display = user_data.get('email', 'Non défini')
+
         settings_text = (
             "⚙️ **PARAMÈTRES VENDEUR**\n\n"
-            f"👤 **Nom:** {bot.escape_markdown(user_data.get('seller_name', 'Non défini'))}\n"
-            f"📄 **Bio:** {bot.escape_markdown(user_data.get('seller_bio', 'Non définie')[:50] + '...' if user_data.get('seller_bio') and len(user_data.get('seller_bio', '')) > 50 else user_data.get('seller_bio', 'Non définie'))}\n"
-            f"📧 **Email:** {bot.escape_markdown(user_data.get('email', 'Non défini'))}\n"
-            f"💰 **Adresse Solana:** `{solana_display}`"
+            f" **Nom:** {bot.escape_markdown(user_data.get('seller_name', 'Non défini'))}\n"
+            f" **Bio:** {bot.escape_markdown(user_data.get('seller_bio', 'Non définie')[:50] + '...' if user_data.get('seller_bio') and len(user_data.get('seller_bio', '')) > 50 else user_data.get('seller_bio', 'Non définie'))}\n"
+            f" **Email:** `{email_display}`\n"
+            f" **Adresse Solana:** `{solana_display}`"
         )
 
         # Layout selon SELLER_WORKFLOW_SPEC (sans Mdp)
         keyboard = [
-            [InlineKeyboardButton("📄 Bio", callback_data='edit_seller_bio'),
-             InlineKeyboardButton("👤 Nom", callback_data='edit_seller_name'),
-             InlineKeyboardButton("📧 Mail", callback_data='edit_seller_email')],
-            [InlineKeyboardButton("🔕 Désactiver", callback_data='disable_seller_account'),
-             InlineKeyboardButton("🗑️ Supprimer", callback_data='delete_seller_prompt'),
-             InlineKeyboardButton("💰 Adresse", callback_data='edit_solana_address')],
+            [InlineKeyboardButton(" Bio", callback_data='edit_seller_bio'),
+             InlineKeyboardButton(" Nom", callback_data='edit_seller_name'),
+             InlineKeyboardButton(" Mail", callback_data='edit_seller_email')],
+            [InlineKeyboardButton(" Désactiver", callback_data='disable_seller_account'),
+             InlineKeyboardButton(" Supprimer", callback_data='delete_seller_prompt'),
+             InlineKeyboardButton(" Adresse", callback_data='edit_solana_address')],
+            [InlineKeyboardButton("Se déconnecter" if lang == 'fr' else "Logout", callback_data='seller_logout')],
             [InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='seller_dashboard')]
         ]
 
@@ -962,13 +965,36 @@ class SellHandlers:
 
     async def seller_logout(self, bot, query):
         """Déconnexion vendeur"""
-        # Résoudre le mapping pour déconnecter le BON seller_id
-        seller_id = query.from_user.id
-        # Removed: bot.logout_seller(seller_id) - mapping removed
+        user_id = query.from_user.id
+        lang = bot.get_user_state(user_id).get('lang', 'fr')
+
+        # Logout seller - clear seller session
+        bot.logout_seller(user_id)
+
+        logout_text = (
+            "✅ **Déconnexion réussie**\n\n"
+            "Vous avez été déconnecté de votre compte vendeur.\n\n"
+            "Pour vous reconnecter, vous devrez fournir :\n"
+            "• Votre adresse email\n"
+            "• Votre adresse Solana\n\n"
+            "À bientôt !"
+        ) if lang == 'fr' else (
+            "✅ **Logout successful**\n\n"
+            "You have been logged out from your seller account.\n\n"
+            "To reconnect, you will need to provide:\n"
+            "• Your email address\n"
+            "• Your Solana address\n\n"
+            "See you soon!"
+        )
+
         await query.edit_message_text(
-            "✅ **Déconnexion réussie**\n\nÀ bientôt !",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu principal", callback_data='back_main')]]),
-            parse_mode='Markdown')
+            logout_text,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("Se reconnecter" if lang == 'fr' else "Login", callback_data='seller_login'),
+                InlineKeyboardButton("Retour" if lang == 'fr' else "Back", callback_data='back_main')
+            ]]),
+            parse_mode='Markdown'
+        )
 
     async def delete_seller_prompt(self, bot, query):
         """Confirmation suppression compte vendeur"""
@@ -1076,18 +1102,18 @@ class SellHandlers:
 
                 success_msg = (
                     "✅ **Compte vendeur créé !**\n\n"
-                    f"👤 Nom: **{seller_name}**\n"
-                    f"📧 Email: `{user_state['email']}`\n"
-                    f"💰 Solana: `{solana_address[:8]}...`\n\n"
-                    "🎉 Vous êtes prêt à vendre !\n\n"
-                    "💡 Configurez votre bio et nom dans **Paramètres**"
+                    f" Nom: **{seller_name}**\n"
+                    f" Email: `{user_state['email']}`\n"
+                    f" Solana: `{solana_address[:8]}...`\n\n"
+                    " Vous êtes prêt à vendre !\n\n"
+                    " Configurez votre bio et nom dans **Paramètres**"
                 ) if lang == 'fr' else (
                     "✅ **Seller account created!**\n\n"
-                    f"👤 Name: **{seller_name}**\n"
-                    f"📧 Email: `{user_state['email']}`\n"
-                    f"💰 Solana: `{solana_address[:8]}...`\n\n"
-                    "🎉 You're ready to sell!\n\n"
-                    "💡 Configure your bio and name in **Settings**"
+                    f" Name: **{seller_name}**\n"
+                    f" Email: `{user_state['email']}`\n"
+                    f" Solana: `{solana_address[:8]}...`\n\n"
+                    " You're ready to sell!\n\n"
+                    " Configure your bio and name in **Settings**"
                 )
 
                 try:
@@ -1228,7 +1254,7 @@ class SellHandlers:
                     raise ValueError()
 
                 # 🔍 DEBUG: État AVANT modification
-                logger.info(f"💰 PRICE STEP - User {user_id}")
+                logger.info(f" PRICE STEP - User {user_id}")
                 logger.info(f"   State BEFORE: {user_state}")
 
                 product_data['price_usd'] = price
@@ -1362,7 +1388,7 @@ class SellHandlers:
             'title': f"📝 **Étape 1/6 :** Titre du produit\n\n{i18n(lang, 'product_step1_prompt')}",
             'description': f"📋 **Étape 2/6 :** Description du produit\n\nTitre actuel: {product_data.get('title', 'N/A')}",
             'category': None,  # Will show category selection
-            'price': f"💰 **Étape 4/6 :** Prix en $ (minimum $10)\n\nCatégorie actuelle: {product_data.get('category', 'N/A')}",
+            'price': f" **Étape 4/6 :** Prix en $ (minimum $10)\n\nCatégorie actuelle: {product_data.get('category', 'N/A')}",
             'cover_image': (
                 f"📸 **Étape 5/6 :** Image de couverture (optionnel)\n\n"
                 f"Prix actuel: ${product_data.get('price_usd', 0):.2f}\n\n"
@@ -1416,9 +1442,23 @@ class SellHandlers:
                 return
 
             # Validation
+            # 1. Size
             if photo_file.file_size > 5 * 1024 * 1024:  # 5MB max
                 await update.message.reply_text("❌ Image trop volumineuse (max 5MB)")
                 return
+
+            # 2. Extension (for documents sent as images)
+            if photo_as_document:
+                from app.core.file_validation import validate_file_extension, get_file_category
+                filename = getattr(photo_as_document, 'file_name', 'image.jpg')
+                is_valid, error_msg = validate_file_extension(filename)
+                if not is_valid:
+                    await update.message.reply_text(f"❌ {error_msg}")
+                    return
+                # Ensure it's actually an image
+                if get_file_category(filename) != 'image':
+                    await update.message.reply_text("❌ Le fichier doit être une image (JPG, PNG, etc.)")
+                    return
 
             # Download photo to temp file
             file_info = await photo_file.get_file()
@@ -1474,8 +1514,16 @@ class SellHandlers:
             lang = user_state.get('lang', 'fr')
 
             # Validation du fichier
-            if document.file_size > 10 * 1024 * 1024:  # 10MB max
-                await update.message.reply_text("❌ Fichier trop volumineux (max 10MB)")
+            # 1. Taille (100MB max - cohérent avec FAQ)
+            if document.file_size > 100 * 1024 * 1024:  # 100MB max
+                await update.message.reply_text("❌ Fichier trop volumineux (max 100MB)" if lang == 'fr' else "❌ File too large (max 100MB)")
+                return
+
+            # 2. Extension de fichier (sécurité critique)
+            from app.core.file_validation import validate_file_extension
+            is_valid, error_msg = validate_file_extension(document.file_name)
+            if not is_valid:
+                await update.message.reply_text(f"❌ {error_msg}")
                 return
 
             # Télécharger et sauvegarder le fichier TEMPORAIREMENT
@@ -1498,7 +1546,7 @@ class SellHandlers:
             if product_id:
                 # If we had a temp product_id, rename the image directory
                 if 'temp_product_id' in product_data:
-                    self._rename_product_images(
+                    await self._rename_product_images(
                         seller_id,
                         product_data['temp_product_id'],
                         product_id,
@@ -1579,7 +1627,7 @@ class SellHandlers:
             logger.error(traceback.format_exc())
             await update.message.reply_text("Erreur lors du traitement du fichier")
 
-    def _rename_product_images(self, seller_id, temp_product_id, final_product_id, product_data):
+    async def _rename_product_images(self, seller_id, temp_product_id, final_product_id, product_data):
         """Rename product image directory, upload to B2, and UPDATE DATABASE with B2 URLs"""
         try:
             import shutil
@@ -1609,7 +1657,7 @@ class SellHandlers:
                 # Upload cover image to B2
                 if os.path.exists(cover_local_path):
                     cover_b2_key = f"products/{final_product_id}/cover.jpg"
-                    cover_b2_url = b2_service.upload_file(cover_local_path, cover_b2_key)
+                    cover_b2_url = await b2_service.upload_file(cover_local_path, cover_b2_key)
                     if cover_b2_url:
                         logger.info(f"📤 Cover uploaded to B2: {cover_b2_url}")
                     else:
@@ -1619,7 +1667,7 @@ class SellHandlers:
                 # Upload thumbnail to B2
                 if os.path.exists(thumb_local_path):
                     thumb_b2_key = f"products/{final_product_id}/thumb.jpg"
-                    thumb_b2_url = b2_service.upload_file(thumb_local_path, thumb_b2_key)
+                    thumb_b2_url = await b2_service.upload_file(thumb_local_path, thumb_b2_key)
                     if thumb_b2_url:
                         logger.info(f"📤 Thumbnail uploaded to B2: {thumb_b2_url}")
                     else:
@@ -1730,9 +1778,9 @@ class SellHandlers:
             put_connection(conn)
 
             if not payouts:
-                text = "💰 Aucun payout trouvé." if lang == 'fr' else "💰 No payouts found."
+                text = " Aucun payout trouvé." if lang == 'fr' else " No payouts found."
             else:
-                text = "💰 **HISTORIQUE PAYOUTS**\n\n" if lang == 'fr' else "💰 **PAYOUT HISTORY**\n\n"
+                text = " **HISTORIQUE PAYOUTS**\n\n" if lang == 'fr' else " **PAYOUT HISTORY**\n\n"
                 for amount, status, date in payouts:
                     text += f"• {amount:.4f} SOL - {status} - {date[:10]}\n"
 
@@ -1799,11 +1847,11 @@ class SellHandlers:
             menu_text = f"✏️ **Édition: {title}**\n\n💰 Prix: ${price:.2f}\n📊 Statut: {status}\n\nQue voulez-vous modifier ?"
 
             keyboard = [
-                [InlineKeyboardButton("📝 Modifier titre" if lang == 'fr' else "📝 Edit title",
+                [InlineKeyboardButton(" Modifier titre" if lang == 'fr' else " Edit title",
                                     callback_data=f'edit_field_title_{product_id}')],
-                [InlineKeyboardButton("📄 Modifier description" if lang == 'fr' else "📄 Edit description",
+                [InlineKeyboardButton(" Modifier description" if lang == 'fr' else " Edit description",
                                     callback_data=f'edit_field_description_{product_id}')],
-                [InlineKeyboardButton("💰 Modifier prix" if lang == 'fr' else "💰 Edit price",
+                [InlineKeyboardButton(" Modifier prix" if lang == 'fr' else " Edit price",
                                     callback_data=f'edit_field_price_{product_id}')],
                 [InlineKeyboardButton("🔄 Changer statut" if lang == 'fr' else "🔄 Toggle status",
                                     callback_data=f'edit_field_toggle_{product_id}')],
@@ -1927,10 +1975,10 @@ class SellHandlers:
             if field == 'price':
                 await safe_transition_to_text(
                     query,
-                    f"💰 **Modifier le prix de:** {product.get('title', 'N/A')}\n\n"
+                    f" **Modifier le prix de:** {product.get('title', 'N/A')}\n\n"
                     f"Prix actuel: ${product.get('price_usd', 0):.2f}\n\n"
                     f"Entrez le nouveau prix en $:" if lang == 'fr' else
-                    f"💰 **Edit price for:** {product.get('title', 'N/A')}\n\n"
+                    f" **Edit price for:** {product.get('title', 'N/A')}\n\n"
                     f"Current price: ${product.get('price_usd', 0):.2f}\n\n"
                     f"Enter new price in $:",
                     InlineKeyboardMarkup([[
@@ -2100,7 +2148,7 @@ class SellHandlers:
             bot.state_manager.update_state(user_id, editing_settings=True, step='edit_solana_address')
             current_addr = user_data.get('seller_solana_address', 'Non configurée')
             await query.edit_message_text(
-                f"💰 **Modifier l'adresse Solana**\n\nAdresse actuelle: {current_addr}\n\nEntrez votre nouvelle adresse Solana (32-44 caractères):" if lang == 'fr' else f"💰 **Edit Solana address**\n\nCurrent address: {current_addr}\n\nEnter your new Solana address (32-44 characters):",
+                f" **Modifier l'adresse Solana**\n\nAdresse actuelle: {current_addr}\n\nEntrez votre nouvelle adresse Solana (32-44 caractères):" if lang == 'fr' else f" **Edit Solana address**\n\nCurrent address: {current_addr}\n\nEnter your new Solana address (32-44 characters):",
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='seller_settings')]])
             )
@@ -2147,10 +2195,10 @@ class SellHandlers:
 
             await safe_transition_to_text(
                 query,
-                f"💰 **Modifier le prix de:** {product.get('title', 'N/A')}\n\n"
+                f" **Modifier le prix de:** {product.get('title', 'N/A')}\n\n"
                 f"Prix actuel: ${product.get('price_usd', 0):.2f}\n\n"
                 f"Entrez le nouveau prix en $ (10-5000):" if lang == 'fr' else
-                f"💰 **Edit price for:** {product.get('title', 'N/A')}\n\n"
+                f" **Edit price for:** {product.get('title', 'N/A')}\n\n"
                 f"Current price: ${product.get('price_usd', 0):.2f}\n\n"
                 f"Enter new price in $ (10-5000):",
                 InlineKeyboardMarkup([[

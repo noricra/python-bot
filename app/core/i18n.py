@@ -35,7 +35,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'login_title': "🔐 **CONNEXION VENDEUR**\n\nSaisissez d'abord votre email, puis votre mot de passe.\n\nSi vous n'avez pas de compte vendeur, créez-en un d'abord.",
 
         # Dashboard vendeur
-        'dashboard_welcome': "🏪 **Bienvenue {name} !**\n\n📊 **Votre tableau de bord :**\n• 📦 Produits : {products_count}\n• 💰 Revenus : {revenue}",
+        'dashboard_welcome': "🏪 **Bienvenue {name} !**\n\n **Votre tableau de bord :**\n•  Produits : {products_count}\n•  Revenus : {revenue}",
         'btn_add_product': "Ajouter un produit",
         'btn_my_products': "Mes produits",
         'btn_my_wallet': "Payouts / Adresse",
@@ -46,7 +46,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_payout_history': "Historique payouts",
         'analytics_title': "📊 Analytics vendeur",
         'settings_title': "⚙️ Paramètres vendeur",
-        'wallet_title': "💰 Portefeuille / Payouts",
+        'wallet_title': " Portefeuille / Payouts",
         'no_products_msg': "Aucun produit trouvé.",
         'product_add_title': "➕ Ajouter un produit",
         'product_step1_prompt': "📦 Étape 1: Titre du produit",
@@ -79,10 +79,10 @@ TEXTS: Dict[str, Dict[str, str]] = {
 
         # Admin
         'admin_back': "🔙 Retour",
-        'admin_payouts': "💰 Payouts",
-        'admin_stats': "📊 Stats",
-        'admin_payouts_title': "💰 **PAYOUTS PENDING**",
-        'admin_products_title': "📦 **PRODUITS** (20 derniers)",
+        'admin_payouts': " Payouts",
+        'admin_stats': " Stats",
+        'admin_payouts_title': " **PAYOUTS PENDING**",
+        'admin_products_title': " **PRODUITS** (20 derniers)",
 
         # Support
         'ui_create_ticket_button': "Créer un ticket",
@@ -136,9 +136,9 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'btn_edit_bio': "Edit bio",
         'btn_edit_name': "Edit name",
         'btn_payout_history': "Payout history",
-        'analytics_title': "📊 Seller analytics",
+        'analytics_title': " Seller analytics",
         'settings_title': "⚙️ Seller settings",
-        'wallet_title': "💰 Wallet / Payouts",
+        'wallet_title': " Wallet / Payouts",
         'no_products_msg': "No products found.",
         'product_add_title': "➕ Add product",
         'product_step1_prompt': "📦 Step 1: Product title",
@@ -171,10 +171,10 @@ TEXTS: Dict[str, Dict[str, str]] = {
 
         # Admin
         'admin_back': "🔙 Back",
-        'admin_payouts': "💰 Payouts",
-        'admin_stats': "📊 Stats",
-        'admin_payouts_title': "💰 **PAYOUTS PENDING**",
-        'admin_products_title': "📦 **PRODUCTS** (last 20)",
+        'admin_payouts': " Payouts",
+        'admin_stats': " Stats",
+        'admin_payouts_title': " **PAYOUTS PENDING**",
+        'admin_products_title': " **PRODUCTS** (last 20)",
 
         # Support
         'ui_create_ticket_button': "Create ticket",

@@ -2,6 +2,7 @@
 Email Service - Service d'envoi d'emails pour récupération et notifications
 """
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -17,17 +18,82 @@ class EmailService:
         self.smtp_port = settings.SMTP_PORT
         self.smtp_email = settings.SMTP_USERNAME
         self.smtp_password = settings.SMTP_PASSWORD
+        self.from_email = settings.FROM_EMAIL
+        self.from_name = settings.FROM_NAME
         self.smtp_configured = bool(self.smtp_server and self.smtp_email and self.smtp_password)
 
         logger.info(f"EmailService initialized - SMTP configured: {self.smtp_configured}")
         logger.info(f"SMTP Server: {self.smtp_server}:{self.smtp_port}")
         logger.info(f"SMTP Email: {self.smtp_email}")
+        logger.info(f"FROM Email: {self.from_email}")
+        logger.info(f"FROM Name: {self.from_name}")
         if not self.smtp_configured:
             logger.warning("SMTP not fully configured - running in simulation mode")
 
-    def send_email(self, to_email: str, subject: str, body: str) -> bool:
+    def _send_smtp_blocking(self, to_email: str, subject: str, body: str) -> bool:
         """
-        Envoie un email
+        Blocking SMTP send operation (to be called via asyncio.to_thread)
+
+        Args:
+            to_email: Adresse email destinataire
+            subject: Sujet de l'email
+            body: Corps du message
+
+        Returns:
+            bool: True si envoi réussi
+        """
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+
+        # Créer le message
+        msg = MIMEMultipart('alternative')
+        msg['From'] = f"{self.from_name} <{self.from_email}>"
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+
+        # Connexion et envoi avec gestion d'erreur robuste
+        try:
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                server.set_debuglevel(0)  # Disable debug output
+
+                # Start TLS if using port 587
+                if self.smtp_port == 587:
+                    server.starttls()
+                    logger.debug("TLS connection established")
+
+                # Login
+                server.login(self.smtp_email, self.smtp_password)
+                logger.debug("SMTP authentication successful")
+
+                # Send message
+                server.send_message(msg)
+                logger.info(f"📧 Email envoyé avec succès - To: {to_email}, Subject: {subject}")
+                return True
+
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"SMTP Authentication failed: {e}")
+            # Fallback to simulation mode
+            logger.info(f"📧 Email simulé (auth failed) - To: {to_email}, Subject: {subject}")
+            return True
+        except smtplib.SMTPRecipientsRefused as e:
+            logger.error(f"SMTP Recipients refused: {e}")
+            return False
+        except smtplib.SMTPServerDisconnected as e:
+            logger.error(f"SMTP Server disconnected: {e}")
+            # Fallback to simulation mode
+            logger.info(f"📧 Email simulé (server disconnected) - To: {to_email}, Subject: {subject}")
+            return True
+        except Exception as e:
+            logger.error(f"Unexpected SMTP error: {e}")
+            # Fallback to simulation mode for any other error
+            logger.info(f"📧 Email simulé (error fallback) - To: {to_email}, Subject: {subject}")
+            return True
+
+    async def send_email(self, to_email: str, subject: str, body: str) -> bool:
+        """
+        Envoie un email (async, non-bloquant pour des milliers d'utilisateurs)
 
         Args:
             to_email: Adresse email destinataire
@@ -44,55 +110,8 @@ class EmailService:
                 print(f"📧 Email to {to_email}: {subject}")
                 return True
 
-            # Envoi SMTP réel
-            import smtplib
-            from email.mime.text import MIMEText
-            from email.mime.multipart import MIMEMultipart
-
-            # Créer le message
-            msg = MIMEMultipart()
-            msg['From'] = self.smtp_email
-            msg['To'] = to_email
-            msg['Subject'] = subject
-            msg.attach(MIMEText(body, 'plain', 'utf-8'))
-
-            # Connexion et envoi avec gestion d'erreur robuste
-            try:
-                with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                    server.set_debuglevel(0)  # Disable debug output
-
-                    # Start TLS if using port 587
-                    if self.smtp_port == 587:
-                        server.starttls()
-                        logger.debug("TLS connection established")
-
-                    # Login
-                    server.login(self.smtp_email, self.smtp_password)
-                    logger.debug("SMTP authentication successful")
-
-                    # Send message
-                    server.send_message(msg)
-                    logger.info(f"📧 Email envoyé avec succès - To: {to_email}, Subject: {subject}")
-                    return True
-
-            except smtplib.SMTPAuthenticationError as e:
-                logger.error(f"SMTP Authentication failed: {e}")
-                # Fallback to simulation mode
-                logger.info(f"📧 Email simulé (auth failed) - To: {to_email}, Subject: {subject}")
-                return True
-            except smtplib.SMTPRecipientsRefused as e:
-                logger.error(f"SMTP Recipients refused: {e}")
-                return False
-            except smtplib.SMTPServerDisconnected as e:
-                logger.error(f"SMTP Server disconnected: {e}")
-                # Fallback to simulation mode
-                logger.info(f"📧 Email simulé (server disconnected) - To: {to_email}, Subject: {subject}")
-                return True
-            except Exception as e:
-                logger.error(f"Unexpected SMTP error: {e}")
-                # Fallback to simulation mode for any other error
-                logger.info(f"📧 Email simulé (error fallback) - To: {to_email}, Subject: {subject}")
-                return True
+            # Envoi SMTP réel via thread pour ne pas bloquer l'event loop
+            return await asyncio.to_thread(self._send_smtp_blocking, to_email, subject, body)
 
         except Exception as e:
             logger.error(f"Erreur envoi email: {e}")
@@ -400,7 +419,7 @@ class EmailService:
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 
@@ -492,7 +511,7 @@ class EmailService:
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 
@@ -766,7 +785,7 @@ class EmailService:
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 
@@ -1047,7 +1066,7 @@ class EmailService:
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 
@@ -1067,271 +1086,6 @@ class EmailService:
             logger.info(f"📧 Email suspension compte simulé (fallback) - To: {to_email}")
             return True
 
-    def send_support_reply_notification(self, to_email: str, user_name: str, ticket_id: str, message_preview: str) -> bool:
-        """
-        Envoie un email de notification de nouvelle réponse support
-
-        Args:
-            to_email: Email de l'utilisateur
-            user_name: Nom de l'utilisateur
-            ticket_id: ID du ticket
-            message_preview: Aperçu du message (premiers 200 caractères)
-
-        Returns:
-            bool: True si envoi réussi
-        """
-        subject = f"💬 Nouvelle réponse à votre ticket #{ticket_id} - UZEUR Support"
-
-        # Limiter l'aperçu à 200 caractères
-        preview = message_preview[:200] if len(message_preview) > 200 else message_preview
-
-        body = f"""
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
-            background: #fafbfc;
-            color: #334155;
-            line-height: 1.6;
-            -webkit-font-smoothing: antialiased;
-        }}
-
-        .container {{
-            max-width: 600px;
-            margin: 40px auto;
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(59, 130, 246, 0.12);
-            overflow: hidden;
-        }}
-
-        .header {{
-            background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #8b5cf6 100%);
-            padding: 40px 30px;
-            text-align: center;
-        }}
-
-        .header h1 {{
-            font-size: 32px;
-            font-weight: 900;
-            color: white;
-            margin-bottom: 8px;
-            letter-spacing: -0.02em;
-        }}
-
-        .header p {{
-            font-size: 16px;
-            color: rgba(255, 255, 255, 0.9);
-        }}
-
-        .content {{
-            padding: 40px 30px;
-        }}
-
-        .message-box {{
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
-            border-left: 4px solid #3b82f6;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-        }}
-
-        .message-box h2 {{
-            font-size: 24px;
-            font-weight: 800;
-            color: #1e40af;
-            margin-bottom: 10px;
-        }}
-
-        .info-section {{
-            background: #f3f4f6;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 24px;
-        }}
-
-        .info-item {{
-            margin-bottom: 16px;
-        }}
-
-        .info-item:last-child {{
-            margin-bottom: 0;
-        }}
-
-        .info-label {{
-            font-size: 12px;
-            font-weight: 700;
-            color: #64748b;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 4px;
-        }}
-
-        .info-value {{
-            font-size: 16px;
-            font-weight: 600;
-            color: #1e293b;
-        }}
-
-        .preview-box {{
-            background: #f8fafc;
-            border: 2px solid #e0e7ff;
-            padding: 20px;
-            border-radius: 12px;
-            margin: 24px 0;
-        }}
-
-        .preview-box h3 {{
-            font-size: 14px;
-            font-weight: 700;
-            color: #64748b;
-            margin-bottom: 12px;
-            text-transform: uppercase;
-        }}
-
-        .preview-box p {{
-            font-size: 14px;
-            color: #334155;
-            line-height: 1.8;
-            font-style: italic;
-        }}
-
-        .cta-button {{
-            display: inline-block;
-            background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
-            color: white;
-            text-decoration: none;
-            padding: 16px 32px;
-            border-radius: 12px;
-            font-weight: 700;
-            font-size: 16px;
-            text-align: center;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-            transition: transform 0.2s;
-        }}
-
-        .cta-button:hover {{
-            transform: translateY(-2px);
-        }}
-
-        .footer {{
-            background: #f3f4f6;
-            padding: 30px;
-            text-align: center;
-            border-top: 1px solid #e2e8f0;
-        }}
-
-        .footer p {{
-            font-size: 14px;
-            color: #64748b;
-            margin-bottom: 8px;
-        }}
-
-        .footer a {{
-            color: #3b82f6;
-            text-decoration: none;
-            font-weight: 600;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>💬 Nouvelle Réponse Support</h1>
-            <p>Notre équipe vous a répondu</p>
-        </div>
-
-        <div class="content">
-            <div class="message-box">
-                <h2>Bonjour {user_name},</h2>
-                <p>Vous avez reçu une nouvelle réponse à votre demande de support.</p>
-            </div>
-
-            <div class="info-section">
-                <div class="info-item">
-                    <div class="info-label">🎫 Numéro de ticket</div>
-                    <div class="info-value">#{ticket_id}</div>
-                </div>
-
-                <div class="info-item">
-                    <div class="info-label">📧 Votre email</div>
-                    <div class="info-value">{to_email}</div>
-                </div>
-            </div>
-
-            <div class="preview-box">
-                <h3>📄 Aperçu du message :</h3>
-                <p>"{preview}..."</p>
-            </div>
-
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="https://t.me/uzeur_bot" class="cta-button">
-                    📬 Lire le Message Complet
-                </a>
-            </div>
-
-            <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px; text-align: center;">
-                <p style="font-size: 14px; color: #64748b; margin: 0;">
-                    💡 <strong>Astuce :</strong> Répondez directement depuis le bot avec /support
-                </p>
-            </div>
-        </div>
-
-        <div class="footer">
-            <p><strong>UZEUR Support</strong></p>
-            <p>Notre équipe est là pour vous aider</p>
-            <p style="margin-top: 16px;">
-                <a href="#">Centre d'aide</a> • <a href="#">FAQ</a>
-            </p>
-        </div>
-    </div>
-</body>
-</html>
-        """
-
-        # Envoyer en HTML
-        try:
-            if not self.smtp_configured:
-                logger.info(f"📧 Email réponse support simulé - To: {to_email}")
-                print(f"📧 Support reply notification to {user_name} ({to_email})")
-                print(f"   Ticket: #{ticket_id}")
-                print(f"   Preview: {preview[:50]}...")
-                return True
-
-            import smtplib
-            from email.mime.text import MIMEText
-            from email.mime.multipart import MIMEMultipart
-
-            msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
-            msg['To'] = to_email
-            msg['Subject'] = subject
-
-            html_part = MIMEText(body, 'html', 'utf-8')
-            msg.attach(html_part)
-
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                if self.smtp_port == 587:
-                    server.starttls()
-                server.login(self.smtp_email, self.smtp_password)
-                server.send_message(msg)
-                logger.info(f"📧 Email réponse support envoyé - To: {to_email}")
-                return True
-
-        except Exception as e:
-            logger.error(f"Erreur envoi email réponse support: {e}")
-            logger.info(f"📧 Email réponse support simulé (fallback) - To: {to_email}")
-            return True
 
     def send_sale_confirmation_email(self, to_email: str, seller_name: str, product_title: str, buyer_name: str, sale_amount: str, sale_date: str) -> bool:
         """
@@ -1409,7 +1163,7 @@ class EmailService:
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 
@@ -1499,7 +1253,7 @@ class EmailService:
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 
@@ -1589,7 +1343,7 @@ class EmailService:
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 
@@ -1679,7 +1433,7 @@ class EmailService:
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
             msg['Subject'] = subject
 
@@ -1713,11 +1467,12 @@ class EmailService:
             bool: True si envoi réussi
         """
         try:
-            # Email admin = FROM_EMAIL (généralement l'email de notification)
-            admin_email = self.smtp_email
+            from app.core import settings as core_settings
+            # Utiliser ADMIN_EMAIL du .env, sinon fallback sur smtp_email
+            admin_email = core_settings.ADMIN_EMAIL or self.smtp_email
 
             if not admin_email:
-                logger.warning("Admin email not configured")
+                logger.warning("Admin email not configured (set ADMIN_EMAIL in .env)")
                 return False
 
             email_subject = f"Nouveau ticket support - {ticket_id}"
@@ -1736,7 +1491,19 @@ Message:
 Vous pouvez répondre directement à l'adresse: {client_email}
 """
 
-            return self.send_email(admin_email, email_subject, email_body)
+            # Executer la coroutine async dans un contexte synchrone
+            import asyncio
+            try:
+                # Si on est déjà dans une boucle async, créer une tâche
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self.send_email(admin_email, email_subject, email_body))
+                    return True
+                else:
+                    return asyncio.run(self.send_email(admin_email, email_subject, email_body))
+            except RuntimeError:
+                # Pas de boucle, en créer une
+                return asyncio.run(self.send_email(admin_email, email_subject, email_body))
 
         except Exception as e:
             logger.error(f"Erreur envoi email nouveau ticket: {e}")
@@ -1757,7 +1524,7 @@ Vous pouvez répondre directement à l'adresse: {client_email}
             bool: True si envoi réussi
         """
         try:
-            email_subject = f"✅ Ticket reçu - {ticket_id}"
+            email_subject = f"Ticket reçu - {ticket_id}"
 
             content_html = f"""
                 <div class="success-box">
@@ -1767,37 +1534,37 @@ Vous pouvez répondre directement à l'adresse: {client_email}
 
                 <div class="info-section">
                     <div class="info-item">
-                        <div class="info-label">🎫 Numéro de ticket</div>
+                        <div class="info-label"> Numéro de ticket</div>
                         <div class="info-value"><strong>{ticket_id}</strong></div>
                     </div>
 
                     <div class="info-item">
-                        <div class="info-label">📋 Sujet</div>
+                        <div class="info-label"> Sujet</div>
                         <div class="info-value">{subject}</div>
                     </div>
 
                     <div class="info-item">
-                        <div class="info-label">💬 Votre message</div>
+                        <div class="info-label"> Votre message</div>
                         <div class="info-value" style="background: #f9fafb; padding: 15px; border-radius: 8px; white-space: pre-wrap;">{message[:500]}{"..." if len(message) > 500 else ""}</div>
                     </div>
                 </div>
 
                 <div style="text-align: center; margin: 30px 0;">
                     <a href="https://t.me/uzeur_bot" class="cta-button">
-                        📱 Voir mes tickets
+                         Voir mes tickets
                     </a>
                 </div>
 
                 <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px; text-align: center;">
                     <p style="font-size: 14px; color: #1e40af; margin: 0;">
-                        ⏱️ <strong>Délai de réponse habituel</strong> : 24-48 heures<br>
+                        ⏱ <strong>Délai de réponse habituel</strong> : 24-48 heures<br>
                         💡 Vous recevrez une notification dès que nous aurons répondu
                     </p>
                 </div>
             """
 
             body = self._build_email_template(
-                header_title="✅ Ticket Reçu",
+                header_title=" Ticket Reçu",
                 header_subtitle=f"Référence : {ticket_id}",
                 content_html=content_html
             )
@@ -1813,7 +1580,7 @@ Vous pouvez répondre directement à l'adresse: {client_email}
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = client_email
             msg['Subject'] = email_subject
 
@@ -1873,27 +1640,27 @@ Vous pouvez répondre directement à l'adresse: {client_email}
 
                 <div class="info-section">
                     <div class="info-item">
-                        <div class="info-label">📦 Produit vendu</div>
+                        <div class="info-label"> Produit vendu</div>
                         <div class="info-value"><strong>{product_title}</strong></div>
                     </div>
 
                     <div class="info-item">
-                        <div class="info-label">💰 Prix de vente</div>
+                        <div class="info-label"> Prix de vente</div>
                         <div class="info-value"><strong>${product_price_usd:.2f} USD</strong></div>
                     </div>
 
                     <div class="info-item">
-                        <div class="info-label">💳 Paiement en</div>
+                        <div class="info-label"> Paiement en</div>
                         <div class="info-value">{payment_currency}</div>
                     </div>
 
                     <div class="info-item">
-                        <div class="info-label">👤 Acheteur</div>
+                        <div class="info-label"> Acheteur</div>
                         <div class="info-value">@{buyer_username}</div>
                     </div>
 
                     <div class="info-item">
-                        <div class="info-label">🆔 Commande</div>
+                        <div class="info-label"> Commande</div>
                         <div class="info-value" style="font-family: monospace; font-size: 12px;">{order_id}</div>
                     </div>
                 </div>
@@ -1906,7 +1673,7 @@ Vous pouvez répondre directement à l'adresse: {client_email}
                             <td style="padding: 10px 0; text-align: right; color: #064e3b;">${product_price_usd:.2f}</td>
                         </tr>
                         <tr style="border-bottom: 1px solid #d1fae5;">
-                            <td style="padding: 10px 0; color: #064e3b;">Commission plateforme (2.78%)</td>
+                            <td style="padding: 10px 0; color: #064e3b;">Commission plateforme (3.14%)</td>
                             <td style="padding: 10px 0; text-align: right; color: #064e3b;">-${platform_commission_usd:.2f}</td>
                         </tr>
                         <tr>
@@ -1918,14 +1685,14 @@ Vous pouvez répondre directement à l'adresse: {client_email}
 
                 <div style="text-align: center; margin: 30px 0;">
                     <a href="https://t.me/uzeur_bot" class="cta-button">
-                        📊 Voir mes statistiques
+                         Voir mes statistiques
                     </a>
                 </div>
 
                 <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px; text-align: center;">
                     <p style="font-size: 14px; color: #1e40af; margin: 0;">
-                        💰 Vos revenus seront transférés vers votre wallet Solana lors du prochain payout.<br>
-                        📅 Les payouts sont traités manuellement après vérification anti-fraude.
+                         Vos revenus seront transférés vers votre wallet Solana lors du prochain payout.<br>
+                         Les payouts sont traités manuellement après vérification anti-fraude.
                     </p>
                 </div>
             """
@@ -1947,7 +1714,7 @@ Vous pouvez répondre directement à l'adresse: {client_email}
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = seller_email
             msg['Subject'] = email_subject
 
@@ -1975,7 +1742,8 @@ Vous pouvez répondre directement à l'adresse: {client_email}
         product_price_usd: float,
         payment_currency: str,
         order_id: str,
-        seller_name: str
+        seller_name: str,
+        platform_commission_usd: float = 0.0
     ) -> bool:
         """
         Envoie un email de confirmation d'achat à l'acheteur
@@ -1984,16 +1752,17 @@ Vous pouvez répondre directement à l'adresse: {client_email}
             buyer_email: Email de l'acheteur
             buyer_username: Username de l'acheteur
             product_title: Titre du produit acheté
-            product_price_usd: Prix payé
+            product_price_usd: Prix du produit
             payment_currency: Crypto utilisée
             order_id: ID de la commande
             seller_name: Nom du vendeur
+            platform_commission_usd: Frais de plateforme
 
         Returns:
             bool: True si envoi réussi
         """
         try:
-            email_subject = f"✅ Achat confirmé - {product_title}"
+            email_subject = f" Achat confirmé - {product_title}"
 
             content_html = f"""
                 <div class="success-box">
@@ -2003,27 +1772,37 @@ Vous pouvez répondre directement à l'adresse: {client_email}
 
                 <div class="info-section">
                     <div class="info-item">
-                        <div class="info-label">📦 Produit acheté</div>
+                        <div class="info-label"> Produit acheté</div>
                         <div class="info-value"><strong>{product_title}</strong></div>
                     </div>
 
                     <div class="info-item">
-                        <div class="info-label">👤 Vendeur</div>
+                        <div class="info-label"> Vendeur</div>
                         <div class="info-value">{seller_name}</div>
                     </div>
 
                     <div class="info-item">
-                        <div class="info-label">💰 Montant payé</div>
-                        <div class="info-value"><strong>${product_price_usd:.2f} USD</strong></div>
+                        <div class="info-label"> Prix du produit</div>
+                        <div class="info-value">${product_price_usd:.2f} USD</div>
                     </div>
 
                     <div class="info-item">
-                        <div class="info-label">💳 Méthode de paiement</div>
+                        <div class="info-label"> Frais de gestion</div>
+                        <div class="info-value">${platform_commission_usd:.2f} USD</div>
+                    </div>
+
+                    <div class="info-item" style="border-top: 2px solid #e5e7eb; padding-top: 12px; margin-top: 8px;">
+                        <div class="info-label"> Montant total payé</div>
+                        <div class="info-value"><strong>${product_price_usd + platform_commission_usd:.2f} USD</strong></div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label"> Méthode de paiement</div>
                         <div class="info-value">{payment_currency}</div>
                     </div>
 
                     <div class="info-item">
-                        <div class="info-label">🆔 Numéro de commande</div>
+                        <div class="info-label"> Numéro de commande</div>
                         <div class="info-value" style="font-family: monospace; font-size: 12px;">{order_id}</div>
                     </div>
                 </div>
@@ -2035,12 +1814,12 @@ Vous pouvez répondre directement à l'adresse: {client_email}
                 </div>
 
                 <div style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%); padding: 20px; border-radius: 12px; margin-top: 30px;">
-                    <h3 style="margin: 0 0 15px 0; color: #065f46;">📥 Comment télécharger votre produit ?</h3>
+                    <h3 style="margin: 0 0 15px 0; color: #065f46;"> Comment télécharger votre produit ?</h3>
                     <ol style="margin: 0; padding-left: 20px; color: #064e3b;">
                         <li style="margin-bottom: 8px;">Ouvrez le bot Telegram @uzeur_bot</li>
                         <li style="margin-bottom: 8px;">Cliquez sur "📚 Ma Bibliothèque"</li>
                         <li style="margin-bottom: 8px;">Sélectionnez votre produit</li>
-                        <li>Cliquez sur "📥 Télécharger" (limite: 5 téléchargements)</li>
+                        <li>Cliquez sur " Télécharger" </li>
                     </ol>
                 </div>
 
@@ -2053,7 +1832,7 @@ Vous pouvez répondre directement à l'adresse: {client_email}
             """
 
             body = self._build_email_template(
-                header_title="✅ Achat Confirmé",
+                header_title=" Achat Confirmé",
                 header_subtitle="Votre produit est prêt",
                 content_html=content_html
             )
@@ -2069,7 +1848,7 @@ Vous pouvez répondre directement à l'adresse: {client_email}
             from email.mime.multipart import MIMEMultipart
 
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.smtp_email
+            msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = buyer_email
             msg['Subject'] = email_subject
 

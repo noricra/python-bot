@@ -254,11 +254,11 @@ _{review_snippet}_
             elif sales_today < 3:
                 notification_text += "Bon début ! Ajoutez des images de qualité pour augmenter les conversions."
             else:
-                notification_text += "Excellente journée ! Continuez sur cette lancée 🚀"
+                notification_text += "Excellente journée ! Continuez sur cette lancée "
 
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("📊 Voir Analytics Complet", callback_data='analytics_dashboard')],
-                [InlineKeyboardButton("💰 Mes Revenus", callback_data='my_revenue')]
+                [InlineKeyboardButton(" Voir Analytics Complet", callback_data='analytics_dashboard')],
+                [InlineKeyboardButton(" Mes Revenus", callback_data='my_revenue')]
             ])
 
             await bot.application.bot.send_message(

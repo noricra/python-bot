@@ -11,6 +11,9 @@ class SupportTicketRepository:
         pass
 
     def create_ticket(self, user_id: int, ticket_id: str, subject: str, message: str, client_email: str = None) -> bool:
+        import logging
+        logger = logging.getLogger(__name__)
+
         conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
@@ -19,9 +22,12 @@ class SupportTicketRepository:
                 (user_id, ticket_id, subject, message, client_email),
             )
             conn.commit()
+            logger.info(f"✅ Ticket created successfully: {ticket_id} for user {user_id}")
             return True
-        except psycopg2.Error:
+        except psycopg2.Error as e:
             conn.rollback()
+            logger.error(f"❌ Error creating ticket: {e}")
+            logger.error(f"Details: user_id={user_id}, ticket_id={ticket_id}, subject={subject[:50]}, client_email={client_email}")
             return False
         finally:
             put_connection(conn)

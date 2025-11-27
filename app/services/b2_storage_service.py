@@ -5,6 +5,7 @@ Handles upload/download/delete of product files to B2
 import boto3
 import logging
 import os
+import asyncio
 from typing import Optional, BinaryIO
 from botocore.exceptions import ClientError
 from app.core import settings
@@ -36,9 +37,9 @@ class B2StorageService:
             logger.error(f"❌ Failed to initialize B2 client: {e}")
             self.client = None
 
-    def upload_file(self, file_path: str, object_key: str) -> Optional[str]:
+    def _upload_file_blocking(self, file_path: str, object_key: str) -> Optional[str]:
         """
-        Upload a file to B2
+        Blocking file upload to B2 (to be called via asyncio.to_thread)
 
         Args:
             file_path: Local file path to upload
@@ -75,9 +76,22 @@ class B2StorageService:
             logger.error(f"❌ Unexpected error during upload: {e}")
             return None
 
-    def upload_fileobj(self, file_obj: BinaryIO, object_key: str) -> Optional[str]:
+    async def upload_file(self, file_path: str, object_key: str) -> Optional[str]:
         """
-        Upload a file object to B2
+        Upload a file to B2 (async, non-bloquant pour des milliers d'utilisateurs)
+
+        Args:
+            file_path: Local file path to upload
+            object_key: Key/name in B2 (e.g., "products/abc123/file.pdf")
+
+        Returns:
+            str: URL of uploaded file, or None if failed
+        """
+        return await asyncio.to_thread(self._upload_file_blocking, file_path, object_key)
+
+    def _upload_fileobj_blocking(self, file_obj: BinaryIO, object_key: str) -> Optional[str]:
+        """
+        Blocking file object upload to B2 (to be called via asyncio.to_thread)
 
         Args:
             file_obj: File-like object (BytesIO, etc.)
@@ -108,9 +122,22 @@ class B2StorageService:
             logger.error(f"❌ Unexpected error during upload: {e}")
             return None
 
-    def download_file(self, object_key: str, destination_path: str) -> bool:
+    async def upload_fileobj(self, file_obj: BinaryIO, object_key: str) -> Optional[str]:
         """
-        Download a file from B2
+        Upload a file object to B2 (async, non-bloquant)
+
+        Args:
+            file_obj: File-like object (BytesIO, etc.)
+            object_key: Key/name in B2
+
+        Returns:
+            str: URL of uploaded file, or None if failed
+        """
+        return await asyncio.to_thread(self._upload_fileobj_blocking, file_obj, object_key)
+
+    def _download_file_blocking(self, object_key: str, destination_path: str) -> bool:
+        """
+        Blocking file download from B2 (to be called via asyncio.to_thread)
 
         Args:
             object_key: Key/name in B2
@@ -143,6 +170,19 @@ class B2StorageService:
         except Exception as e:
             logger.error(f"❌ Unexpected error during download: {e}")
             return False
+
+    async def download_file(self, object_key: str, destination_path: str) -> bool:
+        """
+        Download a file from B2 (async, non-bloquant)
+
+        Args:
+            object_key: Key/name in B2
+            destination_path: Local path to save file
+
+        Returns:
+            bool: True if successful
+        """
+        return await asyncio.to_thread(self._download_file_blocking, object_key, destination_path)
 
     def get_download_url(self, object_key: str, expires_in: int = 3600) -> Optional[str]:
         """

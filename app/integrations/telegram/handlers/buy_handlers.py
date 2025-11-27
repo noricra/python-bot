@@ -1547,7 +1547,7 @@ Contact support with your Order ID"""
                 )
             return
 
-        payment_status = await asyncio.to_thread(self.payment_service.check_payment_status, payment_id)
+        payment_status = await self.payment_service.check_payment_status(payment_id)
 
         if payment_status:
             status = payment_status.get('payment_status', 'waiting')
@@ -1906,7 +1906,7 @@ Contact support with your Order ID"""
             order_id = f"TBO-{user_id}-{int(time.time())}"
 
             # Create NowPayments payment with enhanced data (buyer pays total with fees)
-            payment_data = self.payment_service.create_payment(
+            payment_data = await self.payment_service.create_payment(
                 amount_usd=total_amount,
                 pay_currency=crypto_code,
                 order_id=order_id,

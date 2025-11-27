@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+  <!-- SEO Meta Tags -->
+  <title data-i18n="meta.title">UZEUR - Marketplace Décentralisée pour Créateurs | 0% Commission</title>
+  <meta name="description" data-content-i18n="meta.description" content="Vendez vos formations, ebooks, PDF et vidéos via Telegram. Paiements crypto instantanés (BTC, ETH, SOL, USDT), 0% de commission vendeur.">
+  <meta name="keywords" content="marketplace telegram, crypto payments, 0% commission, digital products, ebook, pdf, formation, bitcoin, ethereum, solana">
+  <meta name="author" content="UZEUR">
+  <meta name="robots" content="index, follow">
+  <meta name="language" content="French">
+  <meta name="revisit-after" content="7 days">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://uzeur.com/">
+  <meta property="og:title" data-content-i18n="meta.title" content="UZEUR - Marketplace Décentralisée pour Créateurs">
+  <meta property="og:description" data-content-i18n="meta.description" content="Vendez vos formations, ebooks, PDF et vidéos via Telegram. Paiements crypto instantanés.">
+  <meta property="og:image" content="https://uzeur.com/assets/images/og-image.jpg">
+  <meta property="og:site_name" content="UZEUR">
+  <meta property="og:locale" content="fr_FR">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://uzeur.com/">
+  <meta property="twitter:title" data-content-i18n="meta.title" content="UZEUR - Marketplace Décentralisée">
+  <meta property="twitter:description" data-content-i18n="meta.description" content="Vendez vos formations avec 0% de commission">
+  <meta property="twitter:image" content="https://uzeur.com/assets/images/twitter-image.jpg">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+
+  <!-- Preconnect to external resources -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="assets/css/main.css">
+  <link rel="stylesheet" href="assets/css/components/header.css">
+  <link rel="stylesheet" href="assets/css/components/hero.css">
+  <link rel="stylesheet" href="assets/css/components/features.css">
+  <link rel="stylesheet" href="assets/css/components/pricing.css">
+  <link rel="stylesheet" href="assets/css/components/faq.css">
+  <link rel="stylesheet" href="assets/css/components/footer.css">
+
+  <!-- Structured Data (JSON-LD) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "UZEUR",
+    "description": "Marketplace décentralisée pour créateurs digitaux",
+    "url": "https://uzeur.com",
+    "applicationCategory": "BusinessApplication",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "operatingSystem": "All",
+    "browserRequirements": "Requires JavaScript and Telegram"
+  }
+  </script>
+</head>
+
+<body class="gpu-accelerated">
+
+  <!-- Header / Navigation -->
+  <header class="header" role="banner">
+    <div class="container">
+      <div class="header-container">
+        <!-- Logo -->
+        <a href="#home" class="logo" aria-label="UZEUR Home">
+          <div class="logo-icon">💎</div>
+          <span class="logo-text">UZEUR</span>
+        </a>
+
+        <!-- Desktop Navigation -->
+        <nav class="nav nav-desktop" role="navigation" aria-label="Main navigation">
+          <ul class="nav-links">
+            <li><a href="#home" class="nav-link" data-i18n="header.nav.home">Accueil</a></li>
+            <li><a href="#features" class="nav-link" data-i18n="header.nav.features">Fonctionnalités</a></li>
+            <li><a href="#pricing" class="nav-link" data-i18n="header.nav.pricing">Tarifs</a></li>
+            <li><a href="#faq" class="nav-link" data-i18n="header.nav.faq">FAQ</a></li>
+            <li><a href="https://t.me/uzeur_bot" class="btn btn-primary nav-cta" target="_blank" rel="noopener" data-i18n="header.nav.cta">Ouvrir le bot</a></li>
+          </ul>
+        </nav>
+
+        <!-- Language Switcher -->
+        <div class="lang-switcher">
+          <button class="lang-button active" data-lang-switch="fr" aria-label="French">FR</button>
+          <button class="lang-button" data-lang-switch="en" aria-label="English">EN</button>
+        </div>
+
+        <!-- Mobile Menu Toggle -->
+        <button class="menu-toggle" aria-label="Toggle menu">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Scroll Progress -->
+    <div class="scroll-progress" role="progressbar" aria-label="Page scroll progress"></div>
+  </header>
+
+  <!-- Mobile Menu -->
+  <div class="mobile-menu" role="navigation" aria-label="Mobile navigation">
+    <ul class="mobile-menu-links">
+      <li><a href="#home" class="mobile-menu-link" data-i18n="header.nav.home">Accueil</a></li>
+      <li><a href="#features" class="mobile-menu-link" data-i18n="header.nav.features">Fonctionnalités</a></li>
+      <li><a href="#pricing" class="mobile-menu-link" data-i18n="header.nav.pricing">Tarifs</a></li>
+      <li><a href="#faq" class="mobile-menu-link" data-i18n="header.nav.faq">FAQ</a></li>
+    </ul>
+    <a href="https://t.me/uzeur_bot" class="btn btn-primary btn-lg mobile-menu-cta" target="_blank" rel="noopener" data-i18n="header.nav.cta">Ouvrir le bot</a>
+  </div>
+
+  <!-- Header Spacer -->
+  <div class="header-spacer"></div>
+
+  <!-- Main Content -->
+  <main role="main">
+
+    <!-- Hero Section -->
+    <section id="home" class="hero scroll-reveal">
+      <div class="hero-bg">
+        <div class="hero-gradient"></div>
+        <div class="hero-grid"></div>
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+        <div class="hero-orb hero-orb-3"></div>
+      </div>
+
+      <div class="container">
+        <div class="hero-container">
+          <!-- Badge -->
+          <div class="hero-badge">
+            <span class="hero-badge-icon" data-i18n="hero.badge">🚀 Nouveau</span>
+            <span data-i18n="hero.badgeText">Marketplace décentralisée sans intermédiaires</span>
+          </div>
+
+          <!-- Title -->
+          <h1 class="hero-title">
+            <span data-i18n="hero.title">Vendez vos produits digitaux avec</span><br>
+            <span class="hero-title-gradient" data-i18n="hero.titleHighlight">0% de commission</span>
+          </h1>
+
+          <!-- Subtitle -->
+          <p class="hero-subtitle" data-i18n="hero.subtitle">
+            La première marketplace Telegram avec paiements crypto. Vendez vos formations, ebooks, PDF et vidéos. Recevez vos paiements en 24h.
+          </p>
+
+          <!-- CTA Buttons -->
+          <div class="hero-cta">
+            <a href="https://t.me/uzeur_bot" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
+              <span data-i18n="hero.cta.primary">Commencer maintenant</span>
+              <span>→</span>
+            </a>
+            <a href="#features" class="btn btn-outline btn-lg">
+              <span data-i18n="hero.cta.secondary">Voir la démo</span>
+            </a>
+          </div>
+
+          <!-- Stats -->
+          <div class="hero-stats scroll-reveal-stagger">
+            <div class="hero-stat">
+              <span class="hero-stat-value" data-counter data-target="0" data-suffix="%">0%</span>
+              <span class="hero-stat-label" data-i18n="hero.stats.commission.label">Commission Vendeurs</span>
+            </div>
+            <div class="hero-stat">
+              <span class="hero-stat-value">24h</span>
+              <span class="hero-stat-label" data-i18n="hero.stats.payout.label">Paiement Vendeurs</span>
+            </div>
+            <div class="hero-stat">
+              <span class="hero-stat-value" data-counter data-target="6">0</span>
+              <span class="hero-stat-label" data-i18n="hero.stats.cryptos.label">Cryptomonnaies</span>
+            </div>
+            <div class="hero-stat">
+              <span class="hero-stat-value">5min</span>
+              <span class="hero-stat-label" data-i18n="hero.stats.setup.label">Mise en ligne</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scroll Indicator -->
+      <div class="scroll-indicator" onclick="window.location.hash='#features'">
+        <div class="scroll-indicator-icon">
+          <div class="scroll-indicator-dot"></div>
+        </div>
+        <span class="scroll-indicator-text" data-i18n="hero.scrollIndicator">Défiler</span>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features section-padding scroll-reveal">
+      <div class="container">
+        <!-- Header -->
+        <div class="features-header">
+          <h2 class="features-title" data-i18n="features.title">Pourquoi choisir UZEUR ?</h2>
+          <p class="features-subtitle" data-i18n="features.subtitle">
+            Une plateforme conçue pour les créateurs qui veulent garder le contrôle total de leurs revenus
+          </p>
+        </div>
+
+        <!-- Features Grid -->
+        <div class="features-grid scroll-reveal-stagger">
+          <!-- Feature 1 -->
+          <article class="feature-card hover-lift">
+            <div class="feature-icon">💰</div>
+            <h3 class="feature-title" data-i18n="features.list.commission.title">0% Commission Vendeur</h3>
+            <p class="feature-description" data-i18n="features.list.commission.description">
+              Gardez 100% de vos revenus. Nous ne prenons aucune commission sur vos ventes.
+            </p>
+          </article>
+
+          <!-- Feature 2 -->
+          <article class="feature-card hover-lift">
+            <div class="feature-icon">₿</div>
+            <h3 class="feature-title" data-i18n="features.list.crypto.title">Paiements Crypto Instantanés</h3>
+            <p class="feature-description" data-i18n="features.list.crypto.description">
+              Acceptez BTC, ETH, SOL, USDT, USDC et BNB. Simple et sécurisé.
+            </p>
+          </article>
+
+          <!-- Feature 3 -->
+          <article class="feature-card hover-lift">
+            <div class="feature-icon">⚡</div>
+            <h3 class="feature-title" data-i18n="features.list.fast.title">Paiement en 24h</h3>
+            <p class="feature-description" data-i18n="features.list.fast.description">
+              Recevez vos revenus sous 24h après chaque vente. Pas d'attente.
+            </p>
+          </article>
+
+          <!-- Feature 4 -->
+          <article class="feature-card hover-lift">
+            <div class="feature-icon">📱</div>
+            <h3 class="feature-title" data-i18n="features.list.telegram.title">100% sur Telegram</h3>
+            <p class="feature-description" data-i18n="features.list.telegram.description">
+              Tout se passe dans Telegram. Vos clients achètent en 3 clics.
+            </p>
+          </article>
+
+          <!-- Feature 5 -->
+          <article class="feature-card hover-lift">
+            <div class="feature-icon">🔒</div>
+            <h3 class="feature-title" data-i18n="features.list.noKYC.title">Aucun KYC requis</h3>
+            <p class="feature-description" data-i18n="features.list.noKYC.description">
+              Vendez et achetez de manière anonyme. Pas de vérification d'identité.
+            </p>
+          </article>
+
+          <!-- Feature 6 -->
+          <article class="feature-card hover-lift">
+            <div class="feature-icon">☁️</div>
+            <h3 class="feature-title" data-i18n="features.list.storage.title">Stockage Sécurisé B2</h3>
+            <p class="feature-description" data-i18n="features.list.storage.description">
+              Vos fichiers hébergés sur infrastructure professionnelle Backblaze B2.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="pricing section-padding scroll-reveal">
+      <div class="container">
+        <!-- Header -->
+        <div class="pricing-header">
+          <h2 class="pricing-title" data-i18n="pricing.title">Tarification Transparente</h2>
+          <p class="pricing-subtitle" data-i18n="pricing.subtitle">
+            Pas de frais cachés. Vous savez exactement ce que vous payez.
+          </p>
+        </div>
+
+        <!-- Pricing Grid -->
+        <div class="pricing-grid scroll-reveal-stagger">
+          <!-- Seller Plan -->
+          <article class="pricing-card hover-lift">
+            <div class="pricing-card-header">
+              <div class="pricing-icon">🏪</div>
+              <h3 class="pricing-name" data-i18n="pricing.seller.name">Vendeur</h3>
+              <p class="pricing-description" data-i18n="pricing.seller.description">Pour créateurs et entrepreneurs</p>
+            </div>
+
+            <div class="pricing-price">
+              <span class="pricing-currency">$</span>
+              <span class="pricing-amount" data-counter data-target="0">0</span>
+              <span class="pricing-period" data-i18n="pricing.seller.period">/ vente</span>
+            </div>
+            <p class="pricing-note" data-i18n="pricing.seller.note">Oui, vraiment 0% !</p>
+
+            <div class="pricing-features">
+              <div class="pricing-feature">
+                <span class="pricing-feature-icon">✓</span>
+                <span data-i18n="pricing.seller.features[0]">0% de commission</span>
+              </div>
+              <div class="pricing-feature">
+                <span class="pricing-feature-icon">✓</span>
+                <span data-i18n="pricing.seller.features[1]">Paiement en 24h</span>
+              </div>
+              <div class="pricing-feature">
+                <span class="pricing-feature-icon">✓</span>
+                <span data-i18n="pricing.seller.features[2]">Stockage illimité</span>
+              </div>
+              <div class="pricing-feature">
+                <span class="pricing-feature-icon">✓</span>
+                <span data-i18n="pricing.seller.features[3]">Analytics détaillées</span>
+              </div>
+            </div>
+
+            <a href="https://t.me/uzeur_bot" class="btn btn-primary btn-lg pricing-cta" target="_blank" rel="noopener">
+              <span data-i18n="pricing.seller.cta">Devenir vendeur</span>
+            </a>
+          </article>
+
+          <!-- Buyer Plan (Featured) -->
+          <article class="pricing-card pricing-card-featured hover-lift">
+            <span class="pricing-badge">Populaire</span>
+
+            <div class="pricing-card-header">
+              <div class="pricing-icon">🛒</div>
+              <h3 class="pricing-name" data-i18n="pricing.buyer.name">Acheteur</h3>
+              <p class="pricing-description" data-i18n="pricing.buyer.description">Frais de transaction uniquement</p>
+            </div>
+
+            <div class="pricing-price">
+              <span class="pricing-amount">3.14</span>
+              <span class="pricing-period">%</span>
+            </div>
+            <p class="pricing-note" data-i18n="pricing.buyer.note">Frais crypto network</p>
+
+            <div class="pricing-features">
+              <div class="pricing-feature">
+                <span class="pricing-feature-icon">✓</span>
+                <span data-i18n="pricing.buyer.features[0]">Livraison instantanée</span>
+              </div>
+              <div class="pricing-feature">
+                <span class="pricing-feature-icon">✓</span>
+                <span data-i18n="pricing.buyer.features[1]">100% sécurisé</span>
+              </div>
+              <div class="pricing-feature">
+                <span class="pricing-feature-icon">✓</span>
+                <span data-i18n="pricing.buyer.features[2]">6 cryptomonnaies</span>
+              </div>
+              <div class="pricing-feature">
+                <span class="pricing-feature-icon">✓</span>
+                <span data-i18n="pricing.buyer.features[3]">Anonymat total</span>
+              </div>
+            </div>
+
+            <a href="https://t.me/uzeur_bot" class="btn btn-primary btn-lg pricing-cta" target="_blank" rel="noopener">
+              <span data-i18n="pricing.buyer.cta">Explorer le marché</span>
+            </a>
+          </article>
+
+          <!-- Enterprise Plan -->
+          <article class="pricing-card hover-lift">
+            <div class="pricing-card-header">
+              <div class="pricing-icon">🏢</div>
+              <h3 class="pricing-name" data-i18n="pricing.enterprise.name">Entreprise</h3>
+              <p class="pricing-description" data-i18n="pricing.enterprise.description">Solutions sur mesure</p>
+            </div>
+
+            <div class="pricing-price">
+              <span class="pricing-amount">Custom</span>
+            </div>
+            <p class="pricing-note" data-i18n="pricing.enterprise.note">API personnalisée</p>
+
+            <div class="pricing-features">
+              <div class="pricing-feature">
+                <span class="pricing-feature-icon">✓</span>
+                <span data-i18n="pricing.enterprise.features[0]">API dédiée</span>
+              </div>
+              <div class="pricing-feature">
+                <span class="pricing-feature-icon">✓</span>
+                <span data-i18n="pricing.enterprise.features[1]">Intégration custom</span>
+              </div>
+              <div class="pricing-feature">
+                <span class="pricing-feature-icon">✓</span>
+                <span data-i18n="pricing.enterprise.features[2]">Account manager</span>
+              </div>
+              <div class="pricing-feature">
+                <span class="pricing-feature-icon">✓</span>
+                <span data-i18n="pricing.enterprise.features[3]">SLA 99.9%</span>
+              </div>
+            </div>
+
+            <a href="mailto:contact@uzeur.com" class="btn btn-outline btn-lg pricing-cta">
+              <span data-i18n="pricing.enterprise.cta">Nous contacter</span>
+            </a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section id="faq" class="faq section-padding scroll-reveal">
+      <div class="container">
+        <!-- Header -->
+        <div class="faq-header">
+          <h2 class="faq-title" data-i18n="faq.title">Questions Fréquentes</h2>
+          <p class="faq-subtitle" data-i18n="faq.subtitle">
+            Tout ce que vous devez savoir sur UZEUR
+          </p>
+        </div>
+
+        <!-- FAQ Accordion -->
+        <div class="faq-accordion scroll-reveal-stagger">
+          <!-- FAQ 1 -->
+          <div class="faq-item">
+            <button class="faq-question">
+              <span class="faq-icon">💰</span>
+              <span class="faq-question-text" data-i18n="faq.questions.payments.question">Comment fonctionnent les paiements ?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-content" data-i18n="faq.questions.payments.answer">
+                Les acheteurs paient en crypto (BTC, ETH, SOL, USDT, USDC, BNB). Nous utilisons NOWPayments pour traiter les transactions de manière sécurisée.
+              </div>
+            </div>
+          </div>
+
+          <!-- FAQ 2 -->
+          <div class="faq-item">
+            <button class="faq-question">
+              <span class="faq-icon">🎯</span>
+              <span class="faq-question-text" data-i18n="faq.questions.commission.question">Vraiment 0% de commission vendeur ?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-content" data-i18n="faq.questions.commission.answer">
+                Oui ! Nous ne prenons AUCUNE commission sur vos ventes. 100% de vos revenus vous reviennent.
+              </div>
+            </div>
+          </div>
+
+          <!-- FAQ 3 -->
+          <div class="faq-item">
+            <button class="faq-question">
+              <span class="faq-icon">🚀</span>
+              <span class="faq-question-text" data-i18n="faq.questions.start.question">Comment commencer à vendre ?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-content" data-i18n="faq.questions.start.answer">
+                C'est simple : ouvrez @uzeur_bot, cliquez "Devenir Vendeur", uploadez votre produit, fixez votre prix. Moins de 5 minutes !
+              </div>
+            </div>
+          </div>
+
+          <!-- FAQ 4 -->
+          <div class="faq-item">
+            <button class="faq-question">
+              <span class="faq-icon">₿</span>
+              <span class="faq-question-text" data-i18n="faq.questions.cryptos.question">Quelles cryptomonnaies acceptez-vous ?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-content" data-i18n="faq.questions.cryptos.answer">
+                Nous acceptons 6 cryptomonnaies majeures : Bitcoin (BTC), Ethereum (ETH), Solana (SOL), USDT, USDC et BNB.
+              </div>
+            </div>
+          </div>
+
+          <!-- FAQ 5 -->
+          <div class="faq-item">
+            <button class="faq-question">
+              <span class="faq-icon">🔒</span>
+              <span class="faq-question-text" data-i18n="faq.questions.kyc.question">Dois-je fournir mes documents d'identité ?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-content" data-i18n="faq.questions.kyc.answer">
+                Non ! Aucune vérification KYC requise. Vous pouvez vendre et acheter de manière totalement anonyme.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CTA -->
+        <div class="faq-cta scroll-reveal">
+          <h3 class="faq-cta-title" data-i18n="faq.cta.title">Vous avez d'autres questions ?</h3>
+          <p class="faq-cta-text" data-i18n="faq.cta.text">Notre équipe est là pour vous aider</p>
+          <a href="https://t.me/uzeur_support" class="btn faq-cta-button" target="_blank" rel="noopener">
+            <span data-i18n="faq.cta.button">Contacter le support</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer" role="contentinfo">
+    <div class="footer-bg">
+      <div class="footer-orb footer-orb-1"></div>
+      <div class="footer-orb footer-orb-2"></div>
+    </div>
+
+    <div class="container">
+      <div class="footer-container">
+        <!-- Footer Main -->
+        <div class="footer-main">
+          <!-- Brand Column -->
+          <div class="footer-brand">
+            <a href="#home" class="footer-logo">
+              <div class="footer-logo-icon">💎</div>
+              <span class="footer-logo-text">UZEUR</span>
+            </a>
+            <p class="footer-description" data-i18n="footer.description">
+              La marketplace décentralisée pour créateurs. Vendez vos produits digitaux sans commission.
+            </p>
+            <!-- Social Links -->
+            <div class="footer-social">
+              <a href="https://t.me/uzeur_bot" class="footer-social-link" aria-label="Telegram" target="_blank" rel="noopener">
+                <span>📱</span>
+              </a>
+              <a href="https://twitter.com/uzeur" class="footer-social-link" aria-label="Twitter" target="_blank" rel="noopener">
+                <span>🐦</span>
+              </a>
+              <a href="https://github.com/uzeur" class="footer-social-link" aria-label="GitHub" target="_blank" rel="noopener">
+                <span>💻</span>
+              </a>
+            </div>
+          </div>
+
+          <!-- Product Column -->
+          <div class="footer-column">
+            <h4 class="footer-column-title" data-i18n="footer.product.title">Produit</h4>
+            <ul class="footer-links">
+              <li><a href="#features" class="footer-link" data-i18n="footer.product.links.features">Fonctionnalités</a></li>
+              <li><a href="#pricing" class="footer-link" data-i18n="footer.product.links.pricing">Tarifs</a></li>
+            </ul>
+          </div>
+
+          <!-- Resources Column -->
+          <div class="footer-column">
+            <h4 class="footer-column-title" data-i18n="footer.resources.title">Ressources</h4>
+            <ul class="footer-links">
+              <li><a href="#faq" class="footer-link" data-i18n="footer.resources.links.support">Support</a></li>
+              <li><a href="https://t.me/uzeur_bot" class="footer-link" target="_blank" rel="noopener">Bot Telegram</a></li>
+            </ul>
+          </div>
+
+          <!-- Legal Column -->
+          <div class="footer-column">
+            <h4 class="footer-column-title" data-i18n="footer.legal.title">Légal</h4>
+            <ul class="footer-links">
+              <li><a href="#terms" class="footer-link" data-i18n="footer.legal.links.terms">Conditions d'utilisation</a></li>
+              <li><a href="#privacy" class="footer-link" data-i18n="footer.legal.links.privacy">Confidentialité</a></li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Footer Bottom -->
+        <div class="footer-bottom">
+          <p class="footer-copyright">
+            <span data-i18n="footer.copyright">© 2024 UZEUR. Tous droits réservés.</span>
+            <br>
+            <span data-i18n="footer.madeWith">Fait avec ❤️ pour les créateurs</span>
+          </p>
+
+          <ul class="footer-legal">
+            <li><a href="#terms" class="footer-legal-link" data-i18n="footer.legal.links.terms">Conditions</a></li>
+            <li><a href="#privacy" class="footer-legal-link" data-i18n="footer.legal.links.privacy">Confidentialité</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script type="module" src="assets/js/main.js"></script>
+
+  <!-- No Script Fallback -->
+  <noscript>
+    <style>
+      .loading-overlay { display: none; }
+      body { overflow: visible !important; }
+    </style>
+    <div style="padding: 20px; text-align: center; background: #f59e0b; color: white;">
+      JavaScript est requis pour utiliser ce site. Veuillez l'activer dans votre navigateur.
+    </div>
+  </noscript>
+
+</body>
+</html>

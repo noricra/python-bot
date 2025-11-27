@@ -70,6 +70,7 @@ class DatabaseInitService:
             self._create_orders_table(cursor, conn)
             self._create_reviews_table(cursor, conn)
             self._create_seller_payouts_table(cursor, conn)
+            self._create_support_tickets_table(cursor, conn)
 
             # Insert default data
             logger.info("📦 Inserting default data...")
@@ -307,6 +308,39 @@ class DatabaseInitService:
             logger.debug("✅ Seller payouts table created/verified (PostgreSQL)")
         except Exception as e:
             logger.error(f"❌ Error creating seller_payouts table: {e}")
+            conn.rollback()
+            raise
+
+    def _create_support_tickets_table(self, cursor, conn):
+        """
+        Create support tickets table (PostgreSQL)
+        For customer support and issue tracking
+        """
+        try:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS support_tickets (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    ticket_id VARCHAR(50) UNIQUE NOT NULL,
+                    subject TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    client_email VARCHAR(255),
+                    status VARCHAR(20) DEFAULT 'open',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                )
+            ''')
+
+            # Create indexes
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_support_tickets_ticket_id ON support_tickets(ticket_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_support_tickets_created_at ON support_tickets(created_at DESC)')
+
+            conn.commit()
+            logger.debug("✅ Support tickets table created/verified (PostgreSQL)")
+        except Exception as e:
+            logger.error(f"❌ Error creating support_tickets table: {e}")
             conn.rollback()
             raise
 

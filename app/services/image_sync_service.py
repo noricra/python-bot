@@ -20,9 +20,9 @@ class ImageSyncService:
     def __init__(self):
         self.b2_service = B2StorageService()
 
-    def ensure_product_images_local(self, product_id: str, seller_id: int) -> Tuple[Optional[str], Optional[str]]:
+    async def ensure_product_images_local(self, product_id: str, seller_id: int) -> Tuple[Optional[str], Optional[str]]:
         """
-        Ensure product images exist locally, download from B2 if missing.
+        Ensure product images exist locally, download from B2 if missing (async, non-bloquant).
 
         This is critical for Railway: after restart, local files are gone but B2 persists.
 
@@ -58,7 +58,7 @@ class ImageSyncService:
 
             # Download cover if missing
             if not cover_exists:
-                success = self.b2_service.download_file(cover_b2_key, cover_local)
+                success = await self.b2_service.download_file(cover_b2_key, cover_local)
                 if success:
                     logger.info(f"✅ Downloaded cover from B2: {product_id}")
                 else:
@@ -67,7 +67,7 @@ class ImageSyncService:
 
             # Download thumbnail if missing
             if not thumb_exists:
-                success = self.b2_service.download_file(thumb_b2_key, thumb_local)
+                success = await self.b2_service.download_file(thumb_b2_key, thumb_local)
                 if success:
                     logger.info(f"✅ Downloaded thumbnail from B2: {product_id}")
                 else:
@@ -181,9 +181,9 @@ class ImageSyncService:
             logger.error(f"❌ Error getting image with fallback: {e}")
             return None
 
-    def backup_to_b2_if_missing(self, product_id: str, seller_id: int) -> bool:
+    async def backup_to_b2_if_missing(self, product_id: str, seller_id: int) -> bool:
         """
-        Backup local images to B2 if not already there.
+        Backup local images to B2 if not already there (async, non-bloquant).
 
         Useful after Railway restart to re-upload any missing B2 files.
 
@@ -218,7 +218,7 @@ class ImageSyncService:
 
             # Upload missing files
             if not cover_exists:
-                result = self.b2_service.upload_file(cover_local, cover_b2_key)
+                result = await self.b2_service.upload_file(cover_local, cover_b2_key)
                 if result:
                     logger.info(f"✅ Backed up cover to B2: {product_id}")
                 else:
@@ -226,7 +226,7 @@ class ImageSyncService:
                     return False
 
             if not thumb_exists:
-                result = self.b2_service.upload_file(thumb_local, thumb_b2_key)
+                result = await self.b2_service.upload_file(thumb_local, thumb_b2_key)
                 if result:
                     logger.info(f"✅ Backed up thumbnail to B2: {product_id}")
                 else:

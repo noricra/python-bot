@@ -238,6 +238,28 @@ class CallbackRouter:
                 await query.answer("❌ Erreur de format", show_alert=True)
                 return True
 
+        # Admin: Payout details
+        if callback_data.startswith('admin_payout_details:'):
+            try:
+                payout_id = int(callback_data.split(':')[1])
+                await self.bot.admin_handlers.admin_payout_details(query, lang, payout_id)
+                return True
+            except (ValueError, IndexError) as e:
+                logger.error(f"Error parsing payout_id from callback: {callback_data}, error: {e}")
+                await query.answer("❌ Erreur de format", show_alert=True)
+                return True
+
+        # Admin: Payouts pagination
+        if callback_data.startswith('admin_payouts_page:'):
+            try:
+                page = int(callback_data.split(':')[1])
+                await self.bot.admin_handlers.admin_payouts(query, lang, page)
+                return True
+            except (ValueError, IndexError) as e:
+                logger.error(f"Error parsing page from callback: {callback_data}, error: {e}")
+                await query.answer("❌ Erreur de format", show_alert=True)
+                return True
+
         # 🎠 Phase 2: Carousel navigation (carousel_{category}_{index})
         if callback_data.startswith('carousel_'):
             try:
@@ -303,6 +325,17 @@ class CallbackRouter:
                 return True
             except Exception as e:
                 logger.error(f"Error showing seller shop: {e}")
+                await query.answer("Error" if lang == 'en' else "Erreur")
+                return True
+
+        # ❓ FAQ Navigation (faq_{index})
+        if callback_data.startswith('faq_'):
+            try:
+                index = int(callback_data.replace('faq_', ''))
+                await self.bot.support_handlers.show_faq(query, lang, index=index)
+                return True
+            except Exception as e:
+                logger.error(f"Error in FAQ navigation: {e}")
                 await query.answer("Error" if lang == 'en' else "Erreur")
                 return True
 

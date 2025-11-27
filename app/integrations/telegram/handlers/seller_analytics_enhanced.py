@@ -147,12 +147,12 @@ class SellerAnalyticsEnhanced:
 
             text = f"""📊 **TABLEAU DE BORD VENDEUR**
 
-💰 **Revenus**
+ **Revenus**
 ├─ Brut: ${global_stats['total_revenue']:.2f}
 ├─ Commission: -${global_stats['total_commission']:.2f}
 └─ Net: ${global_stats['net_revenue']:.2f}
 
-📦 **Produits & Ventes**
+ **Produits & Ventes**
 ├─ Produits: {product_count['active']}/{product_count['total']} actifs
 └─ Ventes: {global_stats['total_sales']} commandes
 

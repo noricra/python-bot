@@ -1904,33 +1904,13 @@
 
             .hero {
                 align-items: flex-start;
-                
-                padding-top: 7rem !important;  /* Increased for ticker + header */
+                padding-top: 7rem !important;
                 padding-bottom: 3rem;
                 justify-content: center;
             }
 
             .hero-content {
                 max-width: 100%;
-            }
-
-            .nav-links {
-                display: none;
-                position: fixed;
-                top: 100px;
-                left: 0;
-                right: 0;
-                background: rgba(255, 255, 255, 0.98);
-                flex-direction: column;
-                padding: 2rem;
-                gap: 1.5rem;
-                border-bottom: 1px solid var(--border-light);
-                backdrop-filter: blur(20px);
-                box-shadow: 0 4px 12px rgba(100, 116, 139, 0.08);
-            }
-
-            .nav-links.active {
-                display: flex;
             }
 
             h1 {
@@ -2306,7 +2286,7 @@
                 .solana-widget {
                     min-width: 550px;
                     max-width: 650px;
-                    top: 100px !important;
+                    top: 75px !important;
                     padding: 14px 36px;
                 }
                 
@@ -2389,7 +2369,7 @@
                 .solana-widget {
                     min-width: 650px;
                     max-width: 750px;
-                    top: 100px !important;
+                    top: 95px !important;
                     padding: 14px 36px;
                 }
                 
@@ -2570,6 +2550,233 @@
     }
 
 
+    }
+
+    /* FIX: Nesthub et formats similaires (912x799, 1024x600) - Widget trop court */
+    @media (min-width: 900px) and (max-width: 1024px) and (max-height: 799px) and (orientation: landscape) {
+        .solana-widget {
+            min-width: 600px !important;
+            max-width: 700px !important;
+            padding: 12px 32px !important;
+        }
+
+        .solana-widget-content {
+            gap: 22px !important;
+        }
+
+        .sol-price {
+            font-size: 1.5rem !important;
+        }
+
+        /* Descendre hero content */
+        .hero-content {
+            margin-top: 8dvh !important;
+            padding-top: 100px !important;
+        }
+    }
+
+    /* FIX COMPLET: iPad mini portrait (768x1024) - Tout refait proprement */
+    @media (min-width: 768px) and (max-width: 768px) and (orientation: portrait) {
+
+        /* ==== HEADER - Fix superposition ==== */
+        header {
+            background: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(10px) !important;
+            z-index: 1000 !important;
+            position: fixed !important;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1) !important;
+        }
+
+        .header-inner {
+            padding: 0.6rem 2rem !important;
+            max-width: 100% !important;
+        }
+
+        .logo {
+            font-size: 1.4rem !important;
+        }
+
+        .nav-links {
+            gap: 0.8rem !important;
+        }
+
+        .nav-links a {
+            font-size: 0.8rem !important;
+        }
+
+        /* Fix bouton "Ouvrir le bot" sur 1 ligne - FORCE */
+        .btn-secondary {
+            font-size: 0.7rem !important;
+            padding: 0.5rem 2.2rem !important;
+            white-space: nowrap !important;
+            min-width: auto !important;
+            line-height: 1.1 !important;
+            letter-spacing: -0.02em !important;
+        }
+
+        /* ==== WIDGET SOLANA - Adaptation automatique selon hauteur ==== */
+        .solana-widget {
+            position: fixed !important;
+            top: calc(6vh + 30px) !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            min-width: 500px !important;
+            max-width: 600px !important;
+            width: auto !important;
+            padding: 10px 20px !important;
+            z-index: 999 !important;
+        }
+
+        .solana-widget-content {
+            gap: 12px !important;
+        }
+
+        .sol-logo {
+            font-size: 1.3rem !important;
+        }
+
+        .sol-main {
+            gap: 2px !important;
+        }
+
+        .sol-symbol {
+            font-size: 0.7rem !important;
+        }
+
+        .sol-price {
+            font-size: 1rem !important;
+        }
+
+        .sol-change {
+            font-size: 0.7rem !important;
+            padding: 2px 6px !important;
+        }
+
+        .sol-stats {
+            gap: 25px !important;
+            padding-left: 25px !important;
+        }
+
+        .sol-stat-label {
+            font-size: 0.55rem !important;
+        }
+
+        .sol-stat-value {
+            font-size: 0.75rem !important;
+        }
+
+        /* ==== HERO CONTENT - Proportions correctes ==== */
+        .hero {
+            min-height: 100vh !important;
+            padding-top: 180px !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+
+        .hero-content {
+            padding-top: 60px !important;
+            max-width: 90% !important;
+            margin: 0 auto !important;
+        }
+
+        .hero h1 {
+            font-size: 2.8rem !important;
+            line-height: 1.2 !important;
+            margin-bottom: 1.5rem !important;
+        }
+
+        .hero-subtitle {
+            font-size: 1.3rem !important;
+            line-height: 1.6 !important;
+            margin-bottom: 2.5rem !important;
+            max-width: 600px !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .hero-cta {
+            gap: 1.5rem !important;
+            justify-content: center !important;
+        }
+
+        .hero-cta .btn {
+            padding: 16px 40px !important;
+            font-size: 1.05rem !important;
+        }
+
+        /* ==== FEATURES - Carousel comme mobile ==== */
+
+        /* Activer le carousel wrapper */
+        .features-grid {
+            display: block !important;
+            overflow-x: auto !important;
+            scroll-snap-type: x mandatory !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
+            padding: 0 2rem !important;
+        }
+
+        .features-grid::-webkit-scrollbar {
+            display: none !important;
+        }
+
+        /* Force carousel container */
+        .features-grid.carousel-wrapper .carousel-container {
+            display: flex !important;
+            gap: 1.5rem !important;
+            transform: none !important;
+        }
+
+        /* Feature cards dans le carousel */
+        .feature-card {
+            flex: 0 0 auto !important;
+            width: 340px !important;
+            min-width: 340px !important;
+            max-width: 340px !important;
+            scroll-snap-align: center !important;
+            transform: none !important;
+            margin: 0 !important;
+        }
+
+        .feature-icon {
+            width: 65px !important;
+            height: 65px !important;
+            font-size: 2rem !important;
+        }
+
+        .feature-card h3 {
+            font-size: 1.3rem !important;
+            margin: 1.5rem 0 1rem !important;
+        }
+
+        .feature-card p {
+            font-size: 1rem !important;
+            line-height: 1.6 !important;
+        }
+
+        /* Navigation dots pour carousel */
+        .carousel-dots {
+            display: flex !important;
+            justify-content: center !important;
+            gap: 0.5rem !important;
+            margin-top: 2rem !important;
+        }
+
+        .carousel-dot {
+            width: 10px !important;
+            height: 10px !important;
+            border-radius: 50% !important;
+            background: var(--text-muted) !important;
+            cursor: pointer !important;
+            transition: all 0.3s ease !important;
+        }
+
+        .carousel-dot.active {
+            background: var(--cyan-vivid) !important;
+            width: 30px !important;
+            border-radius: 5px !important;
+        }
     }
 
         @keyframes loading {
@@ -2763,26 +2970,26 @@
     <section class="pricing fade-in" id="pricing">
         <div class="container">
             <div class="section-header">
-                <h2>Utilisation gratuite</h2>
-                <p>Aucun abonnement. Aucune commission. Version beta.</p>
+                <h2 data-translate="pricing-title">Utilisation gratuite</h2>
+                <p data-translate="pricing-subtitle">Aucun abonnement. Aucune commission. Version beta.</p>
             </div>
             <div class="pricing-wrapper">
                 <div class="pricing-card">
                     <div class="price-header">
-                        <h3>UZEUR (bêta) </h3>
+                        <h3 data-translate="pricing-plan-name">UZEUR (bêta)</h3>
                         <div class="price-tag">
-                            <span class="price-current">Gratuit</span>
+                            <span class="price-current" data-translate="pricing-free">Gratuit</span>
                         </div>
-                        <p style="color: var(--purple-accent); font-size: 1.2rem;">0% de commission*</p>
+                        <p style="color: var(--purple-accent); font-size: 1.2rem;" data-translate="pricing-commission">0% de commission*</p>
                     </div>
                     <ul class="price-features">
-                        <li>Boutique gratuite</li>
-                        <li>100% des revenus (vendeurs)</li>
-                        <li>Dashboard analytics complète</li>
-                        <li>Paiements sécurisé</li>
-                        <li>Support par tickets</li>
-                        <li>Livraison automatique instantanée</li>
-                        <li>Paiement en 6 cryptomonnaies</li>
+                        <li data-translate="pricing-feat1">Boutique gratuite</li>
+                        <li data-translate="pricing-feat2">100% des revenus (vendeurs)</li>
+                        <li data-translate="pricing-feat3">Dashboard analytics complète</li>
+                        <li data-translate="pricing-feat4">Paiements sécurisé</li>
+                        <li data-translate="pricing-feat5">Support par tickets</li>
+                        <li data-translate="pricing-feat6">Livraison automatique instantanée</li>
+                        <li data-translate="pricing-feat7">Paiement en 6 cryptomonnaies</li>
                     </ul>
                     <div style="text-align: center;">
                         <a href="https://t.me/uzeur_bot" class="btn btn-primary btn-large glow" data-translate="pricing-cta">Ouvrir le bot</a>
@@ -2811,31 +3018,31 @@
         <div class="container">
             <div class="footer-content">
                 <div class="footer-section">
-                    <h4>Plateforme</h4>
+                    <h4 data-translate="footer-platform">Plateforme</h4>
                     <ul class="footer-links">
-                        <li><a href="#core">Comment ça marche</a></li>
-                        <li><a href="#features">Fonctionnalités</a></li>
-                        <li><a href="#pricing">Tarification</a></li>
+                        <li><a href="#core" data-translate="footer-how">Comment ça marche</a></li>
+                        <li><a href="#features" data-translate="footer-features">Fonctionnalités</a></li>
+                        <li><a href="#pricing" data-translate="footer-pricing">Tarification</a></li>
                     </ul>
                 </div>
                 <div class="footer-section">
-                    <h4>Support</h4>
+                    <h4 data-translate="footer-support">Support</h4>
                     <ul class="footer-links">
-                        <li><a href="https://t.me/uzeur_bot">Bot Telegram</a></li>
-                        <li><a href="#">Documentation</a></li>
+                        <li><a href="https://t.me/uzeur_bot" data-translate="footer-bot">Bot Telegram</a></li>
+                        <li><a href="https://t.me/uzeur_support" data-translate="footer-docs">Support</a></li>
                     </ul>
                 </div>
                 <div class="footer-section">
-                    <h4>Légal</h4>
+                    <h4 data-translate="footer-legal">Légal</h4>
                     <ul class="footer-links">
-                        <li><a href="#">Conditions d'utilisation</a></li>
-                        <li><a href="#">Politique de confidentialité</a></li>
+                        <li><a href="https://t.me/uzeur_bot" data-translate="footer-terms">CGU</a></li>
+                        <li><a href="https://t.me/uzeur_bot" data-translate="footer-privacy">Confidentialité</a></li>
                     </ul>
                 </div>
             </div>
             <div class="footer-bottom">
-                <p>© 2025 UZEUR - Marketplace décentralisée pour produits numériques</p>
-                <p style="margin-top: 1rem; font-size: 0.8rem; opacity: 0.6;">
+                <p data-translate="footer-copyright">© 2025 UZEUR - Marketplace décentralisée pour produits numériques</p>
+                <p style="margin-top: 1rem; font-size: 0.8rem; opacity: 0.6;" data-translate="footer-disclaimer">
                     *Des frais de 2,78% sont appliqués aux acheteurs (frais réseau blockchain et gestion de plateforme)
                 </p>
             </div>
@@ -2847,10 +3054,11 @@
 const translations = {
     fr: {
         "nav-home": "Accueil",
+        "nav-core": "Core",
         "nav-features": "Fonctionnalités",
         "nav-sellers": "Vendre",
         "nav-pricing": "Tarifs",
-        "nav-bot": "Ouvrir le bot",
+        "nav-bot": "Ouvrir",
         "hero-title": "Vendez vos formations,<br>PDF, vidéos, ebooks",
         "hero-subtitle": "Marketplace Telegram pour créateurs. Recevez 100% du prix en crypto. Aucune commission, aucun KYC.",
         "hero-cta-start": "Créer ma boutique",
@@ -2915,16 +3123,40 @@ const translations = {
         "pricing-sell3": "Dashboard analytics complète",
         "pricing-sell4": "Paiements directs en crypto",
         "pricing-buy-cta": "Explorer le catalogue",
+        "pricing-title": "Utilisation gratuite",
+        "pricing-subtitle": "Aucun abonnement. Aucune commission. Version beta.",
+        "pricing-plan-name": "UZEUR (bêta)",
+        "pricing-free": "Gratuit",
+        "pricing-commission": "0% de commission*",
+        "pricing-feat1": "Boutique gratuite",
+        "pricing-feat2": "100% des revenus (vendeurs)",
+        "pricing-feat3": "Dashboard analytics complète",
+        "pricing-feat4": "Paiements sécurisés",
+        "pricing-feat5": "Support par tickets",
+        "pricing-feat6": "Livraison automatique instantanée",
+        "pricing-feat7": "Paiement en 6 cryptomonnaies",
         "pricing-sell-cta": "Créer ma boutique",
         "pricing-footer": "BTC · ETH · USDT · USDC · SOL · BNB",
         "cta-title": "Prêt à démarrer ?",
         "cta-subtitle": "Créez votre boutique gratuite en quelques minutes",
         "cta-main": "Ouvrir le bot",
         "pricing-cta": "Ouvrir le bot",
-        "footer-copyright": "© 2025 UZEUR · Marketplace décentralisée pour produits numériques"
+        "footer-platform": "Plateforme",
+        "footer-how": "Comment ça marche",
+        "footer-features": "Fonctionnalités",
+        "footer-pricing": "Tarification",
+        "footer-support": "Support",
+        "footer-bot": "Bot Telegram",
+        "footer-docs": "Support",
+        "footer-legal": "Légal",
+        "footer-terms": "CGU",
+        "footer-privacy": "Confidentialité",
+        "footer-copyright": "© 2025 UZEUR · Marketplace décentralisée pour produits numériques",
+        "footer-disclaimer": "*Des frais de 2,78% sont appliqués aux acheteurs (frais réseau blockchain et gestion de plateforme)"
     },
     en: {
         "nav-home": "Home",
+        "nav-core": "Core",
         "nav-features": "Features",
         "nav-sellers": "Sell",
         "nav-pricing": "Pricing",
@@ -2993,13 +3225,36 @@ const translations = {
         "pricing-sell3": "Complete analytics dashboard",
         "pricing-sell4": "Direct crypto payments",
         "pricing-buy-cta": "Explore catalog",
+        "pricing-title": "Free to use",
+        "pricing-subtitle": "No subscription. No commission. Beta version.",
+        "pricing-plan-name": "UZEUR (beta)",
+        "pricing-free": "Free",
+        "pricing-commission": "0% commission*",
+        "pricing-feat1": "Free shop",
+        "pricing-feat2": "100% of revenue (sellers)",
+        "pricing-feat3": "Complete analytics dashboard",
+        "pricing-feat4": "Secure payments",
+        "pricing-feat5": "Ticket support",
+        "pricing-feat6": "Instant automatic delivery",
+        "pricing-feat7": "Payment in 6 cryptocurrencies",
         "pricing-sell-cta": "Create my shop",
         "pricing-footer": "BTC · ETH · USDT · USDC · SOL · BNB",
         "cta-title": "Ready to start?",
         "cta-subtitle": "Create your free shop in minutes",
         "cta-main": "Open bot",
         "pricing-cta": "Open bot",
-        "footer-copyright": "© 2025 UZEUR · Decentralized marketplace for digital products"
+        "footer-platform": "Platform",
+        "footer-how": "How it works",
+        "footer-features": "Features",
+        "footer-pricing": "Pricing",
+        "footer-support": "Support",
+        "footer-bot": "Telegram Bot",
+        "footer-docs": "Support",
+        "footer-legal": "Legal",
+        "footer-terms": "Terms",
+        "footer-privacy": "Privacy",
+        "footer-copyright": "© 2025 UZEUR · Decentralized marketplace for digital products",
+        "footer-disclaimer": "*A 2.78% fee is applied to buyers (blockchain network fees and platform management)"
     }
 };
 
@@ -3118,7 +3373,7 @@ translatePage(savedLang);
             const carousel = document.getElementById(carouselId);
             const dotsContainer = document.getElementById(carouselId.replace('-carousel', '-dots'));
 
-            if (!carousel || !dotsContainer || window.innerWidth > 768) return;
+            if (!carousel || !dotsContainer || !shouldUseCarousel()) return;
 
             const cards = carousel.querySelectorAll('.core-card, .feature-card');
             if (cards.length === 0) return;
@@ -3206,8 +3461,16 @@ translatePage(savedLang);
             };
         }
 
+        // Helper: détecter si on doit activer le carousel (mobile + iPad mini portrait)
+        function shouldUseCarousel() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            // Mobile classique OU iPad mini portrait (768x1024)
+            return width <= 768 || (width === 768 && height >= 1000);
+        }
+
         function initMobileCarousel() {
-            if (window.innerWidth <= 768) {
+            if (shouldUseCarousel()) {
                 // Wrap core-grid
                 const coreGrid = document.querySelector('.core-grid');
                 if (coreGrid && !coreGrid.classList.contains('carousel-wrapper')) {
@@ -3254,6 +3517,20 @@ translatePage(savedLang);
                     }
                 }
 
+                // Réinitialiser les animations scroll pour les feature cards dans le carousel
+                setTimeout(() => {
+                    const featureCards = document.querySelectorAll('.feature-card');
+                    featureCards.forEach((card) => {
+                        if (!card.classList.contains('scroll-scale-in')) {
+                            card.classList.add('scroll-scale-in', 'scroll-stagger');
+                        }
+                        // Force visible pour iPad mini (pas besoin d'attendre le scroll)
+                        if (shouldUseCarousel() && window.innerWidth === 768) {
+                            card.classList.add('visible');
+                        }
+                    });
+                }, 200);
+
                 isCarouselInitialized = true;
             } else {
                 // Remove carousel wrappers on desktop
@@ -3296,11 +3573,11 @@ translatePage(savedLang);
         }
 
         // Track current viewport state to detect breakpoint changes
-        let wasMobile = window.innerWidth <= 768;
+        let wasMobile = shouldUseCarousel();
 
         // Handle viewport changes with debounced resize listener
         const handleResize = debounce(() => {
-            const isMobile = window.innerWidth <= 768;
+            const isMobile = shouldUseCarousel();
 
             // Only reinitialize if we crossed the 768px breakpoint
             if (isMobile !== wasMobile) {
@@ -3331,23 +3608,45 @@ translatePage(savedLang);
             }
         });
 
-        // Smooth scrolling
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
-                e.preventDefault();
-                const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    const headerOffset = 100;
-                    const elementPosition = target.getBoundingClientRect().top;
-                    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+        // Smooth scrolling - Clean version
+        function setupSmoothScroll() {
+            const links = document.querySelectorAll('a[href^="#"]');
 
-                    window.scrollTo({
-                        top: offsetPosition,
-                        behavior: 'smooth'
-                    });
-                }
+            links.forEach((link) => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const href = this.getAttribute('href');
+                    const target = document.querySelector(href);
+
+                    if (target) {
+                        const headerOffset = 100;
+                        const elementPosition = target.getBoundingClientRect().top;
+                        const offsetPosition = elementPosition + document.body.scrollTop - headerOffset;
+
+                        // Scroll body (html has overflow:hidden)
+                        document.body.scrollTo({
+                            top: offsetPosition,
+                            behavior: 'smooth'
+                        });
+
+                        // Close mobile menu if open
+                        const navLinks = document.getElementById('nav-links');
+                        if (navLinks && navLinks.classList.contains('active')) {
+                            navLinks.classList.remove('active');
+                        }
+                    }
+                }, true);
             });
-        });
+        }
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupSmoothScroll);
+        } else {
+            setupSmoothScroll();
+        }
 
         // Fade in animation on scroll
         const observerOptions = {

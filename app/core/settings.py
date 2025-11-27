@@ -52,6 +52,8 @@ class Settings:
         self.SMTP_USERNAME: Optional[str] = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_EMAIL")
         self.SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD")
         self.FROM_EMAIL: str = os.getenv("FROM_EMAIL", self.SMTP_USERNAME or "noreply@marketplace.com")
+        self.FROM_NAME: str = os.getenv("FROM_NAME", "Marketplace")
+        self.ADMIN_EMAIL: Optional[str] = os.getenv("ADMIN_EMAIL")  # Email pour notifications admin (tickets, etc.)
 
         # Payments / NOWPayments
         self.NOWPAYMENTS_API_KEY: Optional[str] = os.getenv("NOWPAYMENTS_API_KEY")
@@ -60,8 +62,12 @@ class Settings:
             "IPN_CALLBACK_URL", "http://localhost:8000/ipn/nowpayments"
         )
 
-        # Platform commission (2.78%)
-        self.PLATFORM_COMMISSION_PERCENT: float = float(os.getenv("PLATFORM_COMMISSION_PERCENT", "2.78"))
+        # Platform commission (3.14% - π number)
+        self.PLATFORM_COMMISSION_PERCENT: float = float(os.getenv("PLATFORM_COMMISSION_PERCENT", "3.14"))
+
+        # Platform commission: Fixed fee for products < $48, then percentage
+        self.PLATFORM_FIXED_FEE: float = 1.49  # Fixed fee for products < $48
+        self.PLATFORM_FEE_THRESHOLD: float = 48.0  # Threshold where percentage applies
 
         # IPN server settings
         self.IPN_HOST: str = os.getenv("IPN_HOST", "0.0.0.0")
@@ -93,15 +99,13 @@ class Settings:
         ]
 
         # Crypto display configuration (used by buy_handlers.py for payment crypto selection)
+        # Accepted: BTC, ETH, SOL natives + USDT/USDC on Solana only
         self.CRYPTO_DISPLAY_INFO: Dict[str, tuple] = {
-            'btc': ('₿ Bitcoin', '⚡ 10-30 min'),
-            'eth': ('⟠ Ethereum', '⚡ 5-15 min'),
-            'usdt': ('₮ Tether USDT', '⚡ 5-10 min'),
-            'usdc': ('🟢 USD Coin', '⚡ 5-10 min'),
-            'bnb': ('🟡 BNB', '⚡ 2-5 min'),
-            'sol': ('◎ Solana', '⚡ 1-3 min'),
-            'ltc': ('Ł Litecoin', '⚡ 10-20 min'),
-            'xrp': ('◈ XRP', '⚡ 3-5 min')
+            'btc': ('Bitcoin', '10-30 min'),
+            'eth': ('Ethereum', '5-15 min'),
+            'sol': ('Solana', '1-3 min'),
+            'usdtsol': ('USDT (Solana)', '1-3 min'),
+            'usdcsol': ('USDC (Solana)', '1-3 min')
         }
 
         # File handling constants (used by file_utils.py)
@@ -123,6 +127,25 @@ class Settings:
         log_dir = os.getenv("LOG_DIR", "logs")
         log_file = os.getenv("LOG_FILE_NAME", "marketplace.log")
         return os.path.join(log_dir, log_file)
+
+    def calculate_platform_commission(self, price_usd: float) -> float:
+        """
+        Calculate platform commission based on price
+
+        Rules:
+        - If price < $48: Fixed fee of $1.49
+        - If price >= $48: 3.14% of price
+
+        Args:
+            price_usd: Product price in USD
+
+        Returns:
+            Commission amount in USD
+        """
+        if price_usd < self.PLATFORM_FEE_THRESHOLD:
+            return self.PLATFORM_FIXED_FEE
+        else:
+            return price_usd * (self.PLATFORM_COMMISSION_PERCENT / 100)
 
     def ensure_directories(self) -> None:
         """Ensure required directories exist"""

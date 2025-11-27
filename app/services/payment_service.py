@@ -1,10 +1,11 @@
 import logging
-import time
+import asyncio
 import qrcode
 import io
 import base64
 from typing import Dict, Optional, List
-import requests
+import httpx
+import time
 
 from app.core import settings as core_settings
 from app.integrations.nowpayments_client import NowPaymentsClient
@@ -29,21 +30,18 @@ class PaymentService:
             "Content-Type": "application/json"
         }
 
-    def create_payment(self, amount_usd: float, pay_currency: str, order_id: str,
-                       description: str, ipn_callback_url: Optional[str] = None,
-                       seller_wallet_address: Optional[str] = None,
-                       seller_payout_currency: Optional[str] = "usdttrc20") -> Optional[Dict]:
+    async def create_payment(self, amount_usd: float, pay_currency: str, order_id: str,
+                       description: str, ipn_callback_url: Optional[str] = None) -> Optional[Dict]:
         """
-        Create a comprehensive payment with QR code, exact amount, and split payment support.
+        Create a payment with QR code and exact amount.
+        ALL FUNDS GO TO MAIN WALLET - No split payment, manual payouts after 24h.
 
         Args:
             amount_usd: Total price in USD
-            pay_currency: Currency the customer will pay with
+            pay_currency: Currency the customer will pay with (usdtsol or usdcsol only)
             order_id: Order ID
             description: Order description
             ipn_callback_url: IPN callback URL
-            seller_wallet_address: Seller's wallet address (for split payment)
-            seller_payout_currency: Currency for seller payout (default: usdttrc20)
 
         Returns:
             Enhanced payment data with commission info, or None if failed
@@ -57,36 +55,34 @@ class PaymentService:
             return None
 
         try:
-            # Calculate commission (2.78% appliqué au prix de base)
-            # L'acheteur paie: prix × 1.0278
+            # Calculate commission (3.14% appliqué au prix de base)
+            # L'acheteur paie: prix × 1.0314
             # Le vendeur reçoit: prix (100% du prix affiché)
-            # La plateforme prend: prix × 0.0278
-            # Sur le montant total payé, vendeur = 97.2951%, plateforme = 2.7049%
+            # La plateforme prend: prix × 0.0314
+            # Sur le montant total payé, vendeur = 96.95%, plateforme = 3.05%
 
             commission_percent = core_settings.PLATFORM_COMMISSION_PERCENT
-            # Vendeur reçoit = montant_total / 1.0278
+            # Vendeur reçoit = montant_total / 1.0314
             seller_revenue = amount_usd / (1 + commission_percent / 100)
             commission_amount = amount_usd - seller_revenue
 
-            logger.info(f"Payment split: total={amount_usd} USD, commission={commission_amount:.2f} USD (2.7049% du total), seller={seller_revenue:.2f} USD (97.2951% du total)")
+            logger.info(f"Payment split: total={amount_usd} USD, commission={commission_amount:.2f} USD ({commission_percent}%), seller={seller_revenue:.2f} USD ({100/(1+commission_percent/100):.2f}%)")
 
             # Step 1: Get exact crypto amount using client
-            exact_crypto_amount = self._get_exact_crypto_amount(amount_usd, pay_currency)
+            exact_crypto_amount = await self._get_exact_crypto_amount(amount_usd, pay_currency)
             if not exact_crypto_amount:
                 logger.error(f"Failed to get exact crypto amount for {pay_currency}")
                 return None
 
-            # Step 2: Create payment using client with split payment support
+            # Step 2: Create payment using client (NO SPLIT - all funds to main wallet)
             logger.info(f"Creating payment: order_id={order_id}, currency={pay_currency}, amount_usd={amount_usd}")
 
-            payment_data = self.client.create_payment(
+            payment_data = await self.client.create_payment(
                 amount_usd=amount_usd,
                 pay_currency=pay_currency,
                 order_id=order_id,
                 description=description,
-                ipn_callback_url=ipn_callback_url,
-                payout_address=seller_wallet_address if seller_wallet_address else None,
-                payout_currency=seller_payout_currency if seller_wallet_address else None
+                ipn_callback_url=ipn_callback_url
             )
 
             if not payment_data:
@@ -97,56 +93,9 @@ class PaymentService:
             if 'error' in payment_data:
                 error_code = payment_data.get('error')
                 error_message = payment_data.get('error_message', '')
-
-                # Handle CURRENCY_UNAVAILABLE error with automatic fallback
-                if error_code == 'CURRENCY_UNAVAILABLE':
-                    logger.warning(f"Currency {pay_currency} is temporarily unavailable, trying fallback...")
-
-                    # Define fallback currencies
-                    fallback_map = {
-                        'usdt': 'usdc',
-                        'usdc': 'usdt',
-                        'btc': 'eth',
-                        'eth': 'btc'
-                    }
-
-                    fallback_currency = fallback_map.get(pay_currency.lower())
-
-                    if fallback_currency:
-                        logger.info(f"Retrying payment with fallback currency: {fallback_currency}")
-
-                        # Get exact amount for fallback currency
-                        exact_crypto_amount = self._get_exact_crypto_amount(amount_usd, fallback_currency)
-                        if not exact_crypto_amount:
-                            logger.error(f"Failed to get exact crypto amount for fallback {fallback_currency}")
-                            return {"error": "CURRENCY_UNAVAILABLE", "original_currency": pay_currency, "error_message": error_message}
-
-                        # Retry with fallback currency
-                        payment_data = self.client.create_payment(
-                            amount_usd=amount_usd,
-                            pay_currency=fallback_currency,
-                            order_id=order_id,
-                            description=description,
-                            ipn_callback_url=ipn_callback_url,
-                            payout_address=seller_wallet_address if seller_wallet_address else None,
-                            payout_currency=seller_payout_currency if seller_wallet_address else None
-                        )
-
-                        if payment_data and 'error' not in payment_data:
-                            logger.info(f"Payment successful with fallback currency: {fallback_currency}")
-                            payment_data['fallback_used'] = True
-                            payment_data['original_currency'] = pay_currency
-                            payment_data['fallback_currency'] = fallback_currency
-                        else:
-                            logger.error(f"Fallback currency {fallback_currency} also failed")
-                            return {"error": "CURRENCY_UNAVAILABLE", "original_currency": pay_currency, "fallback_currency": fallback_currency, "error_message": error_message}
-                    else:
-                        logger.error(f"No fallback currency available for {pay_currency}")
-                        return {"error": "CURRENCY_UNAVAILABLE", "original_currency": pay_currency, "error_message": error_message}
-                else:
-                    # Other errors
-                    logger.error(f"Payment error: {error_code} - {error_message}")
-                    return payment_data
+                logger.error(f"Payment creation error: {error_code} - {error_message}")
+                # Return error directly - no automatic fallback to avoid user confusion
+                return payment_data
 
             # Step 3: Enhance payment data with QR code and details
             enhanced_payment = self._enhance_payment_data(payment_data, exact_crypto_amount)
@@ -167,9 +116,9 @@ class PaymentService:
             return None
 
 
-    def check_payment_status(self, payment_id: str) -> Optional[Dict]:
+    async def check_payment_status(self, payment_id: str) -> Optional[Dict]:
         try:
-            resp = self.client.get_payment(payment_id)
+            resp = await self.client.get_payment(payment_id)
             if not resp:
                 logger.error(f"PaymentService.check_payment_status got no data payment_id={payment_id}")
             return resp
@@ -177,36 +126,35 @@ class PaymentService:
             logger.error(f"PaymentService.check_payment_status exception payment_id={payment_id} error={e}")
             return None
 
-    def get_exchange_rate(self) -> float:
+    async def get_exchange_rate(self) -> float:
         try:
             now = time.time()
             hit = self._fx_cache.get('eur_usd')
             if hit and (now - hit['ts'] < 3600):
                 return hit['value']
 
-            import requests
-            response = requests.get("https://api.exchangerate-api.com/v4/latest/EUR", timeout=10)
-            if response.status_code == 200:
-                val = response.json()['rates']['USD']
-                self._fx_cache['eur_usd'] = {'value': val, 'ts': now}
-                return val
+            async with httpx.AsyncClient() as client:
+                response = await client.get("https://api.exchangerate-api.com/v4/latest/EUR", timeout=10.0)
+                if response.status_code == 200:
+                    val = response.json()['rates']['USD']
+                    self._fx_cache['eur_usd'] = {'value': val, 'ts': now}
+                    return val
             return 1.10
         except Exception:
             return self._fx_cache.get('eur_usd', {}).get('value', 1.10)
 
-    def _get_exact_crypto_amount(self, amount_usd: float, pay_currency: str) -> Optional[float]:
+    async def _get_exact_crypto_amount(self, amount_usd: float, pay_currency: str) -> Optional[float]:
         """Get exact crypto amount using NOWPayments estimate"""
         try:
-            # For stablecoins pegged to USD, use 1:1 ratio
-            stablecoins = ['usdt', 'usdc', 'usdttrc20', 'usdterc20', 'usdtbsc', 'usdtsol', 'usdtmatic',
-                          'usdcarc20', 'usdcbsc', 'usdcsol', 'usdcmatic', 'usdcbase']
-            if pay_currency.lower() in stablecoins:
+            # For Solana stablecoins pegged to USD, use 1:1 ratio
+            stablecoins_solana = ['usdtsol', 'usdcsol']
+            if pay_currency.lower() in stablecoins_solana:
                 logger.info(f"Using 1:1 ratio for {pay_currency}: {amount_usd}")
                 return amount_usd
 
             # Try client first
             if self.client:
-                estimate_data = self.client.get_estimate(amount_usd, "usd", pay_currency)
+                estimate_data = await self.client.get_estimate(amount_usd, "usd", pay_currency)
                 if estimate_data and 'estimated_amount' in estimate_data:
                     return float(estimate_data.get('estimated_amount', 0))
 
@@ -214,33 +162,33 @@ class PaymentService:
             max_retries = 2
             for attempt in range(max_retries):
                 try:
-                    import time
                     if attempt > 0:
-                        time.sleep(2)  # Wait 2s before retry
+                        await asyncio.sleep(2)  # Wait 2s before retry
 
-                    response = requests.get(
-                        f"{self.BASE_URL}/estimate",
-                        headers=self._headers(),
-                        params={
-                            "amount": amount_usd,
-                            "currency_from": "usd",
-                            "currency_to": pay_currency.lower()
-                        },
-                        timeout=10
-                    )
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(
+                            f"{self.BASE_URL}/estimate",
+                            headers=self._headers(),
+                            params={
+                                "amount": amount_usd,
+                                "currency_from": "usd",
+                                "currency_to": pay_currency.lower()
+                            },
+                            timeout=10.0
+                        )
 
-                    if response.status_code == 200:
-                        data = response.json()
-                        return float(data.get('estimated_amount', 0))
+                        if response.status_code == 200:
+                            data = response.json()
+                            return float(data.get('estimated_amount', 0))
 
-                    # Don't retry on 4xx errors (bad request)
-                    if 400 <= response.status_code < 500 and response.status_code != 429:
-                        logger.error(f"Estimate API failed (no retry): {response.status_code} - {response.text}")
-                        break
+                        # Don't retry on 4xx errors (bad request)
+                        if 400 <= response.status_code < 500 and response.status_code != 429:
+                            logger.error(f"Estimate API failed (no retry): {response.status_code} - {response.text}")
+                            break
 
-                    logger.warning(f"Estimate attempt {attempt+1}/{max_retries} failed: {response.status_code}")
+                        logger.warning(f"Estimate attempt {attempt+1}/{max_retries} failed: {response.status_code}")
 
-                except requests.exceptions.RequestException as e:
+                except httpx.RequestError as e:
                     logger.warning(f"Estimate request error attempt {attempt+1}/{max_retries}: {e}")
                     if attempt == max_retries - 1:
                         raise

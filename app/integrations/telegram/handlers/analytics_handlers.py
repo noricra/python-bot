@@ -143,7 +143,7 @@ Tendance          {perf.trend.capitalize()}
             if perf.optimal_price:
                 keyboard.insert(0, [
                     InlineKeyboardButton(
-                        f"💰 Appliquer prix ({perf.optimal_price}$)",
+                        f" Appliquer prix ({perf.optimal_price}$)",
                         callback_data=f'apply_price_{product_id}_{perf.optimal_price}'
                     )
                 ])

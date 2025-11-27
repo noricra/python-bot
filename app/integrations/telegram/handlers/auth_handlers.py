@@ -321,7 +321,7 @@ Nous vous enverrons un code de récupération pour retrouver l'accès.""")
             subject = "Login Code" if lang == 'en' else "Code de Connexion"
             body = f"Your login code: {login_code}" if lang == 'en' else f"Votre code de connexion : {login_code}"
 
-            success = self.email_service.send_email(email, subject, body)
+            success = await self.email_service.send_email(email, subject, body)
             if success:
                 success_msg = f"✅ Login code sent to {email}" if lang == 'en' else f"✅ Code envoyé à {email}"
                 await update.message.reply_text(
