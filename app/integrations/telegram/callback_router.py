@@ -59,6 +59,7 @@ class CallbackRouter:
             'my_products': lambda query, lang: self.bot.sell_handlers.show_my_products(self.bot, query, lang),
             'my_wallet': lambda query, lang: self.bot.sell_handlers.show_wallet(self.bot, query, lang),
             'seller_logout': lambda query, lang: self.bot.sell_handlers.seller_logout(self.bot, query),
+            'seller_login_menu': lambda query, lang: self.bot.sell_handlers.seller_login_menu(self.bot, query, lang),
             'delete_seller': lambda query, lang: self.bot.sell_handlers.delete_seller_prompt(self.bot, query),
             'delete_seller_confirm': lambda query, lang: self.bot.sell_handlers.delete_seller_confirm(self.bot, query),
             'seller_analytics': lambda query, lang: self.bot.sell_handlers.seller_analytics(self.bot, query, lang),

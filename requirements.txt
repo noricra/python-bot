@@ -1,20 +1,36 @@
+# Core
 python-telegram-bot==20.7
-python-dotenv==1.0.1
-httpx==0.27.0
-requests==2.32.3
-base58==2.1.1
-qrcode==7.4.2
-Pillow==10.4.0
-fastapi==0.115.0
-uvicorn==0.30.6
+python-dotenv==1.0.0
+
+# Database
 psycopg2-binary==2.9.9
+
+# HTTP & API
+httpx==0.25.2
+requests==2.31.0
+
+# Cloud Storage
 boto3==1.34.34
-numpy==1.26.3
-matplotlib==3.8.2
-pymupdf
+b2sdk==1.24.1
 
+# Image Processing
+Pillow==10.1.0
 
+# PDF & Documents
+PyPDF2==3.0.1
 
+# Email
+aiosmtplib==3.0.1
 
+# Utils
+python-dateutil==2.8.2
+pytz==2023.3
 
+# Web Framework (for IPN)
+fastapi==0.115.0
+uvicorn[standard]==0.25.0
+starlette==0.38.2
 
+# Validation
+pydantic==2.9.0
+email-validator==2.1.0

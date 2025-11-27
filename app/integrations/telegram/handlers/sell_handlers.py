@@ -126,6 +126,37 @@ class SellHandlers:
             parse_mode='Markdown'
         )
 
+    async def seller_login_menu(self, bot, query, lang: str):
+        """Menu de reconnexion vendeur"""
+        user_id = query.from_user.id
+
+        # Reset conflicting states
+        bot.reset_conflicting_states(user_id, keep={'lang'})
+
+        # Set state to expect email
+        bot.state_manager.update_state(user_id, waiting_seller_login_email=True, lang=lang)
+
+        login_text = (
+            "**RECONNEXION VENDEUR**\n\n"
+            "Pour accéder à votre compte vendeur, veuillez entrer votre **adresse email**.\n\n"
+            "Email enregistré : Celui que vous avez utilisé lors de la création de votre compte"
+        ) if lang == 'fr' else (
+            "**SELLER LOGIN**\n\n"
+            "To access your seller account, please enter your **email address**.\n\n"
+            "Registered email: The one you used when creating your account"
+        )
+
+        await query.edit_message_text(
+            login_text,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "🔙 Retour" if lang == 'fr' else "🔙 Back",
+                    callback_data='back_main'
+                )
+            ]]),
+            parse_mode='Markdown'
+        )
+
     async def create_seller_prompt(self, bot, query, lang: str):
         """Demande création compte vendeur - SIMPLIFIÉ (email + Solana uniquement)"""
         bot.reset_conflicting_states(query.from_user.id, keep={'creating_seller'})
@@ -157,7 +188,14 @@ class SellHandlers:
         # Get actual seller_id (handles multi-account mapping)
         seller_id = query.from_user.id
         user_data = self.user_repo.get_user(seller_id)
+
+        # Check if user is seller
         if not user_data or not user_data['is_seller']:
+            await self.seller_login_menu(bot, query, lang)
+            return
+
+        # If seller logged out voluntarily, require re-login
+        if bot.get_user_state(seller_id).get('requires_relogin'):
             await self.seller_login_menu(bot, query, lang)
             return
 
@@ -957,7 +995,6 @@ class SellHandlers:
             [InlineKeyboardButton(" Désactiver", callback_data='disable_seller_account'),
              InlineKeyboardButton(" Supprimer", callback_data='delete_seller_prompt'),
              InlineKeyboardButton(" Adresse", callback_data='edit_solana_address')],
-            [InlineKeyboardButton("Se déconnecter" if lang == 'fr' else "Logout", callback_data='seller_logout')],
             [InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='seller_dashboard')]
         ]
 
@@ -968,7 +1005,8 @@ class SellHandlers:
         user_id = query.from_user.id
         lang = bot.get_user_state(user_id).get('lang', 'fr')
 
-        # Logout seller - clear seller session
+        # Set flag requiring re-login (temporary until next successful login)
+        bot.state_manager.update_state(user_id, requires_relogin=True)
         bot.logout_seller(user_id)
 
         logout_text = (
@@ -990,7 +1028,7 @@ class SellHandlers:
         await query.edit_message_text(
             logout_text,
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("Se reconnecter" if lang == 'fr' else "Login", callback_data='seller_login'),
+                InlineKeyboardButton("Se reconnecter" if lang == 'fr' else "Login", callback_data='seller_login_menu'),
                 InlineKeyboardButton("Retour" if lang == 'fr' else "Back", callback_data='back_main')
             ]]),
             parse_mode='Markdown'
@@ -1132,7 +1170,26 @@ class SellHandlers:
                     await update.message.reply_text("✅ Compte créé ! /start")
             else:
                 error_msg = result.get('error', 'Erreur inconnue')
-                await update.message.reply_text(f"❌ Erreur: {error_msg}")
+                error_text = (
+                    f"❌ **Erreur**\n\n{error_msg}"
+                ) if lang == 'fr' else (
+                    f"❌ **Error**\n\n{error_msg}"
+                )
+
+                await update.message.reply_text(
+                    error_text,
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton(
+                            "🔄 Réessayer" if lang == 'fr' else "🔄 Try again",
+                            callback_data='create_seller'
+                        ),
+                        InlineKeyboardButton(
+                            "🔙 Retour" if lang == 'fr' else "🔙 Back",
+                            callback_data='back_main'
+                        )
+                    ]]),
+                    parse_mode='Markdown'
+                )
 
     async def process_seller_login_email(self, bot, update, message_text: str):
         """Process email de connexion vendeur"""
@@ -1168,6 +1225,7 @@ class SellHandlers:
 
         # Connexion réussie
         bot.login_seller(user_id)
+        bot.state_manager.update_state(user_id, requires_relogin=False)  # Remove re-login flag
         bot.state_manager.reset_state(user_id, keep={'lang'})
 
         # Envoyer email de notification de connexion
