@@ -8,6 +8,7 @@ import logging
 import os
 from typing import Optional
 import atexit
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -43,19 +44,42 @@ def init_connection_pool(
         return
 
     try:
-        pghost = os.getenv('PGHOST', 'localhost')
-        sslmode = 'prefer' if pghost in ['localhost', '127.0.0.1'] else 'require'
+        # Priority 1: Try DATABASE_URL (Railway, Heroku, etc.)
+        database_url = os.getenv('DATABASE_URL')
 
-        logger.info(f"🔌 Initializing PostgreSQL connection pool ({min_connections}-{max_connections} connections)...")
+        if database_url:
+            logger.info("🔌 Using DATABASE_URL for connection...")
+            parsed = urlparse(database_url)
+
+            pghost = parsed.hostname
+            pgport = parsed.port or 5432
+            pgdatabase = parsed.path[1:]  # Remove leading '/'
+            pguser = parsed.username
+            pgpassword = parsed.password or ''
+
+            logger.info(f"🔌 Initializing PostgreSQL connection pool ({min_connections}-{max_connections} connections) - Host: {pghost}...")
+        else:
+            # Priority 2: Fall back to individual environment variables
+            logger.info("🔌 Using individual PG* environment variables...")
+            pghost = os.getenv('PGHOST', 'localhost')
+            pgport = int(os.getenv('PGPORT', 5432))
+            pgdatabase = os.getenv('PGDATABASE')
+            pguser = os.getenv('PGUSER')
+            pgpassword = os.getenv('PGPASSWORD', '')
+
+            logger.info(f"🔌 Initializing PostgreSQL connection pool ({min_connections}-{max_connections} connections) - Host: {pghost}...")
+
+        # SSL mode: require for remote, prefer for local
+        sslmode = 'prefer' if pghost in ['localhost', '127.0.0.1'] else 'require'
 
         _connection_pool = pool.ThreadedConnectionPool(
             minconn=min_connections,
             maxconn=max_connections,
             host=pghost,
-            port=os.getenv('PGPORT', 5432),
-            database=os.getenv('PGDATABASE'),
-            user=os.getenv('PGUSER'),
-            password=os.getenv('PGPASSWORD', ''),
+            port=pgport,
+            database=pgdatabase,
+            user=pguser,
+            password=pgpassword,
             sslmode=sslmode
         )
 
