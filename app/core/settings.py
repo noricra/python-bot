@@ -61,6 +61,8 @@ class Settings:
         self.IPN_CALLBACK_URL: Optional[str] = os.getenv(
             "IPN_CALLBACK_URL", "http://localhost:8000/ipn/nowpayments"
         )
+        self.WEBHOOK_URL: Optional[str] = os.getenv("WEBHOOK_URL", "http://localhost:8000")
+
 
         # Platform commission (3.14% - π number)
         self.PLATFORM_COMMISSION_PERCENT: float = float(os.getenv("PLATFORM_COMMISSION_PERCENT", "3.14"))
