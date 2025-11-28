@@ -49,7 +49,7 @@ def main() -> None:
 
     # Démarrer le serveur FastAPI (IPN + Webhook Telegram combinés)
     import uvicorn
-    from app.integrations.ipn_server_webhook import app as fastapi_app, setup_telegram_webhook
+    from app.integrations.ipn_server import app as fastapi_app, setup_telegram_webhook
 
     # Injecter l'app Telegram dans le serveur FastAPI
     setup_telegram_webhook(telegram_app)
