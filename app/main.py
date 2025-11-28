@@ -34,8 +34,11 @@ def main() -> None:
 
     # Configurer le webhook Telegram
     async def setup_webhook():
-        webhook_url = f"{core_settings.WEBHOOK_URL}/webhook/telegram"
         try:
+            # Initialiser l'application Telegram avant de configurer le webhook
+            await telegram_app.initialize()
+    
+            webhook_url = f"{core_settings.WEBHOOK_URL}/webhook/telegram"
             await telegram_app.bot.set_webhook(
                 url=webhook_url,
                 drop_pending_updates=True
@@ -43,9 +46,11 @@ def main() -> None:
             logging.getLogger(__name__).info(f"✅ Telegram webhook configured: {webhook_url}")
         except Exception as e:
             logging.getLogger(__name__).error(f"❌ Failed to set webhook: {e}")
-
+    
     # Exécuter le setup du webhook
     asyncio.run(setup_webhook())
+
+    
 
     # Démarrer le serveur FastAPI (IPN + Webhook Telegram combinés)
     import uvicorn
