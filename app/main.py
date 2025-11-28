@@ -1,63 +1,37 @@
 #!/usr/bin/env python3
 """
-Main entry point avec WEBHOOK (résout le conflit Telegram)
-
-Différences avec main.py:
-- Utilise webhook au lieu de polling
-- Pas de threading, tout dans FastAPI
-- Pas de conflit multi-instances
+Main entry point simplifié
+Tout le lifecycle du Bot est maintenant géré dans app/integrations/ipn_server.py
 """
 import logging
 import sys
 import os
+import uvicorn
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core import settings as core_settings, configure_logging
-from app.integrations.telegram.app_builder import build_application
-from bot_mlt import MarketplaceBot
+# On importe juste l'app FastAPI qui contient déjà le lifespan configuré
 from app.integrations.ipn_server import app as fastapi_app
-
 
 def main() -> None:
     configure_logging(core_settings)
+    
+    host = core_settings.IPN_HOST
+    port = core_settings.IPN_PORT
+    
+    logging.getLogger(__name__).info(f"🚀 Starting Unified Server (Web + Bot) on {host}:{port}")
 
-    if not core_settings.TELEGRAM_TOKEN:
-        logging.getLogger(__name__).error("❌ TELEGRAM_TOKEN manquant dans .env")
-        return
-
-    # Créer le bot et l'application Telegram
-    bot = MarketplaceBot()
-    telegram_app = build_application(bot)
-    bot.application = telegram_app
-
-    # Injecter l'application Telegram dans FastAPI et configurer le webhook au démarrage
-    @fastapi_app.on_event("startup")
-    async def setup_telegram_webhook():
-        try:
-            # Initialiser l'application Telegram avant de configurer le webhook
-            await telegram_app.initialize()
-
-            webhook_url = f"{core_settings.WEBHOOK_URL}/webhook/telegram"
-            await telegram_app.bot.set_webhook(
-                url=webhook_url,
-                drop_pending_updates=True
-            )
-            logging.getLogger(__name__).info(f"✅ Telegram webhook configured: {webhook_url}")
-        except Exception as e:
-            logging.getLogger(__name__).error(f"❌ Failed to set webhook: {e}")
-
-    logging.getLogger(__name__).info(f"🚀 Starting server on {core_settings.IPN_HOST}:{core_settings.IPN_PORT}")
-
-    import uvicorn
+    # Plus besoin de setup_telegram_webhook ici, c'est géré automatiquement par le lifespan
+    
     uvicorn.run(
         app=fastapi_app,
-        host=core_settings.IPN_HOST,
-        port=core_settings.IPN_PORT,
+        host=host,
+        port=port,
         log_level="info",
+        # workers=1  <-- Important: Gardez 1 worker si vous utilisez des variables globales pour le bot
     )
-
 
 if __name__ == "__main__":
     main()
