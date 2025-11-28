@@ -1,3 +1,9 @@
+"""
+IPN Server avec support Webhook Telegram (version améliorée)
+
+Ce fichier est une copie de ipn_server.py avec ajout du webhook Telegram.
+Permet d'éviter le conflit "Conflict: terminated by other getUpdates request"
+"""
 from fastapi import FastAPI, Request, HTTPException
 import hmac
 import hashlib
@@ -7,7 +13,8 @@ import psycopg2
 import psycopg2.extras
 import logging
 import asyncio
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import Application
 
 from app.core import settings as core_settings
 from app.core.database_init import get_postgresql_connection
@@ -22,8 +29,17 @@ RETRY_DELAYS = [2, 5, 10]  # Seconds between retry attempts
 MAX_RETRIES = len(RETRY_DELAYS)
 PRESIGNED_URL_EXPIRY = 24 * 3600  # 24 hours
 
-
 app = FastAPI()
+
+# Variable globale pour stocker l'app Telegram (sera injectée par main_webhook.py)
+telegram_application: Application = None
+
+
+def setup_telegram_webhook(telegram_app: Application):
+    """Inject Telegram application pour le webhook"""
+    global telegram_application
+    telegram_application = telegram_app
+    logger.info("✅ Telegram application injected into FastAPI server")
 
 
 @app.get("/health")
@@ -36,7 +52,8 @@ async def health_check():
         "status": "healthy",
         "postgres": False,
         "b2_configured": False,
-        "telegram_configured": False
+        "telegram_configured": False,
+        "webhook_mode": True  # Indique qu'on est en mode webhook
     }
 
     # Check PostgreSQL
@@ -78,13 +95,44 @@ async def health_check():
 async def root():
     """Root endpoint"""
     return {
-        "service": "Uzeur Marketplace IPN Server",
+        "service": "Uzeur Marketplace Server (Webhook Mode)",
         "status": "running",
+        "mode": "webhook",
         "endpoints": {
             "health": "/health",
-            "ipn": "/ipn/nowpayments"
+            "ipn": "/ipn/nowpayments",
+            "telegram_webhook": "/webhook/telegram"
         }
     }
+
+
+@app.post("/webhook/telegram")
+async def telegram_webhook(request: Request):
+    """
+    Webhook endpoint pour recevoir les messages Telegram
+    Remplace le polling (getUpdates) pour éviter les conflits multi-instances
+    """
+    global telegram_application
+
+    if not telegram_application:
+        logger.error("❌ Telegram application not initialized")
+        raise HTTPException(status_code=500, detail="Telegram app not ready")
+
+    try:
+        # Parse le JSON envoyé par Telegram
+        data = await request.json()
+
+        # Créer un objet Update depuis les données JSON
+        update = Update.de_json(data, telegram_application.bot)
+
+        # Traiter l'update via l'application Telegram
+        await telegram_application.process_update(update)
+
+        return {"ok": True}
+
+    except Exception as e:
+        logger.error(f"Error processing Telegram webhook: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def verify_signature(secret: str, payload: bytes, signature: str) -> bool:
@@ -96,6 +144,10 @@ def verify_signature(secret: str, payload: bytes, signature: str) -> bool:
 
 @app.post("/ipn/nowpayments")
 async def nowpayments_ipn(request: Request):
+    """
+    IPN endpoint for NowPayments
+    Identique à ipn_server.py, pas de changement
+    """
     raw = await request.body()
     signature = request.headers.get('x-nowpayments-sig') or request.headers.get('X-Nowpayments-Sig')
     if not verify_signature(core_settings.NOWPAYMENTS_IPN_SECRET or '', raw, signature or ''):
@@ -498,4 +550,3 @@ Votre formation est en cours d'envoi..."""
     finally:
         if conn:
             put_connection(conn)  # Return connection to pool
-
