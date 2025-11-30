@@ -1,11 +1,12 @@
 """
-Email Service - Service d'envoi d'emails pour récupération et notifications
+Email Service - Service d'envoi d'emails (Compatible Railway/Mailjet)
 """
 import logging
-import asyncio
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 logger = logging.getLogger(__name__)
-
 
 class EmailService:
     """Service d'envoi d'emails"""
@@ -13,83 +14,86 @@ class EmailService:
     def __init__(self):
         """Initialiser le service email"""
         # Configuration SMTP pour production
-        from app.core.settings import settings
-        self.smtp_server = settings.SMTP_SERVER
-        self.smtp_port = settings.SMTP_PORT
-        self.smtp_email = settings.SMTP_USERNAME
-        self.smtp_password = settings.SMTP_PASSWORD
-        self.from_email = settings.FROM_EMAIL
-        self.from_name = settings.FROM_NAME
-        self.smtp_configured = bool(self.smtp_server and self.smtp_email and self.smtp_password)
+        try:
+            from app.core.settings import settings
+            self.smtp_server = settings.SMTP_SERVER
+            # Force la conversion en int pour éviter les erreurs de type
+            self.smtp_port = int(settings.SMTP_PORT) if settings.SMTP_PORT else 587
+            self.smtp_email = settings.SMTP_USERNAME
+            self.smtp_password = settings.SMTP_PASSWORD
+            self.from_email = settings.FROM_EMAIL
+            self.from_name = settings.FROM_NAME
+            
+            # Vérification de la configuration
+            self.smtp_configured = all([
+                self.smtp_server, 
+                self.smtp_email, 
+                self.smtp_password
+            ])
+        except Exception as e:
+            logger.error(f"Erreur configuration EmailService: {e}")
+            self.smtp_configured = False
 
-        logger.info(f"EmailService initialized - SMTP configured: {self.smtp_configured}")
-        logger.info(f"SMTP Server: {self.smtp_server}:{self.smtp_port}")
-        logger.info(f"SMTP Email: {self.smtp_email}")
-        logger.info(f"FROM Email: {self.from_email}")
-        logger.info(f"FROM Name: {self.from_name}")
-        if not self.smtp_configured:
-            logger.warning("SMTP not fully configured - running in simulation mode")
+        if self.smtp_configured:
+            logger.info(f"✅ EmailService initialized - Server: {self.smtp_server}:{self.smtp_port}")
+        else:
+            logger.warning("⚠️ SMTP not fully configured - running in simulation mode")
 
     def _send_smtp_blocking(self, to_email: str, subject: str, body: str) -> bool:
         """
-        Blocking SMTP send operation (to be called via asyncio.to_thread)
-
-        Args:
-            to_email: Adresse email destinataire
-            subject: Sujet de l'email
-            body: Corps du message
-
-        Returns:
-            bool: True si envoi réussi
+        Envoi bloquant (exécuté dans un thread séparé par le code appelant)
+        Gère intelligemment SSL (465) et TLS (587/2525)
         """
-        import smtplib
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
+        if not self.smtp_configured:
+            logger.info(f"📧 [SIMULATION] Email vers {to_email} : {subject}")
+            return True
 
         # Créer le message
         msg = MIMEMultipart('alternative')
         msg['From'] = f"{self.from_name} <{self.from_email}>"
         msg['To'] = to_email
         msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+        msg.attach(MIMEText(body, 'html', 'utf-8')) # Changé en 'html' par défaut, plus propre
 
-        # Connexion et envoi avec gestion d'erreur robuste
         try:
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.set_debuglevel(0)  # Disable debug output
+            # --- CAS 1 : Connexion SSL (Port 465) ---
+            # C'est la méthode recommandée pour Railway/Mailjet pour éviter les timeouts
+            if self.smtp_port == 465:
+                logger.debug("Tentative connexion SMTP_SSL (Port 465)...")
+                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, timeout=30) as server:
+                    server.login(self.smtp_email, self.smtp_password)
+                    server.send_message(msg)
 
-                # Start TLS if using port 587
-                if self.smtp_port == 587:
-                    server.starttls()
-                    logger.debug("TLS connection established")
+            # --- CAS 2 : Connexion TLS (Port 587 ou 2525) ---
+            else:
+                logger.debug(f"Tentative connexion SMTP TLS (Port {self.smtp_port})...")
+                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=30) as server:
+                    # server.set_debuglevel(1) # Décommenter pour voir les logs bruts en cas de bug
+                    server.ehlo()
+                    server.starttls() # Sécurisation explicite
+                    server.ehlo()
+                    server.login(self.smtp_email, self.smtp_password)
+                    server.send_message(msg)
 
-                # Login
-                server.login(self.smtp_email, self.smtp_password)
-                logger.debug("SMTP authentication successful")
-
-                # Send message
-                server.send_message(msg)
-                logger.info(f"📧 Email envoyé avec succès - To: {to_email}, Subject: {subject}")
-                return True
+            logger.info(f"✅ Email envoyé avec succès - To: {to_email}")
+            return True
 
         except smtplib.SMTPAuthenticationError as e:
-            logger.error(f"SMTP Authentication failed: {e}")
-            # Fallback to simulation mode
-            logger.info(f"📧 Email simulé (auth failed) - To: {to_email}, Subject: {subject}")
-            return True
-        except smtplib.SMTPRecipientsRefused as e:
-            logger.error(f"SMTP Recipients refused: {e}")
+            logger.error(f"❌ Erreur Authentification SMTP: {e}")
             return False
-        except smtplib.SMTPServerDisconnected as e:
-            logger.error(f"SMTP Server disconnected: {e}")
-            # Fallback to simulation mode
-            logger.info(f"📧 Email simulé (server disconnected) - To: {to_email}, Subject: {subject}")
-            return True
+        except smtplib.SMTPConnectError as e:
+            logger.error(f"❌ Erreur Connexion SMTP (Timeout probable): {e}")
+            return False
         except Exception as e:
-            logger.error(f"Unexpected SMTP error: {e}")
-            # Fallback to simulation mode for any other error
-            logger.info(f"📧 Email simulé (error fallback) - To: {to_email}, Subject: {subject}")
-            return True
+            logger.error(f"❌ Erreur inattendue SMTP: {e}")
+            # Fallback simulation pour ne pas faire crasher l'app
+            return False
+
+    # Assurez-vous d'avoir les méthodes wrappers asynchrones si vous les utilisiez avant
+    # Par exemple:
+    # async def send_email(self, to_email: str, subject: str, body: str):
+    #     import asyncio
+    #     return await asyncio.to_thread(self._send_smtp_blocking, to_email, subject, body)
 
     async def send_email(self, to_email: str, subject: str, body: str) -> bool:
         """
