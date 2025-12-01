@@ -2,6 +2,7 @@
 
 import os
 import logging
+import asyncio  # <--- AJOUT CRITIQUE
 import psycopg2
 import psycopg2.extras
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -28,14 +29,6 @@ class SellHandlers:
     async def _verify_product_ownership(self, bot, query, product_id: str):
         """
         Verify product ownership and return product if owned by current seller
-
-        Args:
-            bot: Bot instance
-            query: Callback query
-            product_id: Product ID to verify
-
-        Returns:
-            Product dict if owned, None otherwise (with error message sent)
         """
         # Get actual seller_id (handles multi-account mapping)
         user_id = query.from_user.id
@@ -57,12 +50,6 @@ class SellHandlers:
     def _set_editing_state(self, bot, user_id: int, field: str, value=True):
         """
         Set editing state for a specific field
-
-        Args:
-            bot: Bot instance
-            user_id: User ID
-            field: Field name (e.g., 'product_title', 'seller_name', etc.)
-            value: Value to set (True, product_id, etc.)
         """
         # Map field names to step names for seller settings
         seller_field_to_step = {
@@ -251,7 +238,7 @@ class SellHandlers:
             await query.message.reply_text(dashboard_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
     async def seller_analytics_visual(self, bot, query, lang: str):
-        """Affiche les analytics avec statistiques textuelles (graphiques désactivés temporairement)"""
+        """Affiche les analytics avec statistiques textuelles"""
         from datetime import datetime, timedelta
         from app.core.database_init import get_postgresql_connection
         from app.core.db_pool import put_connection
@@ -317,12 +304,7 @@ class SellHandlers:
 
     async def seller_analytics_enhanced(self, bot, query, lang: str = 'fr'):
         """
-        Affiche les analytics vendeur avec graphiques visuels
-
-        Envoie:
-        - Texte avec stats résumées
-        - Image du graphique combiné (revenus + ventes)
-        - Boutons pour export CSV et autres graphiques
+        Affiche les analytics vendeur avec graphiques visuels (Optimisé Async)
         """
         from datetime import datetime, timedelta
         from app.core.database_init import get_postgresql_connection
@@ -335,7 +317,7 @@ class SellHandlers:
             await query.answer("📊 Génération des graphiques...")
 
             # ═══════════════════════════════════════════════════════
-            # RÉCUPÉRER LES DONNÉES
+            # RÉCUPÉRER LES DONNÉES (Database Call)
             # ═══════════════════════════════════════════════════════
             conn = get_postgresql_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -396,12 +378,10 @@ class SellHandlers:
             put_connection(conn)
 
             # ═══════════════════════════════════════════════════════
-            # PRÉPARER LES DONNÉES POUR GRAPHIQUE
+            # PRÉPARER LES DONNÉES
             # ═══════════════════════════════════════════════════════
 
-            # Compléter avec zéros pour jours manquants (30 derniers jours)
             dates_dict = {row['date'].strftime('%m-%d'): row for row in daily_stats}
-
             dates_labels = []
             revenues_data = []
             sales_data = []
@@ -419,19 +399,22 @@ class SellHandlers:
                     sales_data.append(0)
 
             # ═══════════════════════════════════════════════════════
-            # GÉNÉRER LE GRAPHIQUE
+            # GÉNÉRER LE GRAPHIQUE (NON-BLOQUANT VIA EXECUTOR)
             # ═══════════════════════════════════════════════════════
 
-            if sum(revenues_data) > 0:  # Seulement si données disponibles
-                chart_url = self.chart_service.generate_combined_dashboard_chart(
-                    dates=dates_labels,
-                    revenues=revenues_data,
-                    sales=sales_data,
-                    width=800,
-                    height=400
+            chart_url = None
+            if sum(revenues_data) > 0:
+                # Utiliser run_in_executor car matplotlib est bloquant
+                loop = asyncio.get_running_loop()
+                chart_url = await loop.run_in_executor(
+                    None, 
+                    self.chart_service.generate_combined_dashboard_chart,
+                    dates_labels,
+                    revenues_data,
+                    sales_data,
+                    800, # width
+                    400  # height
                 )
-            else:
-                chart_url = None
 
             # ═══════════════════════════════════════════════════════
             # CONSTRUIRE LE MESSAGE TEXTE
@@ -478,15 +461,12 @@ class SellHandlers:
             # ENVOYER LE MESSAGE
             # ═══════════════════════════════════════════════════════
 
-            # Supprimer le message précédent
             try:
                 await query.message.delete()
             except:
                 pass
 
-            # Envoyer le texte
             if chart_url:
-                # Envoyer graphique en photo
                 await query.message.reply_photo(
                     photo=chart_url,
                     caption=text,
@@ -494,7 +474,6 @@ class SellHandlers:
                     reply_markup=reply_markup
                 )
             else:
-                # Pas encore de données, juste texte
                 await query.message.reply_text(
                     text=text + "\n\n_Pas encore de données de vente pour afficher un graphique_",
                     parse_mode='Markdown',
@@ -511,12 +490,7 @@ class SellHandlers:
 
     async def analytics_detailed_charts(self, bot, query, lang: str = 'fr'):
         """
-        Affiche plusieurs graphiques détaillés
-
-        Envoie :
-        - Graphique revenus seuls
-        - Graphique ventes seules
-        - Graphique performance par produit
+        Affiche plusieurs graphiques détaillés (Optimisé Async)
         """
         from datetime import datetime, timedelta
         from app.core.database_init import get_postgresql_connection
@@ -570,7 +544,6 @@ class SellHandlers:
             # PRÉPARER LES DONNÉES
             # ═══════════════════════════════════════════════════════
 
-            # Compléter avec zéros
             dates_dict = {row['date'].strftime('%m-%d'): row for row in daily_stats}
             dates_labels = []
             revenues_data = []
@@ -589,35 +562,42 @@ class SellHandlers:
                     sales_data.append(0)
 
             # ═══════════════════════════════════════════════════════
-            # GÉNÉRER LES GRAPHIQUES
+            # GÉNÉRER LES GRAPHIQUES (NON-BLOQUANT)
             # ═══════════════════════════════════════════════════════
 
+            loop = asyncio.get_running_loop()
             charts_to_send = []
 
-            # Graphique 1 : Revenus (toujours générer)
-            revenue_chart_url = self.chart_service.generate_revenue_chart(
-                dates=dates_labels,
-                revenues=revenues_data
+            # Graphique 1 : Revenus
+            revenue_chart_url = await loop.run_in_executor(
+                None,
+                self.chart_service.generate_revenue_chart,
+                dates_labels,
+                revenues_data
             )
             charts_to_send.append(('Revenus (30 jours)', revenue_chart_url))
 
-            # Graphique 2 : Ventes (toujours générer)
-            sales_chart_url = self.chart_service.generate_sales_chart(
-                dates=dates_labels,
-                sales=sales_data
+            # Graphique 2 : Ventes
+            sales_chart_url = await loop.run_in_executor(
+                None,
+                self.chart_service.generate_sales_chart,
+                dates_labels,
+                sales_data
             )
             charts_to_send.append(('Ventes (30 jours)', sales_chart_url))
 
-            # Graphique 3 : Performance produits (si au moins 1 produit)
+            # Graphique 3 : Performance produits
             if product_performance and len(product_performance) > 0:
                 product_titles = [p['title'][:20] for p in product_performance]
                 product_sales = [int(p['sales']) for p in product_performance]
                 product_revenues = [float(p['revenue']) for p in product_performance]
 
-                product_chart_url = self.chart_service.generate_product_performance_chart(
-                    product_titles=product_titles,
-                    sales_counts=product_sales,
-                    revenues=product_revenues
+                product_chart_url = await loop.run_in_executor(
+                    None,
+                    self.chart_service.generate_product_performance_chart,
+                    product_titles,
+                    product_sales,
+                    product_revenues
                 )
                 charts_to_send.append(('Performance Produits (Top 10)', product_chart_url))
 
@@ -657,7 +637,7 @@ class SellHandlers:
 
     async def analytics_export_csv(self, bot, query, lang: str = 'fr'):
         """
-        Exporte les statistiques vendeur en CSV et envoie le fichier
+        Exporte les statistiques vendeur en CSV (Optimisé Async)
         """
         from datetime import datetime
         from app.core.database_init import get_postgresql_connection
@@ -675,41 +655,34 @@ class SellHandlers:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Infos vendeur
-            cursor.execute("""
-                SELECT seller_name, email
-                FROM users
-                WHERE user_id = %s
-            """, (seller_id,))
+            cursor.execute("SELECT seller_name, email FROM users WHERE user_id = %s", (seller_id,))
             seller_info = cursor.fetchone()
             seller_name = seller_info['seller_name'] if seller_info else f"Seller_{seller_id}"
 
             # Tous les produits
-            cursor.execute("""
-                SELECT * FROM products
-                WHERE seller_user_id = %s
-                ORDER BY created_at DESC
-            """, (seller_id,))
+            cursor.execute("SELECT * FROM products WHERE seller_user_id = %s ORDER BY created_at DESC", (seller_id,))
             products = cursor.fetchall()
 
             # Toutes les commandes
-            cursor.execute("""
-                SELECT * FROM orders
-                WHERE seller_user_id = %s
-                ORDER BY created_at DESC
-            """, (seller_id,))
+            cursor.execute("SELECT * FROM orders WHERE seller_user_id = %s ORDER BY created_at DESC", (seller_id,))
             orders = cursor.fetchall()
 
             put_connection(conn)
 
             # ═══════════════════════════════════════════════════════
-            # GÉNÉRER LE CSV
+            # GÉNÉRER LE CSV (NON-BLOQUANT via Executor)
             # ═══════════════════════════════════════════════════════
-
-            csv_file = self.export_service.export_seller_stats_to_csv(
-                seller_user_id=seller_id,
-                seller_name=seller_name,
-                products=products,
-                orders=orders
+            
+            loop = asyncio.get_running_loop()
+            
+            # On exécute l'écriture fichier dans un thread séparé
+            csv_file = await loop.run_in_executor(
+                None,
+                self.export_service.export_seller_stats_to_csv,
+                seller_id,
+                seller_name,
+                products,
+                orders
             )
 
             # Nom du fichier
@@ -1128,6 +1101,7 @@ class SellHandlers:
                 try:
                     from app.core.email_service import EmailService
                     email_service = EmailService()
+                    # AWAIT AJOUTÉ ICI
                     await email_service.send_seller_welcome_email(
                         to_email=user_state['email'],
                         seller_name=seller_name,
@@ -1238,6 +1212,7 @@ class SellHandlers:
             seller_name = user_data.get('seller_name', 'Vendeur')
             login_time = datetime.datetime.now().strftime("%d/%m/%Y à %H:%M")
 
+            # AWAIT AJOUTÉ ICI
             await email_service.send_seller_login_notification(
                 to_email=email,
                 seller_name=seller_name,
@@ -1614,6 +1589,10 @@ class SellHandlers:
                 # Upload file to Backblaze B2
                 from app.core.file_utils import upload_product_file_to_b2, get_product_file_path
                 local_file_path = get_product_file_path(filename)
+                
+                # AWAIT AJOUTÉ + Check si non-bloquant
+                # Si la fonction utilitaire est asynchrone, await suffit
+                # Sinon il faudrait la mettre dans un executor
                 b2_url = await upload_product_file_to_b2(local_file_path, product_id)
 
                 if b2_url:
@@ -1644,6 +1623,7 @@ class SellHandlers:
 
                     if user_data and user_data.get('email'):
                         # Email pour tous les produits ajoutés
+                        # AWAIT AJOUTÉ
                         await email_service.send_product_added_email(
                             to_email=user_data['email'],
                             seller_name=user_data.get('seller_name', 'Vendeur'),
@@ -1656,6 +1636,7 @@ class SellHandlers:
                         # Vérifier si c'est le premier produit et envoyer email de félicitations
                         total_products = self.product_repo.count_products_by_seller(seller_id)
                         if total_products == 1:  # Premier produit
+                            # AWAIT AJOUTÉ
                             await email_service.send_first_product_published_notification(
                                 to_email=user_data['email'],
                                 seller_name=user_data.get('seller_name', 'Vendeur'),
@@ -1715,7 +1696,16 @@ class SellHandlers:
                 # Upload cover image to B2
                 if os.path.exists(cover_local_path):
                     cover_b2_key = f"products/{final_product_id}/cover.jpg"
-                    cover_b2_url = await b2_service.upload_file(cover_local_path, cover_b2_key)
+                    
+                    # CORRECTION: Exécuter l'upload (qui est synchrone) dans un thread
+                    loop = asyncio.get_running_loop()
+                    cover_b2_url = await loop.run_in_executor(
+                        None, 
+                        b2_service.upload_file, 
+                        cover_local_path, 
+                        cover_b2_key
+                    )
+                    
                     if cover_b2_url:
                         logger.info(f"📤 Cover uploaded to B2: {cover_b2_url}")
                     else:
@@ -1725,7 +1715,16 @@ class SellHandlers:
                 # Upload thumbnail to B2
                 if os.path.exists(thumb_local_path):
                     thumb_b2_key = f"products/{final_product_id}/thumb.jpg"
-                    thumb_b2_url = await b2_service.upload_file(thumb_local_path, thumb_b2_key)
+                    
+                    # CORRECTION: Idem pour la thumbnail
+                    loop = asyncio.get_running_loop()
+                    thumb_b2_url = await loop.run_in_executor(
+                        None, 
+                        b2_service.upload_file, 
+                        thumb_local_path, 
+                        thumb_b2_key
+                    )
+                    
                     if thumb_b2_url:
                         logger.info(f"📤 Thumbnail uploaded to B2: {thumb_b2_url}")
                     else:
@@ -1977,6 +1976,7 @@ class SellHandlers:
                     if user_data and user_data.get('email'):
                         from app.core.email_service import EmailService
                         email_service = EmailService()
+                        # AWAIT AJOUTÉ
                         await email_service.send_product_removed_email(
                             to_email=user_data['email'],
                             seller_name=user_data.get('seller_name', 'Vendeur'),
