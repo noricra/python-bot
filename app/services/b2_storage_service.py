@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class B2StorageService:
     """Service for managing files on Backblaze B2 (Singleton Pattern)"""
     
-    _client_instance = None # Stocke la connexion pour la réutiliser
+    _client_instance = None # Stocke la connexion pour la réutiliser pour tout le monde
 
     def __init__(self):
         """Initialize B2 client using S3-compatible API (Only once)"""
@@ -27,6 +27,7 @@ class B2StorageService:
             return
 
         # Singleton: Si le client existe déjà, on ne le recrée pas
+        # Cela gagne 1 à 2 secondes par upload/téléchargement
         if B2StorageService._client_instance is None:
             try:
                 B2StorageService._client_instance = boto3.client(
@@ -46,13 +47,6 @@ class B2StorageService:
     def _upload_file_blocking(self, file_path: str, object_key: str) -> Optional[str]:
         """
         Blocking file upload to B2 (to be called via asyncio.to_thread)
-
-        Args:
-            file_path: Local file path to upload
-            object_key: Key/name in B2 (e.g., "products/abc123/file.pdf")
-
-        Returns:
-            str: URL of uploaded file, or None if failed
         """
         if not self.client:
             logger.error("❌ B2 client not initialized")
@@ -84,28 +78,13 @@ class B2StorageService:
 
     async def upload_file(self, file_path: str, object_key: str) -> Optional[str]:
         """
-        Upload a file to B2 (async, non-bloquant pour des milliers d'utilisateurs)
-
-        Args:
-            file_path: Local file path to upload
-            object_key: Key/name in B2 (e.g., "products/abc123/file.pdf")
-
-        Returns:
-            str: URL of uploaded file, or None if failed
+        Upload a file to B2 (async, non-bloquant)
+        C'est cette méthode que sell_handlers appelle avec 'await'
         """
         return await asyncio.to_thread(self._upload_file_blocking, file_path, object_key)
 
     def _upload_fileobj_blocking(self, file_obj: BinaryIO, object_key: str) -> Optional[str]:
-        """
-        Blocking file object upload to B2 (to be called via asyncio.to_thread)
-
-        Args:
-            file_obj: File-like object (BytesIO, etc.)
-            object_key: Key/name in B2
-
-        Returns:
-            str: URL of uploaded file, or None if failed
-        """
+        """Blocking file object upload to B2"""
         if not self.client:
             logger.error("❌ B2 client not initialized")
             return None
@@ -129,29 +108,10 @@ class B2StorageService:
             return None
 
     async def upload_fileobj(self, file_obj: BinaryIO, object_key: str) -> Optional[str]:
-        """
-        Upload a file object to B2 (async, non-bloquant)
-
-        Args:
-            file_obj: File-like object (BytesIO, etc.)
-            object_key: Key/name in B2
-
-        Returns:
-            str: URL of uploaded file, or None if failed
-        """
         return await asyncio.to_thread(self._upload_fileobj_blocking, file_obj, object_key)
 
     def _download_file_blocking(self, object_key: str, destination_path: str) -> bool:
-        """
-        Blocking file download from B2 (to be called via asyncio.to_thread)
-
-        Args:
-            object_key: Key/name in B2
-            destination_path: Local path to save file
-
-        Returns:
-            bool: True if successful
-        """
+        """Blocking file download from B2"""
         if not self.client:
             logger.error("❌ B2 client not initialized")
             return False
@@ -160,7 +120,6 @@ class B2StorageService:
             # Ensure directory exists
             os.makedirs(os.path.dirname(destination_path), exist_ok=True)
 
-            # Download file (using correct boto3 S3 API with named parameters)
             self.client.download_file(
                 Bucket=self.bucket_name,
                 Key=object_key,
@@ -178,29 +137,10 @@ class B2StorageService:
             return False
 
     async def download_file(self, object_key: str, destination_path: str) -> bool:
-        """
-        Download a file from B2 (async, non-bloquant)
-
-        Args:
-            object_key: Key/name in B2
-            destination_path: Local path to save file
-
-        Returns:
-            bool: True if successful
-        """
         return await asyncio.to_thread(self._download_file_blocking, object_key, destination_path)
 
     def get_download_url(self, object_key: str, expires_in: int = 3600) -> Optional[str]:
-        """
-        Generate a presigned URL for downloading a file
-
-        Args:
-            object_key: Key/name in B2
-            expires_in: URL expiration time in seconds (default 1 hour)
-
-        Returns:
-            str: Presigned URL, or None if failed
-        """
+        """Generate a presigned URL for downloading a file"""
         if not self.client:
             logger.error("❌ B2 client not initialized")
             return None
@@ -225,15 +165,7 @@ class B2StorageService:
             return None
 
     def delete_file(self, object_key: str) -> bool:
-        """
-        Delete a file from B2
-
-        Args:
-            object_key: Key/name in B2
-
-        Returns:
-            bool: True if successful
-        """
+        """Delete a file from B2"""
         if not self.client:
             logger.error("❌ B2 client not initialized")
             return False
@@ -254,15 +186,7 @@ class B2StorageService:
             return False
 
     def file_exists(self, object_key: str) -> bool:
-        """
-        Check if a file exists in B2
-
-        Args:
-            object_key: Key/name in B2
-
-        Returns:
-            bool: True if file exists
-        """
+        """Check if a file exists in B2"""
         if not self.client:
             return False
 
@@ -279,15 +203,7 @@ class B2StorageService:
             return False
 
     def get_file_size(self, object_key: str) -> Optional[int]:
-        """
-        Get the size of a file in B2
-
-        Args:
-            object_key: Key/name in B2
-
-        Returns:
-            int: File size in bytes, or None if failed
-        """
+        """Get the size of a file in B2"""
         if not self.client:
             return None
 
