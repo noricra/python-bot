@@ -96,6 +96,7 @@ class LibraryHandlers:
                 })
 
             # Launch carousel mode starting at index 0
+            # [CORRECTION] Ajout de 'await' car la méthode est async
             await self.show_library_carousel(bot, query, purchases, index=0, lang=lang)
 
         except Exception as e:
@@ -180,6 +181,7 @@ class LibraryHandlers:
             return keyboard
 
         # Use carousel helper (eliminates duplication)
+        # [CORRECTION] Ajout de 'await' car CarouselHelper.show_carousel est async
         await CarouselHelper.show_carousel(
             query=query,
             bot=bot,
@@ -293,7 +295,7 @@ class LibraryHandlers:
                 pass
 
             # Envoyer le fichier - utiliser context.bot ou query.get_bot()
-            bot_instance = context.bot if context else query.get_bot()
+            bot_instance = context.bot if context else getattr(query, 'get_bot', lambda: query.bot)()
 
             with open(full_file_path, 'rb') as file:
                 await bot_instance.send_document(
@@ -673,5 +675,3 @@ class LibraryHandlers:
                     )
                 ]])
             )
-
-
