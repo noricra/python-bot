@@ -127,7 +127,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'login_title': "🔐 **SELLER LOGIN**\n\nEnter your email first, then your password.\n\nIf you don't have a seller account yet, create one first.",
 
         # Seller dashboard
-        'dashboard_welcome': "🏪 **Welcome {name}!**\n\n📊 **Your dashboard:**\n• 📦 Products: {products_count}\n• 💰 Revenue: {revenue}",
+        'dashboard_welcome': "🏪 **Welcome {name}!**\n\n **Your dashboard:**\n•  Products: {products_count}\n•  Revenue: {revenue}",
         'btn_add_product': "Add product",
         'btn_my_products': "My products",
         'btn_my_wallet': "Payouts / Adresse",
