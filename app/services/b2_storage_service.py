@@ -12,12 +12,13 @@ from app.core import settings
 
 logger = logging.getLogger(__name__)
 
-
 class B2StorageService:
-    """Service for managing files on Backblaze B2"""
+    """Service for managing files on Backblaze B2 (Singleton Pattern)"""
+    
+    _client_instance = None # Stocke la connexion pour la réutiliser
 
     def __init__(self):
-        """Initialize B2 client using S3-compatible API"""
+        """Initialize B2 client using S3-compatible API (Only once)"""
         self.bucket_name = settings.B2_BUCKET_NAME
 
         if not settings.B2_KEY_ID or not settings.B2_APPLICATION_KEY:
@@ -25,17 +26,22 @@ class B2StorageService:
             self.client = None
             return
 
-        try:
-            self.client = boto3.client(
-                's3',
-                endpoint_url=settings.B2_ENDPOINT,
-                aws_access_key_id=settings.B2_KEY_ID,
-                aws_secret_access_key=settings.B2_APPLICATION_KEY
-            )
-            logger.info("✅ B2 Storage Service initialized")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize B2 client: {e}")
-            self.client = None
+        # Singleton: Si le client existe déjà, on ne le recrée pas
+        if B2StorageService._client_instance is None:
+            try:
+                B2StorageService._client_instance = boto3.client(
+                    's3',
+                    endpoint_url=settings.B2_ENDPOINT,
+                    aws_access_key_id=settings.B2_KEY_ID,
+                    aws_secret_access_key=settings.B2_APPLICATION_KEY
+                )
+                logger.info("✅ B2 Storage Client initialized (New Connection)")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize B2 client: {e}")
+                B2StorageService._client_instance = None
+        
+        # On utilise l'instance partagée
+        self.client = B2StorageService._client_instance
 
     def _upload_file_blocking(self, file_path: str, object_key: str) -> Optional[str]:
         """
