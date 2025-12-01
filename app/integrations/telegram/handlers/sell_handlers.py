@@ -1601,12 +1601,7 @@ class SellHandlers:
                 
                 # Note: b2_service.upload_file est synchrone (bloquant) de base
                 # On l'envoie dans un thread pool
-                b2_url = await loop.run_in_executor(
-                    None,
-                    b2_service.upload_file,
-                    local_file_path,
-                    product_id # ou le key path si votre service le demande
-                )
+                b2_url = await b2_service.upload_file(local_file_path, product_id)
 
                 if b2_url:
                     # Update product with B2 URL
