@@ -1586,14 +1586,27 @@ class SellHandlers:
                         product_data
                     )
 
-                # Upload file to Backblaze B2
-                from app.core.file_utils import upload_product_file_to_b2, get_product_file_path
+                # --- CORRECTIF UPLOAD B2 (Thread non-bloquant) ---
+                from app.core.file_utils import get_product_file_path
+                from app.services.b2_storage_service import B2StorageService
+                
                 local_file_path = get_product_file_path(filename)
                 
-                # AWAIT AJOUTÉ + Check si non-bloquant
-                # Si la fonction utilitaire est asynchrone, await suffit
-                # Sinon il faudrait la mettre dans un executor
-                b2_url = await upload_product_file_to_b2(local_file_path, product_id)
+                # 1. On utilise le service directement (pas via helper obscure)
+                b2_service = B2StorageService()
+                
+                # 2. On exécute l'upload dans un thread séparé (Executor)
+                # Cela empêche le blocage du bot pendant les 20s de timeout ou l'upload
+                loop = asyncio.get_running_loop()
+                
+                # Note: b2_service.upload_file est synchrone (bloquant) de base
+                # On l'envoie dans un thread pool
+                b2_url = await loop.run_in_executor(
+                    None,
+                    b2_service.upload_file,
+                    local_file_path,
+                    product_id # ou le key path si votre service le demande
+                )
 
                 if b2_url:
                     # Update product with B2 URL
