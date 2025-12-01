@@ -26,23 +26,21 @@ class CarouselHelper:
     ) -> None:
         """
         Affiche un carousel de produits avec navigation
-
-        Args:
-            query: CallbackQuery Telegram
-            bot: Instance du bot
-            products: Liste des produits à afficher
-            index: Index du produit actuel
-            caption_builder: Fonction qui génère le caption (product, lang) -> str
-            keyboard_builder: Fonction qui génère les boutons (product, index, total, lang) -> keyboard
-            lang: Langue ('fr' ou 'en')
-            parse_mode: Mode de parsing ('HTML' ou 'Markdown')
         """
         try:
             # Validation
             if not products or index >= len(products):
-                await query.edit_message_text(
-                    "❌ No products found" if lang == 'en' else "❌ Aucun produit trouvé"
-                )
+                try:
+                    # Tentative d'édition si possible
+                    if hasattr(query, 'edit_message_text'):
+                        await query.edit_message_text(
+                            "❌ No products found" if lang == 'en' else "❌ Aucun produit trouvé"
+                        )
+                    # Sinon envoi nouveau message
+                    elif hasattr(query, 'message') and query.message:
+                        await query.message.reply_text("❌ Aucun produit trouvé")
+                except:
+                    pass
                 return
 
             product = products[index]
@@ -67,30 +65,42 @@ class CarouselHelper:
             import traceback
             logger.error(traceback.format_exc())
             try:
-                await query.edit_message_text(
-                    "❌ Error displaying product" if lang == 'en' else "❌ Erreur affichage produit"
-                )
+                if hasattr(query, 'edit_message_text'):
+                    await query.edit_message_text(
+                        "❌ Error displaying product" if lang == 'en' else "❌ Erreur affichage produit"
+                    )
             except:
                 pass
+
+    @staticmethod
+    def _get_safe_chat_id(query):
+        """
+        Méthode robuste pour récupérer le chat_id depuis n'importe quel objet
+        (Update, CallbackQuery, Message, ou Mock custom)
+        """
+        # 1. Update standard ou Context
+        if hasattr(query, 'effective_chat') and query.effective_chat:
+            return query.effective_chat.id
+        
+        # 2. CallbackQuery (a un attribut .message)
+        if hasattr(query, 'message') and query.message:
+            return query.message.chat_id
+            
+        # 3. Message direct
+        if hasattr(query, 'chat_id') and query.chat_id:
+            return query.chat_id
+            
+        # 4. Fallback pour les MockQuery (Commandes /start, etc)
+        # Souvent l'ID utilisateur = ID chat en privé
+        if hasattr(query, 'from_user') and hasattr(query.from_user, 'id'):
+            return query.from_user.id
+            
+        return None
 
     @staticmethod
     def _get_image_path(product: Dict):
         """
         Récupère l'image du produit avec cache Telegram file_id (Railway-proof)
-
-        Priority order (fastest to slowest):
-        1. Telegram file_id (instant, free, survives restarts)
-        2. Local cache (fast)
-        3. Download from B2 (first time)
-        4. Placeholder (fallback)
-
-        Args:
-            product: Dictionnaire produit
-
-        Returns:
-            tuple: (image_source, is_file_id)
-                - image_source: file_id (str) or local path (str)
-                - is_file_id: True if file_id, False if path
         """
         product_id = product.get('product_id')
         seller_id = product.get('seller_user_id')
@@ -104,14 +114,14 @@ class CarouselHelper:
                 file_id = telegram_cache.get_product_image_file_id(product_id, 'thumb')
 
                 if file_id:
-                    logger.info(f"⚡ Using cached file_id: {product_id}")
+                    # logger.info(f"⚡ Using cached file_id: {product_id}")
                     return (file_id, True)
             except Exception as e:
                 logger.warning(f"⚠️ Could not check file_id cache: {e}")
 
         # 2. Check if thumbnail_url is B2 URL
         if thumbnail_url and thumbnail_url.startswith('https://'):
-            logger.info(f"🌐 Thumbnail is B2 URL: {product_id}")
+            # logger.info(f"🌐 Thumbnail is B2 URL: {product_id}")
             # Try to download from B2 to local cache
             if product_id and seller_id:
                 try:
@@ -123,7 +133,7 @@ class CarouselHelper:
                         image_type='thumb'
                     )
                     if local_path and os.path.exists(local_path):
-                        logger.info(f"📥 Downloaded from B2: {product_id}")
+                        # logger.info(f"📥 Downloaded from B2: {product_id}")
                         return (local_path, False)
                 except Exception as e:
                     logger.warning(f"⚠️ B2 download failed: {e}")
@@ -136,7 +146,7 @@ class CarouselHelper:
         if product_id and seller_id:
             try:
                 from app.services.image_sync_service import ImageSyncService
-                logger.info(f"🔄 Image missing, downloading from B2: {product_id}")
+                # logger.info(f"🔄 Image missing, downloading from B2: {product_id}")
                 image_sync = ImageSyncService()
                 b2_path = image_sync.get_image_path_with_fallback(
                     product_id=product_id,
@@ -144,7 +154,7 @@ class CarouselHelper:
                     image_type='thumb'
                 )
                 if b2_path and os.path.exists(b2_path):
-                    logger.info(f"✅ Downloaded from B2: {product_id}")
+                    # logger.info(f"✅ Downloaded from B2: {product_id}")
                     return (b2_path, False)
             except Exception as e:
                 logger.warning(f"⚠️ Could not download from B2: {e}")
@@ -177,21 +187,12 @@ class CarouselHelper:
     ) -> None:
         """
         Affiche ou met à jour le message carousel avec cache Telegram file_id
-
-        Args:
-            query: CallbackQuery
-            bot: Instance bot
-            product: Product dict (pour sauvegarder file_id)
-            image_source: file_id Telegram ou chemin local
-            is_file_id: True si image_source est un file_id
-            caption: Caption formaté
-            keyboard_markup: Clavier inline
-            parse_mode: Mode parsing
         """
         product_id = product.get('product_id')
 
         # Check if this is a callback query or command (MockQuery)
-        is_callback = hasattr(query, 'edit_message_media') and hasattr(query, 'message')
+        # Un vrai CallbackQuery a .edit_message_media ET .message
+        is_callback = hasattr(query, 'edit_message_media') and hasattr(query, 'message') and query.message
 
         try:
             sent_message = None
@@ -201,7 +202,7 @@ class CarouselHelper:
                 if image_source:
                     if is_file_id:
                         # Use cached file_id (instant)
-                        logger.info(f"⚡ Sending with cached file_id: {product_id}")
+                        # logger.info(f"⚡ Sending with cached file_id: {product_id}")
                         sent_message = await query.edit_message_media(
                             media=InputMediaPhoto(
                                 media=image_source,
@@ -230,12 +231,18 @@ class CarouselHelper:
                     )
             else:
                 # Command (MockQuery) - send new message
-                chat_id = query.effective_chat.id if hasattr(query, 'effective_chat') else query.message.chat_id
+                
+                # --- CORRECTION ICI : Utilisation de la méthode robuste ---
+                chat_id = CarouselHelper._get_safe_chat_id(query)
+                
+                if not chat_id:
+                    logger.error(f"❌ Impossible de trouver chat_id sur l'objet {type(query)}")
+                    return
 
                 if image_source:
                     if is_file_id:
                         # Use cached file_id
-                        sent_message = await query.bot.send_photo(
+                        sent_message = await bot.send_photo(
                             chat_id=chat_id,
                             photo=image_source,
                             caption=caption,
@@ -245,7 +252,7 @@ class CarouselHelper:
                     elif os.path.exists(image_source):
                         # Send from local file
                         with open(image_source, 'rb') as photo_file:
-                            sent_message = await query.bot.send_photo(
+                            sent_message = await bot.send_photo(
                                 chat_id=chat_id,
                                 photo=photo_file,
                                 caption=caption,
@@ -253,7 +260,7 @@ class CarouselHelper:
                                 parse_mode=parse_mode
                             )
                 else:
-                    await query.bot.send_message(
+                    await bot.send_message(
                         chat_id=chat_id,
                         text=caption,
                         reply_markup=keyboard_markup,
@@ -264,6 +271,7 @@ class CarouselHelper:
             if sent_message and not is_file_id and product_id:
                 try:
                     from app.services.telegram_cache_service import get_telegram_cache_service
+                    # Gérer différents types de retours (Message ou bool)
                     if hasattr(sent_message, 'photo') and sent_message.photo:
                         file_id = sent_message.photo[-1].file_id
                         telegram_cache = get_telegram_cache_service()
@@ -283,11 +291,16 @@ class CarouselHelper:
                 pass  # Ignore if can't delete
 
             # Fallback: send new message
-            chat_id = query.effective_chat.id if hasattr(query, 'effective_chat') else query.message.chat_id
+            # --- CORRECTION ICI AUSSI ---
+            chat_id = CarouselHelper._get_safe_chat_id(query)
+            
+            if not chat_id:
+                logger.error("❌ Fallback impossible: chat_id introuvable")
+                return
 
             if image_source:
                 if is_file_id:
-                    await query.bot.send_photo(
+                    await bot.send_photo(
                         chat_id=chat_id,
                         photo=image_source,
                         caption=caption,
@@ -296,7 +309,7 @@ class CarouselHelper:
                     )
                 elif os.path.exists(image_source):
                     with open(image_source, 'rb') as photo_file:
-                        sent_message = await query.bot.send_photo(
+                        sent_message = await bot.send_photo(
                             chat_id=chat_id,
                             photo=photo_file,
                             caption=caption,
@@ -311,11 +324,11 @@ class CarouselHelper:
                                     file_id = sent_message.photo[-1].file_id
                                     telegram_cache = get_telegram_cache_service()
                                     telegram_cache.save_telegram_file_id(product_id, file_id, 'thumb')
-                                    logger.info(f"💾 Cached file_id (fallback): {product_id}")
+                                    # logger.info(f"💾 Cached file_id (fallback): {product_id}")
                             except Exception as cache_error:
                                 logger.warning(f"⚠️ Failed to cache file_id: {cache_error}")
             else:
-                await query.bot.send_message(
+                await bot.send_message(
                     chat_id=chat_id,
                     text=caption,
                     reply_markup=keyboard_markup,
@@ -331,15 +344,6 @@ class CarouselHelper:
     ) -> List[InlineKeyboardButton]:
         """
         Construit la ligne de navigation ⬅️ X/Y ➡️
-
-        Args:
-            index: Index actuel
-            total: Total d'items
-            callback_prefix: Préfixe pour callback_data (ex: 'carousel_', 'seller_carousel_')
-            show_empty_buttons: Si True, affiche des boutons vides au lieu de rien
-
-        Returns:
-            Liste de boutons pour navigation
         """
         nav_row = []
 
