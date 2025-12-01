@@ -815,7 +815,7 @@ class SellHandlers:
             breadcrumb = f"📂 _Mes Produits" + (f" › {category}_" if category else "_")
             caption += f"{breadcrumb}\n\n"
             caption += f"{status_icon} **{product['title']}**\n\n"
-            caption += f" **${product['price_usd']:.2f}**  •  {status_text}\n"
+            caption += f" **${product['price_usd']:.2f}** •  {status_text}\n"
             caption += "────────────────\n\n"
             caption += "📊 **PERFORMANCE**\n"
             caption += f"• **{product.get('sales_count', 0)}** ventes"
@@ -1040,7 +1040,7 @@ class SellHandlers:
             "⚠️ **ATTENTION**\n\nVoulez-vous vraiment supprimer votre compte vendeur ?\n\n❌ Cette action est **irréversible**",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("✅ Confirmer suppression", callback_data='delete_seller_confirm')],
-                [InlineKeyboardButton("❌ Annuler", callback_data='seller_settings')]
+                [InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='seller_settings')]
             ]),
             parse_mode='Markdown')
 
@@ -1128,7 +1128,7 @@ class SellHandlers:
                 try:
                     from app.core.email_service import EmailService
                     email_service = EmailService()
-                    email_service.send_seller_welcome_email(
+                    await email_service.send_seller_welcome_email(
                         to_email=user_state['email'],
                         seller_name=seller_name,
                         solana_address=solana_address
@@ -1238,7 +1238,7 @@ class SellHandlers:
             seller_name = user_data.get('seller_name', 'Vendeur')
             login_time = datetime.datetime.now().strftime("%d/%m/%Y à %H:%M")
 
-            email_service.send_seller_login_notification(
+            await email_service.send_seller_login_notification(
                 to_email=email,
                 seller_name=seller_name,
                 login_time=login_time
@@ -1644,7 +1644,7 @@ class SellHandlers:
 
                     if user_data and user_data.get('email'):
                         # Email pour tous les produits ajoutés
-                        email_service.send_product_added_email(
+                        await email_service.send_product_added_email(
                             to_email=user_data['email'],
                             seller_name=user_data.get('seller_name', 'Vendeur'),
                             product_title=product_data['title'],
@@ -1656,7 +1656,7 @@ class SellHandlers:
                         # Vérifier si c'est le premier produit et envoyer email de félicitations
                         total_products = self.product_repo.count_products_by_seller(seller_id)
                         if total_products == 1:  # Premier produit
-                            email_service.send_first_product_published_notification(
+                            await email_service.send_first_product_published_notification(
                                 to_email=user_data['email'],
                                 seller_name=user_data.get('seller_name', 'Vendeur'),
                                 product_title=product_data['title'],
@@ -1977,7 +1977,7 @@ class SellHandlers:
                     if user_data and user_data.get('email'):
                         from app.core.email_service import EmailService
                         email_service = EmailService()
-                        email_service.send_product_removed_email(
+                        await email_service.send_product_removed_email(
                             to_email=user_data['email'],
                             seller_name=user_data.get('seller_name', 'Vendeur'),
                             product_title=title,
