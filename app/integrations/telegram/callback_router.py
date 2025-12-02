@@ -75,6 +75,7 @@ class CallbackRouter:
             'edit_seller_name': lambda query, lang: self.bot.sell_handlers.edit_seller_name(self.bot, query, lang),
             'edit_seller_bio': lambda query, lang: self.bot.sell_handlers.edit_seller_bio(self.bot, query, lang),
             'edit_seller_email': lambda query, lang: self.bot.sell_handlers.edit_seller_email(self.bot, query, lang),
+            'generate_shop_link': lambda query, lang: self.bot.sell_handlers.generate_shop_link(self.bot, query, lang),
             'edit_solana_address': lambda query, lang: self.bot.sell_handlers.edit_solana_address(self.bot, query, lang),
             'disable_seller_account': lambda query, lang: self.bot.sell_handlers.disable_seller_account(self.bot, query, lang),
             'disable_seller_confirm': lambda query, lang: self.bot.sell_handlers.disable_seller_confirm(self.bot, query),
@@ -672,7 +673,7 @@ class CallbackRouter:
             return True
 
         # Product actions
-        if callback_data.startswith(('confirm_delete_', 'delete_product_', 'edit_product_')):
+        if callback_data.startswith(('confirm_delete_', 'delete_product_', 'edit_product_', 'toggle_product_', 'share_product_')):
             await self._handle_product_action(query, callback_data, lang)
             return True
 
@@ -903,6 +904,9 @@ class CallbackRouter:
         elif callback_data.startswith('edit_product_'):
             product_id = callback_data.replace('edit_product_', '')
             await self.bot.sell_handlers.edit_product_menu(self.bot, query, product_id, lang)
+        elif callback_data.startswith('share_product_'):
+            product_id = callback_data.replace('share_product_', '')
+            await self.bot.sell_handlers.generate_product_link(self.bot, query, product_id, lang)
 
     async def _handle_support_action(self, query: CallbackQuery, callback_data: str, lang: str):
         """Gère les actions de support (contact_seller handled by library_handlers)"""
