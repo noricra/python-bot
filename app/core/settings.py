@@ -42,6 +42,7 @@ class Settings:
         # Telegram / Admin
         self.TELEGRAM_BOT_TOKEN: Optional[str] = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
         self.TELEGRAM_TOKEN: Optional[str] = self.TELEGRAM_BOT_TOKEN  # Compatibility
+        self.TELEGRAM_BOT_USERNAME: str = os.getenv("TELEGRAM_BOT_USERNAME", "uzeur_bot")
         self.ADMIN_USER_ID: Optional[int] = (
             int(os.getenv("ADMIN_USER_ID")) if os.getenv("ADMIN_USER_ID") else None
         )
