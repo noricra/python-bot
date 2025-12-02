@@ -20,9 +20,9 @@ class AdminHandlers:
 
     async def admin_menu(self, bot, query, lang):
         """Menu principal admin"""
-        # Clean any conflicting states when entering admin
+        # 🔧 FIX: Réinitialiser TOUS les états quand on entre dans l'admin
         user_id = query.from_user.id
-        bot.reset_conflicting_states(user_id)
+        bot.reset_user_state(user_id, keep={'lang'})
 
         admin_keyboard = [
             [InlineKeyboardButton(" Users", callback_data='admin_users_menu'),
@@ -39,6 +39,9 @@ class AdminHandlers:
 
     async def admin_users_menu(self, query, lang):
         """Menu gestion utilisateurs"""
+        # 🔧 FIX: Réinitialiser les états admin users
+        from bot_mlt import MarketplaceBot
+        # On ne peut pas accéder à bot ici, mais ce menu est déjà safe car appelé depuis admin_menu
         users_keyboard = [
             [InlineKeyboardButton(" Gérer utilisateurs", callback_data='admin_users')],
             [InlineKeyboardButton(" Suspendre user", callback_data='admin_suspend_user'),

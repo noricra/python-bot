@@ -25,6 +25,9 @@ class LibraryHandlers:
         """Affiche la bibliothèque de l'utilisateur avec carousel visuel"""
         user_id = query.from_user.id
 
+        # 🔧 FIX: Réinitialiser TOUS les états quand on entre dans la bibliothèque
+        bot.reset_user_state(user_id, keep={'lang'})
+
         try:
             conn = bot.get_db_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)

@@ -28,6 +28,10 @@ class CarouselHelper:
         Affiche un carousel de produits avec navigation
         """
         try:
+            # 🔧 FIX: Extraire l'instance Telegram du MarketplaceBot
+            # bot peut être soit MarketplaceBot (avec .application.bot) soit telegram.Bot direct
+            telegram_bot = bot.application.bot if hasattr(bot, 'application') else bot
+
             # Validation
             if not products or index >= len(products):
                 try:
@@ -57,7 +61,7 @@ class CarouselHelper:
 
             # Display carousel with cache support
             await CarouselHelper._display_message(
-                query, bot, product, image_source, is_file_id, caption, keyboard_markup, parse_mode
+                query, telegram_bot, product, image_source, is_file_id, caption, keyboard_markup, parse_mode
             )
 
         except Exception as e:

@@ -773,9 +773,9 @@ Send your message now."""
     # Support UI Methods - Extracted from bot_mlt.py
     async def support_menu(self, bot, query, lang):
         """Main support menu"""
-        # Reset conflicting states when entering support workflow
+        # 🔧 FIX: Réinitialiser TOUS les états quand on entre dans le support
         if hasattr(query, 'from_user'):
-            bot.reset_conflicting_states(query.from_user.id, keep={'lang'})
+            bot.reset_user_state(query.from_user.id, keep={'lang'})
 
         await self.show_faq(query, lang)
 

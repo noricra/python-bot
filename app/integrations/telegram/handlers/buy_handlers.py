@@ -551,8 +551,8 @@ class BuyHandlers:
         V2 WORKFLOW ÉTAPE 1: Click "Acheter" → DIRECT carousel (first category, first product)
         No intermediate menu, no category selection screen
         """
-        # Reset conflicting states when entering buy workflow
-        bot.reset_conflicting_states(query.from_user.id, keep={'lang'})
+        # 🔧 FIX: Réinitialiser TOUS les états quand on entre dans le menu Acheter
+        bot.reset_user_state(query.from_user.id, keep={'lang'})
 
         # V2: Load first category and show carousel immediately
         try:
@@ -611,7 +611,8 @@ class BuyHandlers:
 
     async def search_product_prompt(self, bot, query, lang: str) -> None:
         """Demande de saisir un ID produit"""
-        bot.reset_conflicting_states(query.from_user.id, keep={'waiting_for_product_id'})
+        # 🔧 FIX: Réinitialiser TOUS les états avant la recherche
+        bot.reset_user_state(query.from_user.id, keep={'lang'})
         bot.state_manager.update_state(query.from_user.id, waiting_for_product_id=True, lang=lang)
 
         prompt_text = i18n(lang, 'search_prompt')

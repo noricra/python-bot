@@ -78,8 +78,8 @@ class SellHandlers:
         """Menu vendeur - Connexion par email requise"""
         user_id = query.from_user.id
 
-        # Reset conflicting states when entering sell workflow
-        bot.reset_conflicting_states(user_id, keep={'lang'})
+        # 🔧 FIX: Réinitialiser TOUS les états quand on entre dans le menu Vendre
+        bot.reset_user_state(user_id, keep={'lang'})
 
         user_data = self.user_repo.get_user(user_id)
 
@@ -174,6 +174,10 @@ class SellHandlers:
 
         # Get actual seller_id (handles multi-account mapping)
         seller_id = query.from_user.id
+
+        # 🔧 FIX: Réinitialiser TOUS les états quand on retourne au dashboard
+        bot.reset_user_state(seller_id, keep={'lang', 'requires_relogin'})
+
         user_data = self.user_repo.get_user(seller_id)
 
         # Check if user is seller
@@ -730,7 +734,8 @@ class SellHandlers:
         logger.info(f"🆕 ADD_PRODUCT_PROMPT - User {user_id}")
         logger.info(f"   State BEFORE reset: {bot.state_manager.get_state(user_id)}")
 
-        bot.reset_conflicting_states(user_id, keep={'adding_product'})
+        # 🔧 FIX: Réinitialiser TOUS les états avant de commencer l'ajout produit
+        bot.reset_user_state(user_id, keep={'lang', 'requires_relogin'})
         bot.state_manager.update_state(user_id, adding_product=True, step='title', product_data={}, lang=lang)
 
         # 🔍 DEBUG: État APRÈS initialisation
@@ -944,6 +949,10 @@ class SellHandlers:
     async def seller_settings(self, bot, query, lang: str):
         """Paramètres vendeur - Enhanced avec tous les boutons (SELLER_WORKFLOW_SPEC)"""
         user_id = query.from_user.id
+
+        # 🔧 FIX: Réinitialiser les états d'édition quand on entre dans Settings
+        bot.reset_user_state(user_id, keep={'lang', 'requires_relogin'})
+
         user_data = self.user_repo.get_user(user_id)
 
         # Afficher informations récapitulatives
@@ -977,6 +986,9 @@ class SellHandlers:
         """Déconnexion vendeur"""
         user_id = query.from_user.id
         lang = bot.get_user_state(user_id).get('lang', 'fr')
+
+        # 🔧 FIX: Réinitialiser TOUS les états vendeur lors de la déconnexion
+        bot.reset_user_state(user_id, keep={'lang'})
 
         # Set flag requiring re-login (temporary until next successful login)
         bot.state_manager.update_state(user_id, requires_relogin=True)
@@ -1892,6 +1904,10 @@ class SellHandlers:
     async def edit_product_menu(self, bot, query, product_id: str, lang: str):
         """Show product edit menu"""
         try:
+            # 🔧 FIX: Réinitialiser les états d'édition pour ce produit
+            user_id = query.from_user.id
+            bot.reset_user_state(user_id, keep={'lang', 'requires_relogin'})
+
             # Get product details
             product = self.product_repo.get_product_by_id(product_id)
             if not product:
