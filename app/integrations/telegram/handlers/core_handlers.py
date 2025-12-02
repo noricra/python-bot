@@ -25,6 +25,63 @@ class CoreHandlers:
         user_data = self.user_repo.get_user(user.id)
         lang = user_data['language_code'] if user_data and user_data.get('language_code') else (user.language_code or 'fr')
 
+        # 🔗 DEEP LINKING: Si payload fourni (ex: /start product_TBF-ABC-123 ou shop_USER_ID)
+        if context.args and len(context.args) > 0:
+            payload = context.args[0]
+
+            # Format: product_TBF-ABC-123 → affichage direct du produit
+            if payload.startswith('product_'):
+                product_id = payload.replace('product_', '').upper()
+
+                # Récupérer le produit depuis la DB
+                product = marketplace_bot.product_repo.get_product_by_id(product_id)
+
+                if product:
+                    # Afficher le produit directement
+                    await marketplace_bot.buy_handlers.show_product_details_from_search(
+                        marketplace_bot,
+                        update,
+                        product
+                    )
+                    return
+                else:
+                    # Produit introuvable, afficher message + continuer vers menu principal
+                    await update.message.reply_text(
+                        f"❌ Produit non trouvé: {product_id}" if lang == 'fr'
+                        else f"❌ Product not found: {product_id}"
+                    )
+
+            # Format: shop_USER_ID → affichage boutique vendeur
+            elif payload.startswith('shop_'):
+                try:
+                    seller_id = int(payload.replace('shop_', ''))
+
+                    # Créer un mock query pour l'appel
+                    class MockQuery:
+                        def __init__(self, user, update_obj):
+                            self.from_user = user
+                            self.message = update_obj.message
+                            self.effective_chat = update_obj.effective_chat
+                        async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
+                            await self.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+
+                    mock_query = MockQuery(update.effective_user, update)
+
+                    # Afficher la boutique du vendeur
+                    await marketplace_bot.buy_handlers.show_seller_shop(
+                        marketplace_bot,
+                        mock_query,
+                        seller_id,
+                        lang
+                    )
+                    return
+                except ValueError:
+                    await update.message.reply_text(
+                        f"❌ Lien boutique invalide" if lang == 'fr'
+                        else f"❌ Invalid shop link"
+                    )
+
+        # Menu normal si pas de payload
         welcome_text = i18n(lang, 'welcome')
 
         # Utiliser le keyboard centralisé depuis keyboards.py
