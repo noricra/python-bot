@@ -2,7 +2,7 @@
 
 import os
 import logging
-import asyncio  # <--- AJOUT CRITIQUE
+import asyncio  
 import psycopg2
 import psycopg2.extras
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -230,7 +230,8 @@ class SellHandlers:
         keyboard = [
             [InlineKeyboardButton(i18n(lang, 'btn_my_products'), callback_data='my_products'),
              InlineKeyboardButton("📊 Analytics", callback_data='seller_analytics_enhanced')],
-            [InlineKeyboardButton(i18n(lang, 'btn_add_product'), callback_data='add_product')],
+            [InlineKeyboardButton(i18n(lang, 'btn_add_product'), callback_data='add_product'),
+             InlineKeyboardButton("🔗 Lien Boutique" if lang == 'fr' else "🔗 Shop Link", callback_data='generate_shop_link')],
             [InlineKeyboardButton(i18n(lang, 'btn_logout'), callback_data='seller_logout'),
              InlineKeyboardButton(i18n(lang, 'btn_seller_settings'), callback_data='seller_settings')],
             [InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')]
@@ -842,7 +843,15 @@ class SellHandlers:
             )
             keyboard.append(nav_row)
 
-            # Row 3: Toggle + Delete
+            # Row 3: Share button
+            keyboard.append([
+                InlineKeyboardButton(
+                    "🔗 Partager ce produit" if lang == 'fr' else "🔗 Share this product",
+                    callback_data=f'share_product_{product["product_id"]}'
+                )
+            ])
+
+            # Row 4: Toggle + Delete
             toggle_text = "❌ Désactiver" if product['status'] == 'active' else "✅ Activer"
             toggle_text_en = "❌ Deactivate" if product['status'] == 'active' else "✅ Activate"
             keyboard.append([
@@ -856,7 +865,7 @@ class SellHandlers:
                 )
             ])
 
-            # Row 4: Back
+            # Row 5: Back
             keyboard.append([
                 InlineKeyboardButton(
                     "🔙 Dashboard",
@@ -2191,6 +2200,114 @@ class SellHandlers:
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')
                 ]])
             )
+
+    async def generate_shop_link(self, bot, query, lang):
+        """Generate a shop link for the seller to share on social media"""
+        try:
+            from app.core.settings import settings
+            user_id = query.from_user.id
+
+            # Check if user is a seller
+            user_data = self.user_repo.get_user(user_id)
+            if not user_data or not user_data.get('is_seller'):
+                await query.answer("❌ Vous devez être vendeur" if lang == 'fr' else "❌ You must be a seller", show_alert=True)
+                return
+
+            # Get seller's active products count
+            products = self.product_repo.get_products_by_seller(user_id)
+            active_count = len([p for p in products if p.get('status') == 'active'])
+
+            seller_name = user_data.get('seller_name', 'Vendeur')
+
+            # Generate shop link with seller ID payload
+            bot_username = settings.TELEGRAM_BOT_USERNAME
+            shop_link = f"https://t.me/{bot_username}?start=shop_{user_id}"
+
+            message = (
+                f"🔗 **Lien de votre boutique**\n\n"
+                f"**Vendeur:** {seller_name}\n"
+                f"**Produits actifs:** {active_count}\n\n"
+                f"📋 Copiez ce lien pour partager votre boutique:\n"
+                f"`{shop_link}`\n\n"
+                f"💡 Partagez ce lien sur vos réseaux sociaux pour promouvoir tous vos produits !"
+                if lang == 'fr' else
+                f"🔗 **Your shop link**\n\n"
+                f"**Seller:** {seller_name}\n"
+                f"**Active products:** {active_count}\n\n"
+                f"📋 Copy this link to share your shop:\n"
+                f"`{shop_link}`\n\n"
+                f"💡 Share this link on social media to promote all your products!"
+            )
+
+            await query.edit_message_text(
+                message,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')
+                ]])
+            )
+
+        except Exception as e:
+            logger.error(f"Error in generate_shop_link: {e}")
+            await query.answer("❌ Erreur" if lang == 'fr' else "❌ Error", show_alert=True)
+
+    async def generate_product_link(self, bot, query, product_id: str, lang):
+        """Generate a deep link for a specific product"""
+        try:
+            from app.core.settings import settings
+            user_id = query.from_user.id
+
+            # Check if user owns this product
+            product = self.product_repo.get_product_by_id(product_id)
+            if not product or product['seller_user_id'] != user_id:
+                await query.answer("❌ Produit introuvable" if lang == 'fr' else "❌ Product not found", show_alert=True)
+                return
+
+            # Generate deep link
+            bot_username = settings.TELEGRAM_BOT_USERNAME
+            product_link = f"https://t.me/{bot_username}?start=product_{product_id}"
+
+            message = (
+                f"🔗 **Lien de partage produit**\n\n"
+                f"**Produit:** {product['title']}\n"
+                f"**Prix:** ${product['price_usd']:.2f}\n"
+                f"**ID:** {product_id}\n\n"
+                f"📋 Copiez ce lien pour partager ce produit:\n"
+                f"`{product_link}`\n\n"
+                f"💡 Toute personne cliquant sur ce lien verra directement votre produit dans le bot !\n\n"
+                f"📱 Idéal pour:\n"
+                f"• Instagram Stories\n"
+                f"• Posts Facebook/Twitter\n"
+                f"• Messages privés\n"
+                f"• Forums et communautés"
+                if lang == 'fr' else
+                f"🔗 **Product share link**\n\n"
+                f"**Product:** {product['title']}\n"
+                f"**Price:** ${product['price_usd']:.2f}\n"
+                f"**ID:** {product_id}\n\n"
+                f"📋 Copy this link to share this product:\n"
+                f"`{product_link}`\n\n"
+                f"💡 Anyone clicking this link will see your product directly in the bot!\n\n"
+                f"📱 Perfect for:\n"
+                f"• Instagram Stories\n"
+                f"• Facebook/Twitter posts\n"
+                f"• Private messages\n"
+                f"• Forums and communities"
+            )
+
+            # Envoyer un nouveau message (le carousel est une photo, pas du texte)
+            await query.message.reply_text(
+                message,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Retour produit" if lang == 'fr' else "🔙 Back to product", callback_data='my_products')
+                ]])
+            )
+            await query.answer()  # Acknowledge the callback
+
+        except Exception as e:
+            logger.error(f"Error in generate_product_link: {e}")
+            await query.answer("❌ Erreur" if lang == 'fr' else "❌ Error", show_alert=True)
 
     async def edit_seller_email(self, bot, query, lang):
         """Edit seller email"""
