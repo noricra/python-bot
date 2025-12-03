@@ -2,7 +2,7 @@
 
 import os
 import logging
-import asyncio  
+import asyncio  # <--- AJOUT CRITIQUE
 import psycopg2
 import psycopg2.extras
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -407,12 +407,12 @@ class SellHandlers:
             # GÉNÉRER LE GRAPHIQUE (NON-BLOQUANT VIA EXECUTOR)
             # ═══════════════════════════════════════════════════════
 
-            chart_url = None
+            chart_data = None
             if sum(revenues_data) > 0:
                 # Utiliser run_in_executor car matplotlib est bloquant
                 loop = asyncio.get_running_loop()
-                chart_url = await loop.run_in_executor(
-                    None, 
+                chart_data = await loop.run_in_executor(
+                    None,
                     self.chart_service.generate_combined_dashboard_chart,
                     dates_labels,
                     revenues_data,
@@ -471,13 +471,32 @@ class SellHandlers:
             except:
                 pass
 
-            if chart_url:
-                await query.message.reply_photo(
-                    photo=chart_url,
-                    caption=text,
-                    parse_mode='Markdown',
-                    reply_markup=reply_markup
-                )
+            if chart_data:
+                try:
+                    # chart_data est maintenant (url, json_payload)
+                    url, json_payload = chart_data
+
+                    # Envoyer POST à QuickChart avec le JSON dans le body
+                    import httpx
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.post(url, json=json_payload)
+                        response.raise_for_status()
+                        image_bytes = response.content
+
+                    await query.message.reply_photo(
+                        photo=image_bytes,
+                        caption=text,
+                        parse_mode='Markdown',
+                        reply_markup=reply_markup
+                    )
+                except Exception as chart_error:
+                    logger.error(f"Failed to download/send chart: {chart_error}")
+                    # Fallback: envoyer le texte sans image
+                    await query.message.reply_text(
+                        text=text,
+                        parse_mode='Markdown',
+                        reply_markup=reply_markup
+                    )
             else:
                 await query.message.reply_text(
                     text=text + "\n\n_Pas encore de données de vente pour afficher un graphique_",
@@ -574,22 +593,22 @@ class SellHandlers:
             charts_to_send = []
 
             # Graphique 1 : Revenus
-            revenue_chart_url = await loop.run_in_executor(
+            revenue_chart_data = await loop.run_in_executor(
                 None,
                 self.chart_service.generate_revenue_chart,
                 dates_labels,
                 revenues_data
             )
-            charts_to_send.append(('Revenus (30 jours)', revenue_chart_url))
+            charts_to_send.append(('Revenus (30 jours)', revenue_chart_data))
 
             # Graphique 2 : Ventes
-            sales_chart_url = await loop.run_in_executor(
+            sales_chart_data = await loop.run_in_executor(
                 None,
                 self.chart_service.generate_sales_chart,
                 dates_labels,
                 sales_data
             )
-            charts_to_send.append(('Ventes (30 jours)', sales_chart_url))
+            charts_to_send.append(('Ventes (30 jours)', sales_chart_data))
 
             # Graphique 3 : Performance produits
             if product_performance and len(product_performance) > 0:
@@ -597,14 +616,14 @@ class SellHandlers:
                 product_sales = [int(p['sales']) for p in product_performance]
                 product_revenues = [float(p['revenue']) for p in product_performance]
 
-                product_chart_url = await loop.run_in_executor(
+                product_chart_data = await loop.run_in_executor(
                     None,
                     self.chart_service.generate_product_performance_chart,
                     product_titles,
                     product_sales,
                     product_revenues
                 )
-                charts_to_send.append(('Performance Produits (Top 10)', product_chart_url))
+                charts_to_send.append(('Performance Produits (Top 10)', product_chart_data))
 
             # ═══════════════════════════════════════════════════════
             # ENVOYER LES GRAPHIQUES
@@ -613,12 +632,27 @@ class SellHandlers:
             if charts_to_send:
                 await query.message.reply_text("📊 Graphiques détaillés :")
 
-                for title, url in charts_to_send:
-                    await query.message.reply_photo(
-                        photo=url,
-                        caption=f"**{title}**",
-                        parse_mode='Markdown'
-                    )
+                import httpx
+                for title, chart_data in charts_to_send:
+                    try:
+                        # chart_data est maintenant (url, json_payload)
+                        url, json_payload = chart_data
+
+                        # Envoyer POST à QuickChart avec le JSON dans le body
+                        async with httpx.AsyncClient(timeout=30.0) as client:
+                            response = await client.post(url, json=json_payload)
+                            response.raise_for_status()
+                            image_bytes = response.content
+
+                        # Envoyer l'image comme fichier
+                        await query.message.reply_photo(
+                            photo=image_bytes,
+                            caption=f"**{title}**",
+                            parse_mode='Markdown'
+                        )
+                    except Exception as chart_error:
+                        logger.error(f"Failed to send chart '{title}': {chart_error}")
+                        await query.message.reply_text(f"⚠️ Impossible de générer: {title}")
 
                 # Bouton retour
                 keyboard = [[InlineKeyboardButton("🔙 Retour Analytics", callback_data='seller_analytics_enhanced')]]
