@@ -60,8 +60,7 @@ class ChartService:
                 "scales": {
                     "yAxes": [{
                         "ticks": {
-                            "beginAtZero": True,
-                            "callback": "function(value) { return '$' + value; }"
+                            "beginAtZero": True
                         }
                     }]
                 },
@@ -328,12 +327,11 @@ class ChartService:
                             "type": "linear",
                             "position": "left",
                             "ticks": {
-                                "beginAtZero": True,
-                                "callback": "function(value) { return '$' + value; }"
+                                "beginAtZero": True
                             },
                             "scaleLabel": {
                                 "display": True,
-                                "labelString": "Revenus"
+                                "labelString": "Revenus (USD)"
                             }
                         },
                         {
@@ -367,26 +365,26 @@ class ChartService:
         """
         Construit l'URL QuickChart avec la configuration
 
+        Retourne maintenant un tuple (url, json_data) pour utiliser POST
+        au lieu de GET, car GET ne supporte pas les fonctions callback
+
         Args:
             chart_config: Configuration Chart.js
             width: Largeur
             height: Hauteur
 
         Returns:
-            URL complète du graphique
+            Tuple (url, json_data) pour requête POST
         """
-        import json
-
-        # Convertir config en JSON
-        config_json = json.dumps(chart_config)
-
-        # Encoder pour URL
-        encoded_config = urllib.parse.quote(config_json)
-
-        # Construire URL
-        url = f"{self.base_url}?width={width}&height={height}&chart={encoded_config}"
-
-        return url
+        # Retourner URL de base + données pour POST
+        # Format: on retourne juste l'URL, mais le handler devra faire un POST
+        # avec le JSON dans le body
+        return self.base_url, {
+            "chart": chart_config,
+            "width": width,
+            "height": height,
+            "backgroundColor": "white"
+        }
 
     def get_last_30_days_labels(self) -> List[str]:
         """
