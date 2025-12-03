@@ -425,26 +425,26 @@ class SellHandlers:
             # CONSTRUIRE LE MESSAGE TEXTE
             # ═══════════════════════════════════════════════════════
 
-            text = f"""📊 **TABLEAU DE BORD VENDEUR**
+            text = f"""📊 **{i18n(lang, 'analytics_dashboard_title')}**
 
- **Revenus nets**
+ **{i18n(lang, 'analytics_net_revenue')}**
 └─ ${global_stats['net_revenue']:.2f}
 
- **Produits & Ventes**
-├─ Produits: {product_count['active']}/{product_count['total']} actifs
-└─ Ventes: {global_stats['total_sales']} commandes
+ **{i18n(lang, 'analytics_products_sales')}**
+├─ {i18n(lang, 'analytics_products_active').format(active=product_count['active'], total=product_count['total'])}
+└─ {i18n(lang, 'analytics_orders').format(sales=global_stats['total_sales'])}
 
-🏆 **Top 5 Produits**"""
+🏆 **{i18n(lang, 'analytics_top5')}**"""
 
             if top_products:
                 for i, p in enumerate(top_products, 1):
                     title_truncated = p['title'][:25] + '...' if len(p['title']) > 25 else p['title']
                     text += f"\n{i}. {title_truncated}"
-                    text += f"\n    ${p['revenue']:.2f} •  {p['sales']} ventes"
+                    text += f"\n    ${p['revenue']:.2f} •  {p['sales']} {i18n(lang, 'analytics_sales_count')}"
             else:
-                text += "\n\n_Aucun produit vendu pour le moment_"
+                text += f"\n\n_{i18n(lang, 'analytics_no_products')}_"
 
-            text += "\n\n📈 Graphique ci-dessous pour les 30 derniers jours"
+            text += f"\n\n{i18n(lang, 'analytics_chart_30days')}"
 
             # ═══════════════════════════════════════════════════════
             # KEYBOARD
@@ -452,12 +452,12 @@ class SellHandlers:
 
             keyboard = [
                 [
-                    InlineKeyboardButton("📊 Graphiques détaillés", callback_data='analytics_detailed_charts'),
-                    InlineKeyboardButton("📥 Export CSV", callback_data='analytics_export_csv')
+                    InlineKeyboardButton(i18n(lang, 'analytics_btn_detailed'), callback_data='analytics_detailed_charts'),
+                    InlineKeyboardButton(i18n(lang, 'analytics_btn_export'), callback_data='analytics_export_csv')
                 ],
                 [
-                    InlineKeyboardButton("🔄 Rafraîchir", callback_data='seller_analytics_enhanced'),
-                    InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')
+                    InlineKeyboardButton(i18n(lang, 'analytics_btn_refresh'), callback_data='seller_analytics_enhanced'),
+                    InlineKeyboardButton(i18n(lang, 'btn_dashboard'), callback_data='seller_dashboard')
                 ]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -499,7 +499,7 @@ class SellHandlers:
                     )
             else:
                 await query.message.reply_text(
-                    text=text + "\n\n_Pas encore de données de vente pour afficher un graphique_",
+                    text=text + f"\n\n_{i18n(lang, 'analytics_no_data')}_",
                     parse_mode='Markdown',
                     reply_markup=reply_markup
                 )
@@ -630,7 +630,7 @@ class SellHandlers:
             # ═══════════════════════════════════════════════════════
 
             if charts_to_send:
-                await query.message.reply_text("📊 Graphiques détaillés :")
+                await query.message.reply_text(i18n(lang, 'analytics_detailed_title'))
 
                 import httpx
                 for title, chart_data in charts_to_send:
@@ -747,9 +747,9 @@ class SellHandlers:
             )
 
             # Message de confirmation
-            keyboard = [[InlineKeyboardButton("🔙 Retour Analytics", callback_data='seller_analytics_enhanced')]]
+            keyboard = [[InlineKeyboardButton(i18n(lang, 'analytics_btn_back'), callback_data='seller_analytics_enhanced')]]
             await query.message.reply_text(
-                text="✅ Export CSV terminé avec succès !",
+                text=i18n(lang, 'analytics_export_success'),
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
