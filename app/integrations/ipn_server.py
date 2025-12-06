@@ -291,7 +291,7 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
 @app.post("/api/upload-complete")
 async def upload_complete(request: UploadCompleteRequest):
     """Callback après upload réussi - Finalise création produit"""
-    # Vérifier authentification
+    # Vérifier authentification Telegram
     if not verify_telegram_webapp_data(request.telegram_init_data):
         raise HTTPException(status_code=401, detail="Unauthorized")
 

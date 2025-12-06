@@ -1594,52 +1594,40 @@ class SellHandlers:
                 logger.info(f"📸 IMAGE STORED - Cover: {cover_path}, Thumbnail: {thumbnail_url}, Temp ID: {temp_product_id}")
 
                 # Build keyboard for file upload step
-                keyboard = []
                 webapp_url = os.getenv('WEBAPP_URL')
 
-                # Try to add WebApp button if HTTPS available
+                # Instruction message based on WEBAPP_URL availability
                 if webapp_url and webapp_url.startswith('https://'):
-                    keyboard.append([
-                        InlineKeyboardButton(
-                            "📤 CLIQUEZ ICI POUR UPLOADER" if lang == 'fr' else "📤 CLICK HERE TO UPLOAD",
-                            web_app=WebAppInfo(url=f"{webapp_url}/static/upload.html")
-                        )
-                    ])
                     upload_instruction = (
-                        "✅ *Image sauvegardée !*\n\n"
                         "📁 *Étape 6/6 : Upload du fichier formation*\n\n"
                         "👆 *CLIQUEZ SUR LE BOUTON CI-DESSOUS*\n"
                         "Une interface d'upload s'ouvrira pour glisser-déposer votre fichier (jusqu'à 10 GB)\n\n"
                         "⚠️ _N'envoyez PAS le fichier directement ici, utilisez le bouton !_"
                     ) if lang == 'fr' else (
-                        "✅ *Image saved!*\n\n"
                         "📁 *Step 6/6: Upload your training file*\n\n"
                         "👆 *CLICK THE BUTTON BELOW*\n"
                         "An upload interface will open to drag & drop your file (up to 10 GB)\n\n"
                         "⚠️ _Don't send the file directly here, use the button!_"
                     )
                 else:
-                    # Local mode: explain Mini App needs HTTPS
+                    # Local mode without HTTPS: allow direct file upload
                     upload_instruction = (
-                        "✅ *Image sauvegardée !*\n\n"
                         "📁 *Étape 6/6 : Envoi du fichier formation*\n\n"
                         "📤 _Mini App disponible en production (HTTPS requis)_\n"
                         "💡 _Pour le moment, envoyez simplement votre fichier ici_"
                     ) if lang == 'fr' else (
-                        "✅ *Image saved!*\n\n"
                         "📁 *Step 6/6: Send your training file*\n\n"
                         "📤 _Mini App available in production (HTTPS required)_\n"
                         "💡 _For now, just send your file here_"
                     )
 
-                # Add navigation buttons (Back/Cancel)
-                nav_keyboard = self._get_product_creation_keyboard('file', lang)
-                keyboard.extend(nav_keyboard.inline_keyboard)
+                # Get keyboard with Mini App button (if HTTPS available)
+                keyboard = self._get_product_creation_keyboard('file', lang)
 
                 await update.message.reply_text(
                     f"{i18n(lang, 'product_image_saved')}\n\n{upload_instruction}",
                     parse_mode='Markdown',
-                    reply_markup=InlineKeyboardMarkup(keyboard)
+                    reply_markup=keyboard
                 )
             else:
                 await update.message.reply_text(i18n(lang, 'err_image_processing'))
