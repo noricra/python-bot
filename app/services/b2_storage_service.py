@@ -164,7 +164,7 @@ class B2StorageService:
             logger.error(f"❌ Unexpected error generating URL: {e}")
             return None
 
-    def generate_presigned_upload_url(self, object_key: str, expires_in: int = 3600) -> Optional[str]:
+    def generate_presigned_upload_url(self, object_key: str, content_type: str = 'application/octet-stream', expires_in: int = 3600) -> Optional[str]:
         """Generate a presigned URL for uploading a file (PUT)"""
         if not self.client:
             logger.error("❌ B2 client not initialized")
@@ -175,11 +175,12 @@ class B2StorageService:
                 'put_object',
                 Params={
                     'Bucket': self.bucket_name,
-                    'Key': object_key
+                    'Key': object_key,
+                    'ContentType': content_type
                 },
                 ExpiresIn=expires_in
             )
-            logger.info(f"✅ Presigned upload URL generated for: {object_key}")
+            logger.info(f"✅ Presigned upload URL generated for: {object_key} (Content-Type: {content_type})")
             return url
 
         except ClientError as e:
