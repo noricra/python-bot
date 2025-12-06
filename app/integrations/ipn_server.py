@@ -286,7 +286,7 @@ async def upload_complete(request: UploadCompleteRequest):
             raise HTTPException(status_code=404, detail="File not found on B2 after upload")
 
         # URL publique (ou privée selon bucket settings) pour référence interne
-        b2_url = f"https://s3.{core_settings.B2_REGION}.backblazeb2.com/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
+        b2_url = f"{core_settings.B2_ENDPOINT}/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
 
         # Notification utilisateur via Bot
         global telegram_application
