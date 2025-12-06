@@ -272,7 +272,11 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
 
         # Appel service B2
         b2 = B2StorageService()
-        upload_url = b2.generate_presigned_upload_url(object_key, expires_in=3600)
+        upload_url = b2.generate_presigned_upload_url(
+            object_key,
+            content_type=request.file_type or 'application/octet-stream',
+            expires_in=3600
+        )
 
         if not upload_url:
             raise HTTPException(status_code=500, detail="B2 Presigned URL generation failed")
