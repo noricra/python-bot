@@ -4,6 +4,7 @@ IPN Server avec support Webhook Telegram et Mini App Auth (Corrigé)
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -16,7 +17,7 @@ import asyncio
 import sys
 import uuid
 # IMPORT CRITIQUE POUR LE FIX 401
-from urllib.parse import parse_qsl 
+from urllib.parse import parse_qsl
 
 # Gestion du path pour les imports relatifs
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -54,7 +55,7 @@ async def lifespan(app: FastAPI):
     global telegram_application
 
     logger.info("🚀 Initialisation du Bot Telegram dans le lifespan...")
-    
+
     if not core_settings.TELEGRAM_BOT_TOKEN:
         logger.error("❌ TELEGRAM_BOT_TOKEN manquant !")
     else:
@@ -63,7 +64,7 @@ async def lifespan(app: FastAPI):
             bot_instance = MarketplaceBot()
             telegram_application = build_application(bot_instance)
             bot_instance.application = telegram_application
-            
+
             # 2. Initialiser explicitement
             await telegram_application.initialize()
             await telegram_application.start()
@@ -89,7 +90,7 @@ async def lifespan(app: FastAPI):
                     timeout=10,
                     drop_pending_updates=True
                 ))
-            
+
         except Exception as e:
             logger.error(f"❌ Erreur critique au démarrage du bot: {e}")
 
@@ -106,6 +107,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Configuration CORS pour Telegram Mini App
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://web.telegram.org",
+        "https://oauth.telegram.org"
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 # Montage des fichiers statiques pour la Mini App (JS/CSS)
 # Assurez-vous que le dossier existe : app/integrations/telegram/static
@@ -145,7 +158,7 @@ async def telegram_webhook(request: Request):
     if telegram_application is None:
         # Évite le crash 500, renvoie 200 pour que Telegram arrête de réessayer
         logger.error("❌ Bot non initialisé")
-        return {"ok": True} 
+        return {"ok": True}
 
     try:
         data = await request.json()
@@ -178,7 +191,7 @@ def verify_telegram_webapp_data(init_data: str) -> bool:
     try:
         # 1. Parsing correct des données URL-encodées
         parsed_data = dict(parse_qsl(init_data, keep_blank_values=True))
-        
+
         # 2. Extraction du hash reçu
         received_hash = parsed_data.pop('hash', None)
         if not received_hash:
@@ -211,7 +224,7 @@ def verify_telegram_webapp_data(init_data: str) -> bool:
 
         # 6. Comparaison
         is_valid = calculated_hash == received_hash
-        
+
         if is_valid:
             logger.info(f"✅ WebApp Auth Success User: {parsed_data.get('user')}")
         else:
@@ -253,7 +266,7 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
         unique_id = str(uuid.uuid4())[:8]
         # Nettoyage extension
         ext = request.file_name.split('.')[-1] if '.' in request.file_name else 'bin'
-        
+
         # Structure: uploads/USER_ID/DATE_UID.ext
         object_key = f"uploads/{request.user_id}/{timestamp}_{unique_id}.{ext}"
 
@@ -263,6 +276,8 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
 
         if not upload_url:
             raise HTTPException(status_code=500, detail="B2 Presigned URL generation failed")
+
+        logger.info(f"✅ Generated presigned URL for user {request.user_id}: {object_key}")
 
         return {
             "upload_url": upload_url,
@@ -286,7 +301,7 @@ async def upload_complete(request: UploadCompleteRequest):
             raise HTTPException(status_code=404, detail="File not found on B2 after upload")
 
         # URL publique (ou privée selon bucket settings) pour référence interne
-        b2_url = f"https://s3.{core_settings.B2_ENDPOINT}.backblazeb2.com/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
+        b2_url = f"{core_settings.B2_ENDPOINT}/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
 
         # Notification utilisateur via Bot
         global telegram_application
@@ -302,11 +317,11 @@ async def upload_complete(request: UploadCompleteRequest):
                 text=msg_text,
                 parse_mode='Markdown'
             )
-            
+
             # --- ICI : LOGIQUE DE SUITE (Ex: FSM State Transition) ---
             # Vous pouvez déclencher une fonction du bot pour passer à l'étape "Set Price"
             # context.user_data['temp_file_url'] = b2_url ...
-            
+
         return {"status": "success", "b2_url": b2_url}
 
     except Exception as e:
@@ -327,28 +342,28 @@ def verify_ipn_signature(secret: str, payload: bytes, signature: str) -> bool:
 async def send_formation_to_buyer(buyer_user_id: int, order_id: str, product_id: str):
     """Logique métier: Délivre le fichier acheté"""
     from app.domain.repositories.product_repo import ProductRepository
-    
+
     repo = ProductRepository()
     product = repo.get_product_by_id(product_id)
-    
+
     if not product or not product.get('main_file_url'):
         logger.error(f"❌ Produit introuvable ou sans fichier: {product_id}")
         return False
-        
+
     # Génération lien temporaire de téléchargement (24h)
     download_link = get_b2_presigned_url(product['main_file_url'], expires_in=86400)
-    
+
     msg = (
         f"🎉 **Paiement confirmé !** (Commande #{order_id})\n\n"
         f"Voici votre formation : **{product.get('title')}**\n"
         f"🔗 [Télécharger ici]({download_link})\n\n"
         f"⚠️ Lien valide 24h."
     )
-    
+
     global telegram_application
     # Utilise le bot global s'il est là, sinon une instance temporaire
     bot = telegram_application.bot if telegram_application else Bot(core_settings.TELEGRAM_BOT_TOKEN)
-    
+
     try:
         await bot.send_message(chat_id=buyer_user_id, text=msg, parse_mode='Markdown')
         logger.info(f"✅ Fichier envoyé à {buyer_user_id}")
@@ -363,7 +378,7 @@ async def nowpayments_ipn(request: Request):
     # 1. Vérification Signature
     raw_body = await request.body()
     signature = request.headers.get('x-nowpayments-sig')
-    
+
     if not verify_ipn_signature(core_settings.NOWPAYMENTS_IPN_SECRET, raw_body, signature):
         logger.warning("⚠️ IPN Invalid Signature")
         raise HTTPException(status_code=401, detail="Invalid Signature")
@@ -377,7 +392,7 @@ async def nowpayments_ipn(request: Request):
     payment_status = data.get('payment_status')
     order_id = data.get('order_id') # ID interne
     payment_id = data.get('payment_id') # ID NowPayments
-    
+
     logger.info(f"💰 IPN reçu: Order {order_id} - Status {payment_status}")
 
     # On ne traite que les succès
@@ -388,32 +403,32 @@ async def nowpayments_ipn(request: Request):
     conn = get_postgresql_connection()
     try:
         cursor = conn.cursor()
-        
+
         # Vérifier si déjà traité
         cursor.execute("SELECT status, buyer_id, product_id FROM orders WHERE order_id = %s", (order_id,))
         row = cursor.fetchone()
-        
+
         if not row:
             logger.error(f"❌ Order {order_id} not found in DB")
             return {"status": "error", "message": "Order not found"}
-            
+
         current_status, buyer_id, product_id = row
-        
+
         if current_status == 'completed':
             logger.info(f"ℹ️ Commande {order_id} déjà complétée")
             return {"status": "ok", "message": "Already completed"}
 
         # Update Status
         cursor.execute("""
-            UPDATE orders 
-            SET status = 'completed', 
-                payment_id = %s, 
-                updated_at = NOW() 
+            UPDATE orders
+            SET status = 'completed',
+                payment_id = %s,
+                updated_at = NOW()
             WHERE order_id = %s
         """, (payment_id, order_id))
-        
+
         conn.commit()
-        
+
         # 4. Livraison du produit
         await send_formation_to_buyer(buyer_id, order_id, product_id)
 
