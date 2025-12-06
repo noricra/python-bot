@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Formation</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="title">📤 Upload Formation</h1>
+            <p class="subtitle">Fichiers jusqu'à 10 GB acceptés</p>
+        </header>
+
+        <!-- Upload Area -->
+        <div id="uploadArea" class="upload-area">
+            <div class="upload-icon">📁</div>
+            <h2 class="upload-title">Glissez votre fichier ici</h2>
+            <p class="upload-description">ou cliquez pour sélectionner</p>
+            <input type="file" id="fileInput" class="file-input" />
+            <button class="btn-primary" onclick="document.getElementById('fileInput').click()">
+                Sélectionner un fichier
+            </button>
+        </div>
+
+        <!-- Progress Section (hidden initially) -->
+        <div id="progressSection" class="progress-section hidden">
+            <h3 class="progress-title">Upload en cours...</h3>
+
+            <div class="progress-bar-container">
+                <div id="progressBar" class="progress-bar"></div>
+            </div>
+
+            <div class="progress-stats">
+                <span id="progressPercent">0%</span>
+                <span id="uploadSpeed">0 MB/s</span>
+            </div>
+
+            <p id="fileName" class="file-name"></p>
+            <p id="fileSize" class="file-size"></p>
+        </div>
+
+        <!-- Success Section (hidden initially) -->
+        <div id="successSection" class="success-section hidden">
+            <div class="success-icon">✅</div>
+            <h2 class="success-title">Upload terminé !</h2>
+            <p class="success-description">Votre formation a été uploadée avec succès.</p>
+            <button class="btn-primary" onclick="window.Telegram.WebApp.close()">
+                Fermer
+            </button>
+        </div>
+
+        <!-- Error Section (hidden initially) -->
+        <div id="errorSection" class="error-section hidden">
+            <div class="error-icon">❌</div>
+            <h2 class="error-title">Erreur d'upload</h2>
+            <p id="errorMessage" class="error-description"></p>
+            <button class="btn-primary" onclick="location.reload()">
+                Réessayer
+            </button>
+        </div>
+    </div>
+
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="/static/upload.js"></script>
+</body>
+</html>
