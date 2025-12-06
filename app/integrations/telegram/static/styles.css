@@ -1,0 +1,218 @@
+/* Design System - Ferus Inspired */
+:root {
+    /* Colors */
+    --purple-vibrant: #8b5cf6;
+    --purple-accent: #8b5cf6;
+    --purple-glow: #a78bfa;
+    --purple-deep: #7c3aed;
+    --purple-soft: #e9d5ff;
+
+    --orange-vivid: #f59e0b;
+    --cyan-vivid: #06b6d4;
+    --pink-vivid: #ec4899;
+
+    /* Backgrounds */
+    --bg-white: #fafbfc;
+    --bg-light: #f3f4f6;
+    --bg-gray-subtle: #e5e7eb;
+
+    /* Text */
+    --text-black: #1e293b;
+    --text-dark: #334155;
+    --text-gray: #64748b;
+    --text-light: #94a3b8;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.03);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.03);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.05), 0 4px 6px rgba(0,0,0,0.03);
+    --shadow-purple: 0 10px 40px rgba(139, 92, 246, 0.12);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-white);
+    color: var(--text-dark);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    padding: 20px;
+}
+
+.container {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* Header */
+.header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.title {
+    font-size: 2rem;
+    font-weight: 900;
+    color: var(--text-black);
+    margin-bottom: 0.5rem;
+}
+
+.subtitle {
+    font-size: 1rem;
+    color: var(--text-gray);
+}
+
+/* Upload Area */
+.upload-area {
+    background: white;
+    border: 3px dashed var(--purple-soft);
+    border-radius: 1rem;
+    padding: 3rem 2rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.upload-area:hover,
+.upload-area.dragover {
+    border-color: var(--purple-vibrant);
+    background: var(--purple-soft);
+    box-shadow: var(--shadow-purple);
+}
+
+.upload-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+.upload-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-black);
+    margin-bottom: 0.5rem;
+}
+
+.upload-description {
+    color: var(--text-gray);
+    margin-bottom: 1.5rem;
+}
+
+.file-input {
+    display: none;
+}
+
+/* Buttons */
+.btn-primary {
+    background: linear-gradient(135deg, var(--purple-vibrant) 0%, var(--purple-deep) 100%);
+    color: white;
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: 0.75rem;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: var(--shadow-purple);
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 40px rgba(139, 92, 246, 0.2);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+/* Progress Section */
+.progress-section {
+    background: white;
+    border-radius: 1rem;
+    padding: 2rem;
+    box-shadow: var(--shadow-lg);
+}
+
+.progress-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-black);
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.progress-bar-container {
+    width: 100%;
+    height: 1rem;
+    background: var(--bg-gray-subtle);
+    border-radius: 1rem;
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--purple-vibrant) 0%, var(--pink-vivid) 100%);
+    border-radius: 1rem;
+    transition: width 0.3s ease;
+    width: 0;
+}
+
+.progress-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.875rem;
+    color: var(--text-gray);
+    margin-bottom: 1rem;
+}
+
+.file-name {
+    font-weight: 600;
+    color: var(--text-black);
+    word-break: break-all;
+}
+
+.file-size {
+    color: var(--text-gray);
+    font-size: 0.875rem;
+}
+
+/* Success Section */
+.success-section,
+.error-section {
+    background: white;
+    border-radius: 1rem;
+    padding: 3rem 2rem;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+}
+
+.success-icon,
+.error-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+.success-title,
+.error-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-black);
+    margin-bottom: 0.5rem;
+}
+
+.success-description,
+.error-description {
+    color: var(--text-gray);
+    margin-bottom: 2rem;
+}
+
+/* Utility */
+.hidden {
+    display: none !important;
+}
