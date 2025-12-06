@@ -4,6 +4,7 @@ IPN Server avec support Webhook Telegram et Mini App Auth (Corrigé)
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -106,6 +107,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Configuration CORS pour Telegram Mini App
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://web.telegram.org",
+        "https://oauth.telegram.org"
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 # Montage des fichiers statiques pour la Mini App (JS/CSS)
 # Assurez-vous que le dossier existe : app/integrations/telegram/static
@@ -263,6 +276,8 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
 
         if not upload_url:
             raise HTTPException(status_code=500, detail="B2 Presigned URL generation failed")
+
+        logger.info(f"✅ Generated presigned URL for user {request.user_id}: {object_key}")
 
         return {
             "upload_url": upload_url,
