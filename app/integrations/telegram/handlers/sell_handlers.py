@@ -799,6 +799,18 @@ class SellHandlers:
 
         prev_step = step_flow.get(current_step)
 
+        # Add Mini App button for file upload step
+        if current_step == 'file':
+            webapp_url = os.getenv('WEBAPP_URL')
+            if webapp_url and webapp_url.startswith('https://'):
+                from telegram import WebAppInfo
+                keyboard.append([
+                    InlineKeyboardButton(
+                        "📤 Upload via Mini App",
+                        web_app=WebAppInfo(url=f"{webapp_url}/static/upload.html")
+                    )
+                ])
+
         # Build navigation row
         nav_row = []
 
