@@ -154,7 +154,7 @@ class B2StorageService:
                 },
                 ExpiresIn=expires_in
             )
-            logger.info(f"✅ Presigned download URL generated for: {object_key}")
+            logger.info(f"✅ Presigned URL generated for: {object_key}")
             return url
 
         except ClientError as e:
@@ -165,7 +165,7 @@ class B2StorageService:
             return None
 
     def generate_presigned_upload_url(self, object_key: str, expires_in: int = 3600) -> Optional[str]:
-        """Generate a presigned URL for uploading (PUT) a file"""
+        """Generate a presigned URL for uploading a file (PUT)"""
         if not self.client:
             logger.error("❌ B2 client not initialized")
             return None
@@ -187,28 +187,6 @@ class B2StorageService:
             return None
         except Exception as e:
             logger.error(f"❌ Unexpected error generating upload URL: {e}")
-            return None
-
-    def get_file_size(self, object_key: str) -> Optional[int]:
-        """Get file size WITHOUT downloading (HEAD request)"""
-        if not self.client:
-            logger.error("❌ B2 client not initialized")
-            return None
-
-        try:
-            response = self.client.head_object(
-                Bucket=self.bucket_name,
-                Key=object_key
-            )
-            file_size = response['ContentLength']
-            logger.info(f"✅ File size retrieved: {object_key} = {file_size} bytes")
-            return file_size
-
-        except ClientError as e:
-            logger.error(f"❌ Failed to get file size: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"❌ Unexpected error getting file size: {e}")
             return None
 
     def delete_file(self, object_key: str) -> bool:

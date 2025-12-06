@@ -38,7 +38,7 @@ class SellHandlers:
         if not product or product.get('seller_user_id') != user_id:
             await safe_transition_to_text(
                 query,
-                i18n(lang, 'err_product_not_found_owner'),
+                "❌ Produit introuvable ou vous n'êtes pas le propriétaire",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Dashboard", callback_data='seller_dashboard')
                 ]])
@@ -302,7 +302,7 @@ class SellHandlers:
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in seller_analytics_visual: {e}")
             await query.message.reply_text(
-                f"{i18n(lang, 'err_analytics')}\n\n"
+                "❌ Erreur lors de la génération des statistiques.\n\n"
                 f"Détails: {str(e)}",
                 parse_mode='Markdown'
             )
@@ -507,7 +507,8 @@ class SellHandlers:
         except Exception as e:
             logger.error(f"Error in seller_analytics_enhanced: {e}", exc_info=True)
             await query.message.reply_text(
-                i18n(lang, 'err_analytics'),
+                "❌ Erreur lors de la génération des statistiques.\n\n"
+                "Veuillez réessayer dans quelques instants.",
                 parse_mode='Markdown'
             )
 
@@ -651,24 +652,25 @@ class SellHandlers:
                         )
                     except Exception as chart_error:
                         logger.error(f"Failed to send chart '{title}': {chart_error}")
-                        await query.message.reply_text(i18n(lang, 'analytics_chart_error').format(title=title))
+                        await query.message.reply_text(f"⚠️ Impossible de générer: {title}")
 
                 # Bouton retour
-                keyboard = [[InlineKeyboardButton(i18n(lang, 'analytics_btn_back'), callback_data='seller_analytics_enhanced')]]
+                keyboard = [[InlineKeyboardButton("🔙 Retour Analytics", callback_data='seller_analytics_enhanced')]]
                 await query.message.reply_text(
-                    text=i18n(lang, 'analytics_charts_generated'),
+                    text="✅ Tous les graphiques ont été générés",
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
             else:
                 await query.message.reply_text(
-                    i18n(lang, 'analytics_insufficient_data'),
+                    "ℹ️ Pas encore de données suffisantes pour générer des graphiques détaillés.\n\n"
+                    "Créez des produits et attendez vos premières ventes !",
                     parse_mode='Markdown'
                 )
 
         except Exception as e:
             logger.error(f"Error in analytics_detailed_charts: {e}", exc_info=True)
             await query.message.reply_text(
-                i18n(lang, 'err_charts'),
+                "❌ Erreur lors de la génération des graphiques.",
                 parse_mode='Markdown'
             )
 
@@ -754,7 +756,8 @@ class SellHandlers:
         except Exception as e:
             logger.error(f"Error in analytics_export_csv: {e}", exc_info=True)
             await query.message.reply_text(
-                i18n(lang, 'err_export_csv'),
+                "❌ Erreur lors de l'export CSV.\n\n"
+                "Veuillez réessayer dans quelques instants.",
                 parse_mode='Markdown'
             )
 
@@ -784,20 +787,6 @@ class SellHandlers:
         """Generate navigation keyboard for product creation steps"""
         keyboard = []
 
-        # Add WebApp Upload button ONLY at file step (HTTPS required by Telegram)
-        if current_step == 'file':
-            import os
-            webapp_url = os.getenv('WEBAPP_URL')
-            # Telegram WebApp requires HTTPS - only show button in production
-            if webapp_url and webapp_url.startswith('https://'):
-                from telegram import WebAppInfo
-                keyboard.append([
-                    InlineKeyboardButton(
-                        "📤 Upload via Mini App" if lang == 'en' else "📤 Upload via Mini App",
-                        web_app=WebAppInfo(url=f"{webapp_url}/static/upload.html")
-                    )
-                ])
-
         # Map steps to their previous step
         step_flow = {
             'title': None,  # First step, no previous
@@ -810,11 +799,24 @@ class SellHandlers:
 
         prev_step = step_flow.get(current_step)
 
+        # Add Mini App button for file upload step
+        if current_step == 'file':
+            webapp_url = os.getenv('WEBAPP_URL')
+            if webapp_url and webapp_url.startswith('https://'):
+                from telegram import WebAppInfo
+                keyboard.append([
+                    InlineKeyboardButton(
+                        "📤 Upload via Mini App",
+                        web_app=WebAppInfo(url=f"{webapp_url}/static/upload.html")
+                    )
+                ])
+
         # Build navigation row
         nav_row = []
 
         if prev_step:
-            nav_row.append(InlineKeyboardButton(i18n(lang, 'product_prev_step'), callback_data=f'product_back_{prev_step}'))
+            prev_label = "← Étape précédente" if lang == 'fr' else "← Previous step"
+            nav_row.append(InlineKeyboardButton(prev_label, callback_data=f'product_back_{prev_step}'))
 
         # Always show cancel button
         cancel_label = "❌ Annuler" if lang == 'fr' else "❌ Cancel"
@@ -1093,7 +1095,7 @@ class SellHandlers:
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu principal", callback_data='back_main')]]),
                 parse_mode='Markdown')
         else:
-            await query.edit_message_text(i18n(lang, 'err_product_deletion'))
+            await query.edit_message_text("❌ Erreur lors de la suppression")
 
     # Text processing methods
     async def process_seller_creation(self, bot, update, message_text: str):
@@ -1206,7 +1208,7 @@ class SellHandlers:
                     )
                 except (psycopg2.Error, Exception) as e:
                     logger.error(f"Timeout sending success message: {e}")
-                    await update.message.reply_text(i18n(lang, 'success_account_created'))
+                    await update.message.reply_text("✅ Compte créé ! /start")
             else:
                 error_msg = result.get('error', 'Erreur inconnue')
                 error_text = (
@@ -1315,13 +1317,12 @@ class SellHandlers:
         user_state = bot.state_manager.get_state(user_id)
         step = user_state.get('step')
         product_data = user_state.get('product_data', {})
-        lang = user_state.get('lang', 'fr')
 
         if step == 'title':
             if len(message_text) < 5 or len(message_text) > 100:
                 await update.message.reply_text(
-                    i18n(lang, 'err_title_length'),
-                    reply_markup=self._get_product_creation_keyboard('title', lang)
+                    "❌ Le titre doit contenir entre 5 et 100 caractères.",
+                    reply_markup=self._get_product_creation_keyboard('title', user_state.get('lang', 'fr'))
                 )
                 return
             product_data['title'] = message_text
@@ -1330,7 +1331,7 @@ class SellHandlers:
             # IMPORTANT: Save state
             bot.state_manager.update_state(user_id, **user_state)
             await update.message.reply_text(
-                f"{i18n(lang, 'product_title_saved').format(title=bot.escape_markdown(message_text))}\n\n{i18n(lang, 'product_step2_description')}",
+                f"✅ **Titre :** {bot.escape_markdown(message_text)}\n\n📝 **Étape 2/6 :** Description du produit",
                 parse_mode='Markdown',
                 reply_markup=self._get_product_creation_keyboard('description', user_state.get('lang', 'fr'))
             )
@@ -1374,21 +1375,21 @@ class SellHandlers:
                 # Get navigation keyboard and add skip button
                 keyboard = self._get_product_creation_keyboard('cover_image', user_state.get('lang', 'fr'))
                 # Prepend skip button row - Create new list to avoid tuple mutation error
-                skip_button_row = [InlineKeyboardButton(i18n(lang, 'product_skip_image'), callback_data='skip_cover_image')]
+                skip_button_row = [InlineKeyboardButton("⏭️ Passer" if user_state.get('lang') == 'fr' else "⏭️ Skip", callback_data='skip_cover_image')]
                 new_keyboard = [skip_button_row] + list(keyboard.inline_keyboard)
                 keyboard = InlineKeyboardMarkup(new_keyboard)
 
                 await update.message.reply_text(
-                    f"{i18n(lang, 'product_price_saved').format(price=f'{price:.2f}')}\n\n"
-                    f"{i18n(lang, 'product_step5_image')}\n\n"
-                    f"{i18n(lang, 'product_image_format')}\n"
-                    f"{i18n(lang, 'product_image_maxsize')}\n"
-                    f"{i18n(lang, 'product_image_recommended')}",
+                    f"✅ **Prix :** ${price:.2f}\n\n"
+                    f"📸 **Étape 5/6 :** Envoyez une image de couverture (optionnel)\n\n"
+                    f"• Format: JPG/PNG\n"
+                    f"• Taille max: 5MB\n"
+                    f"• Recommandé: 800x600px minimum",
                     reply_markup=keyboard,
                     parse_mode='Markdown'
                 )
             except (ValueError, TypeError):
-                await update.message.reply_text(i18n(lang, 'err_price_invalid'))
+                await update.message.reply_text("❌ Prix invalide. Entrez un nombre entre $10 et $5000.")
 
     async def _show_category_selection(self, bot, update, lang):
         """Affiche le menu de sélection de catégorie lors de l'ajout de produit"""
@@ -1440,7 +1441,7 @@ class SellHandlers:
         bot.state_manager.update_state(user_id, **user_state)
 
         await query.edit_message_text(
-            f"{i18n(lang, 'product_category_saved').format(category=category_name)}\n\n{i18n(lang, 'product_step4_price')}",
+            f"✅ **Catégorie :** {category_name}\n\n💰 **Étape 4/6 :** Prix en $ (ex: 29.99)",
             parse_mode='Markdown',
             reply_markup=self._get_product_creation_keyboard('price', lang)
         )
@@ -1449,14 +1450,13 @@ class SellHandlers:
         """Skip cover image upload step"""
         user_id = query.from_user.id
         user_state = bot.state_manager.get_state(user_id)
-        lang = user_state.get('lang', 'fr')
         user_state['step'] = 'file'
         bot.state_manager.update_state(user_id, **user_state)
 
         await query.edit_message_text(
-            f"{i18n(lang, 'product_image_skipped')}\n\n"
-            f"{i18n(lang, 'product_step6_file')}\n\n"
-            f"_{i18n(lang, 'product_image_placeholder')}_",
+            f"⏭️ **Image de couverture ignorée**\n\n"
+            f"📁 **Étape 6/6 :** Envoyez maintenant votre fichier produit\n\n"
+            f"_Une image placeholder sera générée automatiquement_",
             parse_mode='Markdown',
             reply_markup=self._get_product_creation_keyboard('file', user_state.get('lang', 'fr'))
         )
@@ -1484,18 +1484,17 @@ class SellHandlers:
         bot.state_manager.update_state(user_id, **user_state)
 
         # Show appropriate message for target step
-        price_formatted = f"{product_data.get('price_usd', 0):.2f}"
         step_messages = {
-            'title': f"{i18n(lang, 'product_step1_title')}\n\n{i18n(lang, 'product_step1_prompt')}",
-            'description': f"{i18n(lang, 'product_step2_description')}\n\n{i18n(lang, 'product_current_title').format(title=product_data.get('title', 'N/A'))}",
+            'title': f"📝 **Étape 1/6 :** Titre du produit\n\n{i18n(lang, 'product_step1_prompt')}",
+            'description': f"📋 **Étape 2/6 :** Description du produit\n\nTitre actuel: {product_data.get('title', 'N/A')}",
             'category': None,  # Will show category selection
-            'price': f"{i18n(lang, 'product_price_minimum')}\n\n{i18n(lang, 'product_current_category').format(category=product_data.get('category', 'N/A'))}",
+            'price': f" **Étape 4/6 :** Prix en $ (minimum $10)\n\nCatégorie actuelle: {product_data.get('category', 'N/A')}",
             'cover_image': (
-                f"{i18n(lang, 'product_step5_image')}\n\n"
-                f"{i18n(lang, 'product_current_price').format(price=price_formatted)}\n\n"
-                f"{i18n(lang, 'product_image_format')}\n{i18n(lang, 'product_image_maxsize')}"
+                f"📸 **Étape 5/6 :** Image de couverture (optionnel)\n\n"
+                f"Prix actuel: ${product_data.get('price_usd', 0):.2f}\n\n"
+                f"• Format: JPG/PNG\n• Taille max: 5MB"
             ),
-            'file': i18n(lang, 'product_step6_file')
+            'file': f"📁 **Étape 6/6 :** Fichier produit"
         }
 
         if target_step == 'category':
@@ -1524,15 +1523,12 @@ class SellHandlers:
         try:
             from app.core.image_utils import ImageUtils
             import tempfile
-            import os
-            from telegram import WebAppInfo
 
             telegram_id = update.effective_user.id
             seller_id = telegram_id
 
             user_state = bot.get_user_state(telegram_id)
             product_data = user_state.get('product_data', {})
-            lang = user_state.get('lang', 'fr')
 
             # 🔧 Handle both photo array and document (image sent as file)
             if photo_as_document:
@@ -1542,13 +1538,13 @@ class SellHandlers:
                 # Get largest photo size from photo array
                 photo_file = photo[-1]
             else:
-                await update.message.reply_text(i18n(lang, 'err_image_none'))
+                await update.message.reply_text("❌ Aucune image reçue")
                 return
 
             # Validation
             # 1. Size
             if photo_file.file_size > 5 * 1024 * 1024:  # 5MB max
-                await update.message.reply_text(i18n(lang, 'err_image_too_large'))
+                await update.message.reply_text("❌ Image trop volumineuse (max 5MB)")
                 return
 
             # 2. Extension (for documents sent as images)
@@ -1561,7 +1557,7 @@ class SellHandlers:
                     return
                 # Ensure it's actually an image
                 if get_file_category(filename) != 'image':
-                    await update.message.reply_text(i18n(lang, 'err_image_format'))
+                    await update.message.reply_text("❌ Le fichier doit être une image (JPG, PNG, etc.)")
                     return
 
             # Download photo to temp file
@@ -1593,48 +1589,18 @@ class SellHandlers:
                 # DEBUG LOG
                 logger.info(f"📸 IMAGE STORED - Cover: {cover_path}, Thumbnail: {thumbnail_url}, Temp ID: {temp_product_id}")
 
-                # Build keyboard for file upload step
-                webapp_url = os.getenv('WEBAPP_URL')
-
-                # Instruction message based on WEBAPP_URL availability
-                if webapp_url and webapp_url.startswith('https://'):
-                    upload_instruction = (
-                        "📁 *Étape 6/6 : Upload du fichier formation*\n\n"
-                        "👆 *CLIQUEZ SUR LE BOUTON CI-DESSOUS*\n"
-                        "Une interface d'upload s'ouvrira pour glisser-déposer votre fichier (jusqu'à 10 GB)\n\n"
-                        "⚠️ _N'envoyez PAS le fichier directement ici, utilisez le bouton !_"
-                    ) if lang == 'fr' else (
-                        "📁 *Step 6/6: Upload your training file*\n\n"
-                        "👆 *CLICK THE BUTTON BELOW*\n"
-                        "An upload interface will open to drag & drop your file (up to 10 GB)\n\n"
-                        "⚠️ _Don't send the file directly here, use the button!_"
-                    )
-                else:
-                    # Local mode without HTTPS: allow direct file upload
-                    upload_instruction = (
-                        "📁 *Étape 6/6 : Envoi du fichier formation*\n\n"
-                        "📤 _Mini App disponible en production (HTTPS requis)_\n"
-                        "💡 _Pour le moment, envoyez simplement votre fichier ici_"
-                    ) if lang == 'fr' else (
-                        "📁 *Step 6/6: Send your training file*\n\n"
-                        "📤 _Mini App available in production (HTTPS required)_\n"
-                        "💡 _For now, just send your file here_"
-                    )
-
-                # Get keyboard with Mini App button (if HTTPS available)
-                keyboard = self._get_product_creation_keyboard('file', lang)
-
                 await update.message.reply_text(
-                    f"{i18n(lang, 'product_image_saved')}\n\n{upload_instruction}",
+                    f"✅ **Image de couverture enregistrée!**\n\n"
+                    f"📁 **Étape 6/6 :** Envoyez maintenant votre fichier produit",
                     parse_mode='Markdown',
-                    reply_markup=keyboard
+                    reply_markup=self._get_product_creation_keyboard('file', user_state.get('lang', 'fr'))
                 )
             else:
-                await update.message.reply_text(i18n(lang, 'err_image_processing'))
+                await update.message.reply_text("❌ Erreur lors du traitement de l'image")
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error processing cover image: {e}")
-            await update.message.reply_text(i18n(lang, 'err_image_processing'))
+            await update.message.reply_text("❌ Erreur lors du traitement de l'image")
 
     async def process_file_upload(self, bot, update, document):
         """Process file upload pour ajout produit"""
@@ -1647,51 +1613,10 @@ class SellHandlers:
             product_data = user_state.get('product_data', {})
             lang = user_state.get('lang', 'fr')
 
-            # 🚫 FORCE MINI APP IN PRODUCTION (HTTPS mode)
-            import os
-            webapp_url = os.getenv('WEBAPP_URL')
-            if webapp_url and webapp_url.startswith('https://'):
-                # Production mode: Force Mini App usage
-                from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-
-                error_message = (
-                    "⛔ *Erreur : Upload direct non autorisé*\n\n"
-                    "👆 *Veuillez utiliser le bouton ci-dessous pour uploader votre fichier*\n\n"
-                    "La Mini App permet d'uploader des fichiers jusqu'à 10 GB avec une barre de progression.\n\n"
-                    "⚠️ _N'envoyez PAS le fichier directement, cliquez sur le bouton !_"
-                ) if lang == 'fr' else (
-                    "⛔ *Error: Direct upload not allowed*\n\n"
-                    "👆 *Please use the button below to upload your file*\n\n"
-                    "The Mini App allows uploading files up to 10 GB with a progress bar.\n\n"
-                    "⚠️ _Don't send the file directly, click the button!_"
-                )
-
-                keyboard = [
-                    [InlineKeyboardButton(
-                        "📤 CLIQUEZ ICI POUR UPLOADER" if lang == 'fr' else "📤 CLICK HERE TO UPLOAD",
-                        web_app=WebAppInfo(url=f"{webapp_url}/static/upload.html")
-                    )],
-                    [InlineKeyboardButton(
-                        "◀️ Précédent" if lang == 'fr' else "◀️ Back",
-                        callback_data='product_back_cover_image'
-                    ),
-                    InlineKeyboardButton(
-                        "❌ Annuler" if lang == 'fr' else "❌ Cancel",
-                        callback_data='product_cancel'
-                    )]
-                ]
-
-                await update.message.reply_text(
-                    error_message,
-                    parse_mode='Markdown',
-                    reply_markup=InlineKeyboardMarkup(keyboard)
-                )
-                return
-
             # Validation du fichier
             # 1. Taille (100MB max - cohérent avec FAQ)
             if document.file_size > 100 * 1024 * 1024:  # 100MB max
-                await update.message.reply_text(i18n(lang, 'err_file_too_large'))
+                await update.message.reply_text("❌ Fichier trop volumineux (max 100MB)" if lang == 'fr' else "❌ File too large (max 100MB)")
                 return
 
             # 2. Extension de fichier (sécurité critique)
@@ -1706,7 +1631,7 @@ class SellHandlers:
             filename = await bot.save_uploaded_file(file_info, document.file_name)
 
             if not filename:
-                await update.message.reply_text(i18n(lang, 'err_file_save'))
+                await update.message.reply_text("❌ Erreur lors de la sauvegarde du fichier")
                 return
 
             # Ajouter le fichier aux données produit (temporaire, sera uploadé sur B2)
@@ -1808,13 +1733,13 @@ class SellHandlers:
                     parse_mode='Markdown'
                 )
             else:
-                await update.message.reply_text(i18n(lang, 'err_product_creation'))
+                await update.message.reply_text("❌ Erreur lors de la création du produit")
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error processing file upload: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            await update.message.reply_text(i18n(lang, 'err_file_processing'))
+            await update.message.reply_text("Erreur lors du traitement du fichier")
 
     async def _rename_product_images(self, seller_id, temp_product_id, final_product_id, product_data):
         """Rename product image directory, upload to B2, and UPDATE DATABASE with B2 URLs"""
@@ -1942,7 +1867,7 @@ class SellHandlers:
         elif step == 'edit_email':
             new_email = message_text.strip().lower()
             if not validate_email(new_email):
-                await update.message.reply_text(i18n(lang, 'err_email_invalid'))
+                await update.message.reply_text("❌ Email invalide")
                 return
             success = self.user_repo.update_seller_email(user_id, new_email)
             bot.state_manager.reset_state(user_id, keep={'lang'})
@@ -1956,12 +1881,12 @@ class SellHandlers:
         elif step == 'edit_solana_address':
             new_address = message_text.strip()
             if not validate_solana_address(new_address):
-                await update.message.reply_text(i18n(lang, 'err_solana_invalid'))
+                await update.message.reply_text("❌ Adresse Solana invalide (32-44 caractères)")
                 return
             success = self.user_repo.update_seller_solana_address(user_id, new_address)
             bot.state_manager.reset_state(user_id, keep={'lang'})
             await update.message.reply_text(
-                i18n(lang, 'success_solana_updated') if success else i18n(lang, 'err_solana_update'),
+                "✅ Adresse Solana mise à jour !" if success else "❌ Erreur mise à jour adresse.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("📊 Dashboard", callback_data='seller_dashboard')
                 ]])
@@ -2055,7 +1980,7 @@ class SellHandlers:
             price = product.get('price_usd', 0)
             status = product.get('status', 'active')
 
-            menu_text = i18n(lang, 'seller_edit_menu').format(title=title, price=price, status=status)
+            menu_text = f"✏️ **Édition: {title}**\n\n💰 Prix: ${price:.2f}\n📊 Statut: {status}\n\nQue voulez-vous modifier ?"
 
             keyboard = [
                 [InlineKeyboardButton(" Modifier titre" if lang == 'fr' else " Edit title",
@@ -2084,7 +2009,7 @@ class SellHandlers:
             ]])
             await safe_transition_to_text(
                 query,
-                i18n(lang, 'err_product_edit'),
+                "❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.",
                 keyboard_error
             )
 
@@ -2164,7 +2089,7 @@ class SellHandlers:
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in confirm_delete_product: {e}")
             await query.edit_message_text(
-                i18n(lang, 'err_product_deletion'),
+                "❌ Erreur lors de la suppression." if lang == 'fr' else "❌ Deletion error.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
                 ]])
@@ -2232,7 +2157,7 @@ class SellHandlers:
             logger.error(f"Error in edit_product_field: {e}")
             await safe_transition_to_text(
                 query,
-                i18n(lang, 'err_product_edit'),
+                "❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.",
                 InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
                 ]])
@@ -2274,7 +2199,7 @@ class SellHandlers:
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_seller_name: {e}")
             await query.edit_message_text(
-                i18n(lang, 'err_product_edit'),
+                "❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')
                 ]])
@@ -2316,7 +2241,7 @@ class SellHandlers:
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_seller_bio: {e}")
             await query.edit_message_text(
-                i18n(lang, 'err_product_edit'),
+                "❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')
                 ]])
@@ -2451,7 +2376,7 @@ class SellHandlers:
             )
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_seller_email: {e}")
-            await query.edit_message_text(i18n(lang, 'err_product_edit'), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]]))
+            await query.edit_message_text("❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]]))
 
     async def edit_solana_address(self, bot, query, lang):
         """Edit Solana address"""
@@ -2474,7 +2399,7 @@ class SellHandlers:
             )
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_solana_address: {e}")
-            await query.edit_message_text(i18n(lang, 'err_product_edit'), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]]))
+            await query.edit_message_text("❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]]))
 
     async def disable_seller_account(self, bot, query, lang):
         """Disable seller account temporarily"""
@@ -2498,7 +2423,7 @@ class SellHandlers:
                 parse_mode='Markdown'
             )
         else:
-            await query.edit_message_text(i18n(lang, 'err_product_disable'))
+            await query.edit_message_text("❌ Erreur lors de la désactivation")
 
     async def edit_product_price_prompt(self, bot, query, product_id, lang):
         """Prompt for editing product price"""
@@ -2530,7 +2455,7 @@ class SellHandlers:
             logger.error(f"Error in edit_product_price_prompt: {e}")
             await safe_transition_to_text(
                 query,
-                i18n(lang, 'err_product_edit'),
+                "❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.",
                 InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
                 ]])
@@ -2564,7 +2489,7 @@ class SellHandlers:
             logger.error(f"Error in edit_product_title_prompt: {e}")
             await safe_transition_to_text(
                 query,
-                i18n(lang, 'err_product_edit'),
+                "❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.",
                 InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
                 ]])
@@ -2621,7 +2546,7 @@ class SellHandlers:
             else:
                 await safe_transition_to_text(
                     query,
-                    i18n(lang, 'err_product_update'),
+                    "❌ Erreur lors de la mise à jour." if lang == 'fr' else "❌ Update error.",
                     InlineKeyboardMarkup([[
                         InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data=f'edit_product_{product_id}')
                     ]])
@@ -2631,7 +2556,7 @@ class SellHandlers:
             logger.error(f"Error in toggle_product_status: {e}")
             await safe_transition_to_text(
                 query,
-                i18n(lang, 'err_product_update'),
+                "❌ Erreur lors de la mise à jour." if lang == 'fr' else "❌ Update error.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
                 ]])
@@ -2650,7 +2575,7 @@ class SellHandlers:
 
             # Validate title - CORRECTION: 3 caractères minimum comme dans le message d'erreur
             if len(new_title) < 3 or len(new_title) > 100:
-                await update.message.reply_text(i18n(lang, 'err_title_length_edit'))
+                await update.message.reply_text("❌ Le titre doit contenir entre 3 et 100 caractères.")
                 return False
 
             # CORRECTION: Réinitialiser l'état AVANT la mise à jour
@@ -2739,7 +2664,7 @@ class SellHandlers:
             product = self.product_repo.get_product_by_id(product_id)
             if not product or product.get('seller_user_id') != user_id:
                 await update.message.reply_text(
-                    i18n(lang, 'err_product_not_found_owner')
+                    "❌ Produit introuvable ou vous n'êtes pas le propriétaire" if lang == 'fr' else "❌ Product not found or unauthorized"
                 )
                 return False
 
@@ -2770,7 +2695,7 @@ class SellHandlers:
                 return True
             else:
                 await update.message.reply_text(
-                    i18n(lang, 'err_product_update'),
+                    "❌ Erreur lors de la mise à jour" if lang == 'fr' else "❌ Update error",
                     reply_markup=InlineKeyboardMarkup([[
                         InlineKeyboardButton(
                             "🔙 Mon Dashboard" if lang == 'fr' else "🔙 My Dashboard",
@@ -2784,7 +2709,7 @@ class SellHandlers:
             logger.error(f"Erreur maj description produit: {e}")
             bot.state_manager.reset_state(user_id, keep={'lang'})
             await update.message.reply_text(
-                i18n(lang, 'err_product_update')
+                "❌ Erreur lors de la mise à jour" if lang == 'fr' else "❌ Update error"
             )
             return False
 
