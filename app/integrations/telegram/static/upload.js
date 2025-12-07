@@ -163,12 +163,51 @@ async function uploadFileToB2(file, uploadUrl, objectKey) {
             if (xhr.status >= 200 && xhr.status < 300) {
                 resolve();
             } else {
-                reject(new Error('Upload failed: ' + xhr.status));
+                // Log HTTP error details
+                const errorDetails = {
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    responseText: xhr.responseText || 'No response'
+                };
+                console.error('❌ Upload HTTP Error:', errorDetails);
+
+                // Send to backend for logging
+                fetch('/api/log-client-error', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        error_type: 'xhr_http_error',
+                        details: errorDetails,
+                        user_id: userId
+                    })
+                }).catch(() => {});
+
+                reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
             }
         });
 
         xhr.addEventListener('error', () => {
-            reject(new Error('Network error during upload'));
+            // Capture detailed error information
+            const errorDetails = {
+                status: xhr.status,
+                statusText: xhr.statusText,
+                readyState: xhr.readyState,
+                responseText: xhr.responseText || 'No response'
+            };
+            console.error('❌ XHR Network Error:', errorDetails);
+
+            // Send to backend for logging
+            fetch('/api/log-client-error', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    error_type: 'xhr_network_error',
+                    details: errorDetails,
+                    user_id: userId
+                })
+            }).catch(() => {});
+
+            reject(new Error(`Network error: ${xhr.status} ${xhr.statusText}`));
         });
 
         xhr.open('PUT', uploadUrl);
