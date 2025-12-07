@@ -6,7 +6,9 @@ import boto3
 import logging
 import os
 import asyncio
-from typing import Optional, BinaryIO
+import base64
+import requests
+from typing import Optional, BinaryIO, Dict
 from botocore.exceptions import ClientError
 from app.core import settings
 
@@ -260,4 +262,112 @@ class B2StorageService:
             return None
         except Exception as e:
             logger.error(f"❌ Unexpected error getting file size: {e}")
+            return None
+
+    def _get_b2_auth_token(self) -> Optional[tuple]:
+        """Authenticate with B2 Native API and get authorization token"""
+        # Clean credentials
+        key_id = settings.B2_KEY_ID.split('#')[0] if settings.B2_KEY_ID else None
+        app_key = settings.B2_APPLICATION_KEY.split('#')[0] if settings.B2_APPLICATION_KEY else None
+
+        if not key_id or not app_key:
+            return None
+
+        # Encode credentials
+        auth_string = f"{key_id}:{app_key}"
+        auth_b64 = base64.b64encode(auth_string.encode()).decode()
+
+        # Authenticate
+        try:
+            response = requests.get(
+                'https://api.backblazeb2.com/b2api/v2/b2_authorize_account',
+                headers={'Authorization': f'Basic {auth_b64}'}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"❌ B2 Auth failed: {response.text}")
+                return None
+
+            data = response.json()
+            return data['authorizationToken'], data['apiUrl'], data['accountId']
+
+        except Exception as e:
+            logger.error(f"❌ B2 Auth exception: {e}")
+            return None
+
+    def _get_bucket_id(self, auth_token: str, api_url: str, account_id: str) -> Optional[str]:
+        """Get bucket ID from bucket name"""
+        try:
+            response = requests.post(
+                f"{api_url}/b2api/v2/b2_list_buckets",
+                headers={'Authorization': auth_token},
+                json={
+                    'accountId': account_id,
+                    'bucketName': self.bucket_name
+                }
+            )
+
+            if response.status_code != 200:
+                logger.error(f"❌ Failed to list buckets: {response.text}")
+                return None
+
+            data = response.json()
+            buckets = data.get('buckets', [])
+
+            if not buckets:
+                logger.error(f"❌ Bucket '{self.bucket_name}' not found")
+                return None
+
+            return buckets[0]['bucketId']
+
+        except Exception as e:
+            logger.error(f"❌ Get bucket ID exception: {e}")
+            return None
+
+    def get_native_upload_url(self, object_key: str, content_type: str = 'application/octet-stream') -> Optional[Dict]:
+        """
+        Get B2 Native API upload URL (CORS-compatible for direct browser uploads)
+
+        Returns:
+            dict with 'upload_url', 'authorization_token', 'object_key'
+        """
+        # Step 1: Authenticate
+        auth_result = self._get_b2_auth_token()
+        if not auth_result:
+            logger.error("❌ Failed to authenticate with B2")
+            return None
+
+        auth_token, api_url, account_id = auth_result
+
+        # Step 2: Get bucket ID
+        bucket_id = self._get_bucket_id(auth_token, api_url, account_id)
+        if not bucket_id:
+            logger.error("❌ Failed to get bucket ID")
+            return None
+
+        # Step 3: Get upload URL
+        try:
+            response = requests.post(
+                f"{api_url}/b2api/v2/b2_get_upload_url",
+                headers={'Authorization': auth_token},
+                json={'bucketId': bucket_id}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"❌ Failed to get upload URL: {response.text}")
+                return None
+
+            data = response.json()
+
+            logger.info(f"✅ B2 Native upload URL generated for: {object_key}")
+
+            return {
+                'upload_url': data['uploadUrl'],
+                'authorization_token': data['authorizationToken'],
+                'object_key': object_key,
+                'content_type': content_type
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Get upload URL exception: {e}")
             return None
