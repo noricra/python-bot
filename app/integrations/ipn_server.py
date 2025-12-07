@@ -254,6 +254,11 @@ class UploadCompleteRequest(BaseModel):
     user_id: int
     telegram_init_data: str
 
+class ClientErrorRequest(BaseModel):
+    error_type: str
+    details: dict
+    user_id: int
+
 @app.post("/api/generate-upload-url")
 async def generate_upload_url(request: GenerateUploadURLRequest):
     """Étape 1: Le frontend demande une URL d'upload B2 sécurisée"""
@@ -279,6 +284,13 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
         )
 
         if not upload_url:
+            logger.error(
+                f"❌ B2 presigned URL generation returned None\n"
+                f"   User: {request.user_id}\n"
+                f"   File: {request.file_name}\n"
+                f"   Type: {request.file_type}\n"
+                f"   Object key: {object_key}"
+            )
             raise HTTPException(status_code=500, detail="B2 Presigned URL generation failed")
 
         logger.info(f"✅ Generated presigned URL for user {request.user_id}: {object_key}")
@@ -291,6 +303,15 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
     except Exception as e:
         logger.error(f"❌ Error generating URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/log-client-error")
+async def log_client_error(request: ClientErrorRequest):
+    """Endpoint pour recevoir et logger les erreurs JavaScript côté client"""
+    logger.error(
+        f"❌ CLIENT ERROR - User {request.user_id} - Type: {request.error_type}\n"
+        f"   Details: {json.dumps(request.details, indent=2)}"
+    )
+    return {"status": "logged"}
 
 @app.post("/api/upload-complete")
 async def upload_complete(request: UploadCompleteRequest):
