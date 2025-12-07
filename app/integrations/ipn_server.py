@@ -317,29 +317,46 @@ async def log_client_error(request: ClientErrorRequest):
 @app.post("/api/upload-complete")
 async def upload_complete(request: UploadCompleteRequest):
     """Étape 2: Le frontend confirme que l'upload est fini - Création du produit"""
+    logger.info(f"🔵 START upload-complete - User: {request.user_id}, File: {request.file_name}, Size: {request.file_size}")
+
     if not verify_telegram_webapp_data(request.telegram_init_data):
+        logger.error(f"❌ Auth failed for user {request.user_id}")
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    logger.info(f"✅ Auth OK for user {request.user_id}")
 
     try:
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
         # Vérification B2
+        logger.info(f"🔍 Checking B2 file existence: {request.object_key}")
         b2 = B2StorageService()
         if not b2.file_exists(request.object_key):
+            logger.error(f"❌ File not found on B2: {request.object_key}")
             raise HTTPException(status_code=404, detail="File not found on B2 after upload")
+
+        logger.info(f"✅ B2 file exists: {request.object_key}")
 
         # URL du fichier sur B2
         b2_url = f"{core_settings.B2_ENDPOINT}/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
+        logger.info(f"📦 B2 URL constructed: {b2_url}")
 
         global telegram_application
+        logger.info(f"🤖 telegram_application exists: {telegram_application is not None}")
+
         if telegram_application:
             bot_instance = telegram_application.bot_data.get('bot_instance')
+            logger.info(f"🤖 bot_instance exists: {bot_instance is not None}")
 
             if bot_instance:
                 # Récupérer product_data qui contient déjà titre, description, prix, etc.
+                logger.info(f"📊 Getting user state for user {request.user_id}")
                 user_state = bot_instance.get_user_state(request.user_id)
                 product_data = user_state.get('product_data', {})
                 lang = user_state.get('lang', 'fr')
+
+                logger.info(f"📦 Retrieved product_data: {product_data}")
+                logger.info(f"🌐 Language: {lang}")
 
                 # Ajouter les infos du fichier uploadé
                 product_data['file_name'] = request.file_name
@@ -347,16 +364,23 @@ async def upload_complete(request: UploadCompleteRequest):
                 product_data['main_file_url'] = b2_url
                 product_data['seller_id'] = request.user_id
 
+                logger.info(f"📝 Updated product_data with file info: file_name={request.file_name}, file_size={request.file_size}")
+
                 # Ajouter preview_url si fourni (PDF uniquement)
                 if request.preview_url:
                     product_data['preview_url'] = request.preview_url
                     logger.info(f"📸 Preview URL received: {request.preview_url}")
 
                 # Créer le produit (toutes les infos sont déjà présentes)
+                logger.info(f"🔨 Calling create_product with data: {product_data}")
                 product_id = bot_instance.create_product(product_data)
+                logger.info(f"🎯 create_product returned: {product_id}")
 
                 if product_id:
+                    logger.info(f"✅ Product created successfully: {product_id}")
+
                     # Réinitialiser l'état utilisateur
+                    logger.info(f"🔄 Resetting user state for {request.user_id}")
                     bot_instance.reset_user_state_preserve_login(request.user_id)
 
                     # Envoyer emails de notification
@@ -394,25 +418,34 @@ async def upload_complete(request: UploadCompleteRequest):
 
                     # Message de succès
                     success_msg = f"✅ **Produit créé avec succès!**\n\n**ID:** {product_id}\n**Titre:** {product_data['title']}\n**Prix:** ${product_data['price_usd']:.2f}"
+                    logger.info(f"💬 Preparing success message: {success_msg}")
 
                     keyboard = InlineKeyboardMarkup([[
                         InlineKeyboardButton("🏪 Dashboard" if lang == 'en' else "🏪 Dashboard", callback_data='seller_dashboard'),
                         InlineKeyboardButton("📦 Mes produits" if lang == 'fr' else "📦 My Products", callback_data='my_products')
                     ]])
 
+                    logger.info(f"📤 Sending Telegram message to {request.user_id}")
                     await telegram_application.bot.send_message(
                         chat_id=request.user_id,
                         text=success_msg,
                         reply_markup=keyboard,
                         parse_mode='Markdown'
                     )
+                    logger.info(f"✅ Telegram message sent successfully to {request.user_id}")
                 else:
+                    logger.error(f"❌ create_product returned None for user {request.user_id}")
                     # Erreur création produit
                     await telegram_application.bot.send_message(
                         chat_id=request.user_id,
                         text="❌ Erreur lors de la création du produit"
                     )
+            else:
+                logger.error(f"❌ bot_instance is None!")
+        else:
+            logger.error(f"❌ telegram_application is None!")
 
+        logger.info(f"🎉 END upload-complete - Success!")
         return {"status": "success", "product_id": product_id if 'product_id' in locals() else None}
 
     except Exception as e:
