@@ -399,11 +399,11 @@ class ProductRepository:
             put_connection(conn)
 
     def create_product(self, product_data: Dict) -> Optional[str]:
-        """Create a new product with auto-generated ID"""
+        """Create a new product with auto-generated ID or use existing one"""
         from app.core.utils import generate_product_id
 
-        # Generate unique product ID
-        product_id = generate_product_id()
+        # ✅ Utiliser product_id existant si fourni (miniapp), sinon générer (chat)
+        product_id = product_data.get('product_id') or generate_product_id()
 
         # Ensure we have all required fields
         product = {

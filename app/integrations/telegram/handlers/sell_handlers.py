@@ -1790,17 +1790,18 @@ class SellHandlers:
 
                 # Upload cover image to B2
                 if os.path.exists(cover_local_path):
-                    cover_b2_key = f"products/{final_product_id}/cover.jpg"
-                    
+                    # ✅ NOUVELLE STRUCTURE: products/seller_id/product_id/cover.jpg
+                    cover_b2_key = f"products/{seller_id}/{final_product_id}/cover.jpg"
+
                     # CORRECTION: Exécuter l'upload (qui est synchrone) dans un thread
                     loop = asyncio.get_running_loop()
                     cover_b2_url = await loop.run_in_executor(
-                        None, 
-                        b2_service.upload_file, 
-                        cover_local_path, 
+                        None,
+                        b2_service.upload_file,
+                        cover_local_path,
                         cover_b2_key
                     )
-                    
+
                     if cover_b2_url:
                         logger.info(f"📤 Cover uploaded to B2: {cover_b2_url}")
                     else:
@@ -1809,17 +1810,18 @@ class SellHandlers:
 
                 # Upload thumbnail to B2
                 if os.path.exists(thumb_local_path):
-                    thumb_b2_key = f"products/{final_product_id}/thumb.jpg"
-                    
+                    # ✅ NOUVELLE STRUCTURE: products/seller_id/product_id/thumb.jpg
+                    thumb_b2_key = f"products/{seller_id}/{final_product_id}/thumb.jpg"
+
                     # CORRECTION: Idem pour la thumbnail
                     loop = asyncio.get_running_loop()
                     thumb_b2_url = await loop.run_in_executor(
-                        None, 
-                        b2_service.upload_file, 
-                        thumb_local_path, 
+                        None,
+                        b2_service.upload_file,
+                        thumb_local_path,
                         thumb_b2_key
                     )
-                    
+
                     if thumb_b2_url:
                         logger.info(f"📤 Thumbnail uploaded to B2: {thumb_b2_url}")
                     else:

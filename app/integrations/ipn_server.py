@@ -247,6 +247,12 @@ class GenerateUploadURLRequest(BaseModel):
     user_id: int
     telegram_init_data: str
 
+class GetB2UploadURLRequest(BaseModel):
+    object_key: str
+    content_type: str
+    user_id: int
+    telegram_init_data: str
+
 class UploadCompleteRequest(BaseModel):
     object_key: str
     file_name: str
@@ -267,14 +273,29 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
         raise HTTPException(status_code=401, detail="Unauthorized - Invalid Init Data")
 
     try:
-        # Génération nom unique
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        unique_id = str(uuid.uuid4())[:8]
-        # Nettoyage extension
-        ext = request.file_name.split('.')[-1] if '.' in request.file_name else 'bin'
+        from app.core.utils import generate_product_id
 
-        # Structure: uploads/USER_ID/DATE_UID.ext
-        object_key = f"uploads/{request.user_id}/{timestamp}_{unique_id}.{ext}"
+        # Générer product_id AVANT l'upload (critique pour chemins cohérents)
+        product_id = generate_product_id()
+        logger.info(f"🆔 Generated product_id BEFORE upload: {product_id} for user {request.user_id}")
+
+        # Stocker product_id dans user_state pour upload-complete
+        global telegram_application
+        if telegram_application:
+            bot_instance = telegram_application.bot_data.get('bot_instance')
+            if bot_instance:
+                user_state = bot_instance.get_user_state(request.user_id)
+                product_data = user_state.get('product_data', {})
+                product_data['product_id'] = product_id  # ✅ Stocké pour plus tard
+                user_state['product_data'] = product_data
+                logger.info(f"✅ product_id stored in user_state: {product_id}")
+
+        # Nettoyage du filename (garder l'extension)
+        ext = request.file_name.split('.')[-1] if '.' in request.file_name else 'bin'
+        clean_filename = f"main_file.{ext}"
+
+        # ✅ NOUVELLE STRUCTURE: products/seller_id/product_id/main_file.ext
+        object_key = f"products/{request.user_id}/{product_id}/{clean_filename}"
 
         # Appel service B2 Native API
         b2 = B2StorageService()
@@ -287,13 +308,45 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
             logger.error(
                 f"❌ B2 Native upload URL generation failed\n"
                 f"   User: {request.user_id}\n"
+                f"   Product ID: {product_id}\n"
                 f"   File: {request.file_name}\n"
                 f"   Type: {request.file_type}\n"
                 f"   Object key: {object_key}"
             )
             raise HTTPException(status_code=500, detail="B2 Upload URL generation failed")
 
-        logger.info(f"✅ Generated B2 Native upload URL for user {request.user_id}: {object_key}")
+        logger.info(f"✅ Generated B2 Native upload URL: {object_key}")
+
+        return {
+            "upload_url": upload_data['upload_url'],
+            "authorization_token": upload_data['authorization_token'],
+            "object_key": upload_data['object_key'],
+            "content_type": upload_data['content_type'],
+            "product_id": product_id  # ✅ Retourné au frontend pour preview
+        }
+    except Exception as e:
+        logger.error(f"❌ Error generating URL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/get-b2-upload-url")
+async def get_b2_upload_url(request: GetB2UploadURLRequest):
+    """Obtenir URL B2 pour un chemin spécifique (preview, etc.)"""
+    if not verify_telegram_webapp_data(request.telegram_init_data):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        # Appel service B2 pour ce chemin spécifique
+        b2 = B2StorageService()
+        upload_data = b2.get_native_upload_url(
+            request.object_key,
+            content_type=request.content_type
+        )
+
+        if not upload_data:
+            logger.error(f"❌ B2 upload URL failed for path: {request.object_key}")
+            raise HTTPException(status_code=500, detail="B2 Upload URL failed")
+
+        logger.info(f"✅ B2 upload URL generated for path: {request.object_key}")
 
         return {
             "upload_url": upload_data['upload_url'],
@@ -302,7 +355,7 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
             "content_type": upload_data['content_type']
         }
     except Exception as e:
-        logger.error(f"❌ Error generating URL: {e}")
+        logger.error(f"❌ Error getting B2 URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/log-client-error")
@@ -358,6 +411,15 @@ async def upload_complete(request: UploadCompleteRequest):
                 logger.info(f"📦 Retrieved product_data: {product_data}")
                 logger.info(f"🌐 Language: {lang}")
 
+                # ✅ Utiliser product_id PRÉ-GÉNÉRÉ (stocké dans generate-upload-url)
+                product_id = product_data.get('product_id')
+
+                if not product_id:
+                    logger.error(f"❌ product_id not found in product_data! This should never happen.")
+                    raise HTTPException(status_code=500, detail="Product ID not found in state")
+
+                logger.info(f"🆔 Using pre-generated product_id: {product_id}")
+
                 # Ajouter les infos du fichier uploadé
                 product_data['file_name'] = request.file_name
                 product_data['file_size'] = request.file_size
@@ -371,10 +433,15 @@ async def upload_complete(request: UploadCompleteRequest):
                     product_data['preview_url'] = request.preview_url
                     logger.info(f"📸 Preview URL received: {request.preview_url}")
 
-                # Créer le produit (toutes les infos sont déjà présentes)
-                logger.info(f"🔨 Calling create_product with data: {product_data}")
-                product_id = bot_instance.create_product(product_data)
-                logger.info(f"🎯 create_product returned: {product_id}")
+                # ✅ Finaliser la création du produit avec product_id existant
+                logger.info(f"🔨 Calling create_product with pre-generated ID: {product_id}")
+                returned_product_id = bot_instance.create_product(product_data)
+                logger.info(f"🎯 create_product returned: {returned_product_id}")
+
+                # Vérifier que l'ID retourné correspond bien
+                if returned_product_id != product_id:
+                    logger.warning(f"⚠️ Mismatch: Expected {product_id}, got {returned_product_id}")
+                    product_id = returned_product_id  # Utiliser celui retourné
 
                 if product_id:
                     logger.info(f"✅ Product created successfully: {product_id}")
