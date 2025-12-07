@@ -69,8 +69,8 @@ FAQ_DATA_FR: List[Dict[str, str]] = [
             "- Archives (ZIP, RAR, 7Z)\n"
             "- Templates, Presets (PSD, AI, Sketch, etc.)\n"
             "- Code source (PY, JS, HTML, CSS, etc.) - Fichiers texte uniquement\n\n"
-            "**Limite par fichier** : Jusqu'à 100 MB par fichier\n"
-            "**Stockage total** : 100 MB gratuits (contactez le support pour extension)\n\n"
+            "**Limite par fichier** : Jusqu'à 10 GB par fichier\n"
+            "**Stockage total** : 10 GB gratuits par vendeur\n\n"
             "**IMPORTANT** : Les fichiers exécutables (EXE, BAT, SH, APP, etc.) sont bloqués pour raisons de sécurité."
         )
     },
@@ -83,7 +83,7 @@ FAQ_DATA_FR: List[Dict[str, str]] = [
             "**Paiements crypto directs** - Recevez vos gains sur votre wallet Solana\n"
             "**Portée internationale** - Vendez partout dans le monde sans restrictions\n"
             "**Livraison automatique** - Vos clients reçoivent le produit instantanément après paiement\n"
-            "**Stockage sécurisé** - 100MB gratuits avec extension possible\n"
+            "**Stockage sécurisé** - 10GB gratuits par vendeur\n"
             "**Support 24/7** - Système de tickets pour toute question\n\n"
             "Contrairement aux plateformes traditionnelles (Gumroad 9%, Shopify 2.9%+30¢), "
             "vous gardez le **contrôle total** de vos revenus avec les frais les plus compétitifs."
@@ -327,8 +327,8 @@ FAQ_DATA_EN: List[Dict[str, str]] = [
             "- Archives (ZIP, RAR, 7Z)\n"
             "- Templates, Presets (PSD, AI, Sketch, etc.)\n"
             "- Source code (PY, JS, HTML, CSS, etc.) - Text files only\n\n"
-            "**Per file limit**: Up to 100 MB per file\n"
-            "**Total storage**: 100 MB free (contact support for extension)\n\n"
+            "**Per file limit**: Up to 10 GB per file\n"
+            "**Total storage**: 10 GB free per seller\n\n"
             "**IMPORTANT**: Executable files (EXE, BAT, SH, APP, etc.) are blocked for security reasons."
         )
     },
@@ -341,7 +341,7 @@ FAQ_DATA_EN: List[Dict[str, str]] = [
             "**Direct crypto payments** - Receive earnings to your Solana wallet\n"
             "**Global reach** - Sell worldwide without restrictions\n"
             "**Automatic delivery** - Customers receive product instantly after payment\n"
-            "**Secure storage** - 100MB free with possible extension\n"
+            "**Secure storage** - 10GB free per seller\n"
             "**24/7 Support** - Ticket system for any question\n\n"
             "Unlike traditional platforms (Gumroad 9%, Shopify 2.9%+30¢), "
             "you keep **full control** of your revenue with the most competitive fees."

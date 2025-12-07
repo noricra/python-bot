@@ -192,7 +192,9 @@ class AdminHandlers:
                 text += f"• Ventes totales: {user.get('total_sales', 0)}\n"
                 text += f"• Revenus: ${user.get('total_revenue', 0):.2f}\n"
                 text += f"• Note: {user.get('seller_rating', 0):.1f}/5\n"
-                text += f"• Stockage: {user.get('storage_used_mb', 0):.1f}MB / {user.get('storage_limit_mb', 100)}MB\n"
+                storage_used_mb = user.get('storage_used_mb', 0)
+                storage_limit_gb = 10
+                text += f"• Stockage: {storage_used_mb:.1f} MB / {storage_limit_gb} GB\n"
 
             if is_suspended:
                 text += f"\n**⚠️ SUSPENSION:**\n"

@@ -214,9 +214,10 @@ class SellHandlers:
         storage_used_mb = cursor.fetchone()['storage_used']
         put_connection(conn)
 
-        # Storage limit: 100MB
-        storage_limit_mb = 100
-        storage_text = f"\n\nStockage: {storage_used_mb:.1f}/100MB"
+        # Storage limit: 10GB
+        storage_limit_gb = 10
+        storage_limit_mb = storage_limit_gb * 1024  # Conversion pour comparaison
+        storage_text = f"\n\n📦 Stockage: {storage_used_mb:.1f} MB / {storage_limit_gb} GB"
 
         # Message texte simple
         dashboard_text = i18n(lang, 'dashboard_welcome').format(
@@ -806,8 +807,8 @@ class SellHandlers:
                 from telegram import WebAppInfo
                 keyboard.append([
                     InlineKeyboardButton(
-                        "📤 Upload via Mini App",
-                        web_app=WebAppInfo(url=f"{webapp_url}/static/upload.html")
+                        "📤 Upload via Mini App" if lang == 'en' else "📤 Upload via Mini App",
+                        web_app=WebAppInfo(url=f"{webapp_url}/static/upload.html?lang={lang}")
                     )
                 ])
 
@@ -1634,13 +1635,13 @@ class SellHandlers:
             lang = user_state.get('lang', 'fr')
 
             # Validation du fichier
-            # 1. Taille (100MB max pour chat, 10GB max pour miniapp)
-            if document.file_size > 100 * 1024 * 1024:  # 100MB max chat
+            # 1. Taille (20MB max pour chat, 10GB max pour miniapp)
+            if document.file_size > 20 * 1024 * 1024:  # 20MB max chat
                 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
                 from app.core import settings as core_settings
 
-                # Construire URL de la miniapp
-                miniapp_url = core_settings.WEBAPP_URL
+                # Construire URL de la miniapp avec langue
+                miniapp_url = f"{core_settings.WEBAPP_URL}?lang={lang}"
 
                 keyboard = InlineKeyboardMarkup([[
                     InlineKeyboardButton(
@@ -1653,12 +1654,12 @@ class SellHandlers:
                     (
                         "❌ **Fichier trop volumineux pour l'upload via Telegram**\n\n"
                         f"• Taille: {document.file_size / (1024*1024):.1f} MB\n"
-                        f"• Limite chat: 100 MB\n\n"
+                        f"• Limite chat: 20 MB\n\n"
                         "💡 **Solution**: Utilisez la Mini App pour uploader jusqu'à 10GB !"
                     ) if lang == 'fr' else (
                         "❌ **File too large for Telegram upload**\n\n"
                         f"• Size: {document.file_size / (1024*1024):.1f} MB\n"
-                        f"• Chat limit: 100 MB\n\n"
+                        f"• Chat limit: 20 MB\n\n"
                         "💡 **Solution**: Use the Mini App to upload up to 10GB!"
                     ),
                     parse_mode='Markdown',

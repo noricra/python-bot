@@ -7,14 +7,45 @@ if (typeof pdfjsLib !== 'undefined') {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 
+// Get language from URL parameter
+const urlParams = new URLSearchParams(window.location.search);
+const userLang = urlParams.get('lang') || 'fr';
+
+// Translations
+const translations = {
+    fr: {
+        notInTelegram: 'Cette application doit être ouverte depuis Telegram.',
+        useButton: 'Utilisez le bouton "📤 Upload via Mini App" dans le bot.',
+        error: 'Erreur',
+        fileTooLarge: 'Fichier trop volumineux (max 10 GB)',
+        preparing: 'Préparation...',
+        generatingPreview: 'Génération aperçu...',
+        uploadingPreview: 'Upload aperçu...',
+        uploadError: "Erreur lors de l'upload"
+    },
+    en: {
+        notInTelegram: 'This application must be opened from Telegram.',
+        useButton: 'Use the "📤 Upload via Mini App" button in the bot.',
+        error: 'Error',
+        fileTooLarge: 'File too large (max 10 GB)',
+        preparing: 'Preparing...',
+        generatingPreview: 'Generating preview...',
+        uploadingPreview: 'Uploading preview...',
+        uploadError: 'Upload error'
+    }
+};
+
+// Translation helper
+const t = (key) => translations[userLang][key] || translations['fr'][key];
+
 // Vérifier que l'app est bien dans Telegram
 if (!tg.initData || tg.initData.length === 0) {
     console.error('❌ Not running in Telegram WebApp or initData is empty');
     document.body.innerHTML = `
         <div style="padding: 20px; text-align: center;">
-            <h2>⚠️ Erreur</h2>
-            <p>Cette application doit être ouverte depuis Telegram.</p>
-            <p>Utilisez le bouton "📤 Upload via Mini App" dans le bot.</p>
+            <h2>⚠️ ${t('error')}</h2>
+            <p>${t('notInTelegram')}</p>
+            <p>${t('useButton')}</p>
         </div>
     `;
     throw new Error('Not in Telegram WebApp');
@@ -119,7 +150,7 @@ async function handleFileSelection(file) {
     // Validation
     const maxSize = 10 * 1024 * 1024 * 1024; // 10 GB
     if (file.size > maxSize) {
-        showError('Fichier trop volumineux (max 10 GB)');
+        showError(t('fileTooLarge'));
         return;
     }
 
@@ -133,7 +164,7 @@ async function handleFileSelection(file) {
     // ✅ NOUVEAU FLUX: Générer product_id AVANT tout upload
     try {
         // 1️⃣ Request main file upload URL (génère product_id)
-        progressPercent.textContent = 'Préparation...';
+        progressPercent.textContent = t('preparing');
         const uploadData = await requestPresignedUploadURL(file.name, file.type, userId);
 
         if (!uploadData || !uploadData.upload_url || !uploadData.product_id) {
@@ -150,13 +181,13 @@ async function handleFileSelection(file) {
         if (isPDF) {
             try {
                 console.log('📄 PDF detected, generating preview...');
-                progressPercent.textContent = 'Génération aperçu...';
+                progressPercent.textContent = t('generatingPreview');
 
                 const previewBlob = await generatePDFPreview(file);
 
                 if (previewBlob) {
                     console.log('📤 Uploading preview to B2...');
-                    progressPercent.textContent = 'Upload aperçu...';
+                    progressPercent.textContent = t('uploadingPreview');
 
                     // ✅ Construire URL preview avec MÊME product_id
                     const previewObjectKey = `products/${userId}/${productId}/preview.png`;
@@ -189,7 +220,7 @@ async function handleFileSelection(file) {
 
     } catch (error) {
         console.error('Upload error:', error);
-        showError(error.message || 'Erreur lors de l\'upload');
+        showError(error.message || t('uploadError'));
     }
 }
 
