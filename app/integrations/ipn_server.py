@@ -274,6 +274,13 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
 
     try:
         from app.core.utils import generate_product_id
+        from app.core.file_validation import validate_file_extension
+
+        # 🔒 SÉCURITÉ: Valider l'extension AVANT tout traitement
+        is_valid, error_msg = validate_file_extension(request.file_name)
+        if not is_valid:
+            logger.warning(f"🚫 MINIAPP: File rejected for user {request.user_id}: {request.file_name} - {error_msg}")
+            raise HTTPException(status_code=400, detail=error_msg)
 
         # Générer product_id AVANT l'upload (critique pour chemins cohérents)
         product_id = generate_product_id()

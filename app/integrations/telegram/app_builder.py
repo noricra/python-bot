@@ -8,6 +8,9 @@ from app.core.i18n import t as i18n
 def build_application(bot_instance) -> Application:
     application = Application.builder().token(core_settings.TELEGRAM_TOKEN).build()
 
+    # ✅ CRITICAL: Store bot_instance in bot_data for miniapp access
+    application.bot_data['bot_instance'] = bot_instance
+
     # Use handlers instead of direct bot methods
     application.add_handler(CommandHandler("start", lambda update, context: bot_instance.core_handlers.start_command(bot_instance, update, context)))
     

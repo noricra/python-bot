@@ -1634,9 +1634,36 @@ class SellHandlers:
             lang = user_state.get('lang', 'fr')
 
             # Validation du fichier
-            # 1. Taille (100MB max - cohérent avec FAQ)
-            if document.file_size > 100 * 1024 * 1024:  # 100MB max
-                await update.message.reply_text("❌ Fichier trop volumineux (max 100MB)" if lang == 'fr' else "❌ File too large (max 100MB)")
+            # 1. Taille (100MB max pour chat, 10GB max pour miniapp)
+            if document.file_size > 100 * 1024 * 1024:  # 100MB max chat
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+                from app.core import settings as core_settings
+
+                # Construire URL de la miniapp
+                miniapp_url = core_settings.WEBAPP_URL
+
+                keyboard = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "📤 Upload via Mini App (Max 10GB)" if lang == 'en' else "📤 Upload via Mini App (Max 10GB)",
+                        web_app=WebAppInfo(url=miniapp_url)
+                    )
+                ]])
+
+                await update.message.reply_text(
+                    (
+                        "❌ **Fichier trop volumineux pour l'upload via Telegram**\n\n"
+                        f"• Taille: {document.file_size / (1024*1024):.1f} MB\n"
+                        f"• Limite chat: 100 MB\n\n"
+                        "💡 **Solution**: Utilisez la Mini App pour uploader jusqu'à 10GB !"
+                    ) if lang == 'fr' else (
+                        "❌ **File too large for Telegram upload**\n\n"
+                        f"• Size: {document.file_size / (1024*1024):.1f} MB\n"
+                        f"• Chat limit: 100 MB\n\n"
+                        "💡 **Solution**: Use the Mini App to upload up to 10GB!"
+                    ),
+                    parse_mode='Markdown',
+                    reply_markup=keyboard
+                )
                 return
 
             # 2. Extension de fichier (sécurité critique)
