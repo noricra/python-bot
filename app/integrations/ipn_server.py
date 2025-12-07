@@ -261,7 +261,7 @@ class ClientErrorRequest(BaseModel):
 
 @app.post("/api/generate-upload-url")
 async def generate_upload_url(request: GenerateUploadURLRequest):
-    """Étape 1: Le frontend demande une URL d'upload B2 sécurisée"""
+    """Étape 1: Le frontend demande une URL d'upload B2 Native API (CORS-compatible)"""
     if not verify_telegram_webapp_data(request.telegram_init_data):
         raise HTTPException(status_code=401, detail="Unauthorized - Invalid Init Data")
 
@@ -275,30 +275,30 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
         # Structure: uploads/USER_ID/DATE_UID.ext
         object_key = f"uploads/{request.user_id}/{timestamp}_{unique_id}.{ext}"
 
-        # Appel service B2
+        # Appel service B2 Native API
         b2 = B2StorageService()
-        upload_url = b2.generate_presigned_upload_url(
+        upload_data = b2.get_native_upload_url(
             object_key,
-            content_type=request.file_type or 'application/octet-stream',
-            expires_in=3600
+            content_type=request.file_type or 'application/octet-stream'
         )
 
-        if not upload_url:
+        if not upload_data:
             logger.error(
-                f"❌ B2 presigned URL generation returned None\n"
+                f"❌ B2 Native upload URL generation failed\n"
                 f"   User: {request.user_id}\n"
                 f"   File: {request.file_name}\n"
                 f"   Type: {request.file_type}\n"
                 f"   Object key: {object_key}"
             )
-            raise HTTPException(status_code=500, detail="B2 Presigned URL generation failed")
+            raise HTTPException(status_code=500, detail="B2 Upload URL generation failed")
 
-        logger.info(f"✅ Generated presigned URL for user {request.user_id}: {object_key}")
+        logger.info(f"✅ Generated B2 Native upload URL for user {request.user_id}: {object_key}")
 
         return {
-            "upload_url": upload_url,
-            "object_key": object_key,
-            "expires_in": 3600
+            "upload_url": upload_data['upload_url'],
+            "authorization_token": upload_data['authorization_token'],
+            "object_key": upload_data['object_key'],
+            "content_type": upload_data['content_type']
         }
     except Exception as e:
         logger.error(f"❌ Error generating URL: {e}")
