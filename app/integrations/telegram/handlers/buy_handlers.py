@@ -2003,130 +2003,176 @@ Contact support with your Order ID"""
             logger.info(f"[Preview] Product main_file_url: {main_file_url}")
 
             if isinstance(main_file_url, str) and main_file_url:
-                # Download file from B2 temporarily
-                logger.info(f"[Preview] Downloading file from B2: {main_file_url}")
-                full_path = await download_product_file_from_b2(main_file_url, product_id)
+                file_ext = main_file_url.lower().split('.')[-1]
 
-                if not full_path or not os.path.exists(full_path):
-                    logger.warning(f"[Preview] Failed to download file from B2: {main_file_url}")
-                else:
-                    logger.info(f"[Preview] File downloaded successfully to: {full_path}")
-                    file_ext = main_file_url.lower().split('.')[-1]
+                # ═══════════════════════════════════════
+                # PDF PREVIEW (from pre-generated URL or fallback)
+                # ═══════════════════════════════════════
+                if file_ext == 'pdf':
+                    # Try using pre-generated preview URL first (client-side generation)
+                    preview_url = product.get('preview_url')
 
-                    # ═══════════════════════════════════════
-                    # PDF PREVIEW (first page as image)
-                    # ═══════════════════════════════════════
-                    if file_ext == 'pdf':
-                        logger.info(f"[PDF Preview] Generating preview...")
+                    if preview_url:
+                        logger.info(f"[PDF Preview] Using pre-generated preview from miniapp: {preview_url}")
                         try:
-                            import fitz  # PyMuPDF
-                            doc = fitz.open(full_path)
-                            if doc.page_count > 0:
-                                page = doc.load_page(0)
-                                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                                bio = BytesIO(pix.tobytes('png'))
-                                bio.seek(0)
+                            # Send preview URL directly (no download needed)
+                            await query.message.reply_photo(photo=preview_url)
+                            logger.info(f"[PDF Preview] Pre-generated preview sent successfully!")
+                            media_preview_sent = True
+                        except Exception as e:
+                            logger.warning(f"[PDF Preview] Failed to use pre-generated preview, falling back to server generation: {e}")
+                            preview_url = None  # Trigger fallback
 
-                                # Send PDF preview as new message (preserve payment info)
-                                await query.message.reply_photo(photo=bio)
-                                doc.close()
-                                logger.info(f"[PDF Preview] Preview sent successfully!")
-                                media_preview_sent = True
-                            else:
-                                logger.warning(f"[PDF Preview] PDF has no pages")
-                        except (psycopg2.Error, Exception) as e:
-                            logger.error(f"[PDF Preview] Error: {e}")
+                    # Fallback: Server-side generation (old products without preview_url)
+                    if not preview_url:
+                        logger.info(f"[PDF Preview] No preview_url, generating server-side (legacy)...")
+                        # Download file from B2 temporarily
+                        logger.info(f"[Preview] Downloading file from B2: {main_file_url}")
+                        full_path = await download_product_file_from_b2(main_file_url, product_id)
+
+                        if full_path and os.path.exists(full_path):
+                            logger.info(f"[Preview] File downloaded successfully to: {full_path}")
+                            try:
+                                import fitz  # PyMuPDF
+                                doc = fitz.open(full_path)
+                                if doc.page_count > 0:
+                                    page = doc.load_page(0)
+                                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                                    bio = BytesIO(pix.tobytes('png'))
+                                    bio.seek(0)
+
+                                    # Send PDF preview as new message (preserve payment info)
+                                    await query.message.reply_photo(photo=bio)
+                                    doc.close()
+                                    logger.info(f"[PDF Preview] Server-generated preview sent!")
+                                    media_preview_sent = True
+                                else:
+                                    logger.warning(f"[PDF Preview] PDF has no pages")
+                            except (psycopg2.Error, Exception) as e:
+                                logger.error(f"[PDF Preview] Error: {e}")
+                            finally:
+                                # Cleanup temporary file
+                                try:
+                                    if os.path.exists(full_path):
+                                        os.remove(full_path)
+                                        temp_dir = os.path.dirname(full_path)
+                                        if os.path.exists(temp_dir) and not os.listdir(temp_dir):
+                                            os.rmdir(temp_dir)
+                                        logger.info(f"[Preview] Temporary file cleaned up: {full_path}")
+                                except Exception as e:
+                                    logger.warning(f"[Preview] Failed to cleanup temp file: {e}")
+                        else:
+                            logger.warning(f"[Preview] Failed to download file from B2: {main_file_url}")
 
                     # ═══════════════════════════════════════
                     # VIDEO PREVIEW (first frame thumbnail)
                     # ═══════════════════════════════════════
                     elif file_ext in ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv']:
                         logger.info(f"[Video Preview] Generating thumbnail...")
-                        try:
-                            # Generate thumbnail from first frame
-                            thumbnail_path = f"/tmp/video_thumb_{product_id}.jpg"
+                        # Download file from B2 temporarily
+                        logger.info(f"[Preview] Downloading video file from B2: {main_file_url}")
+                        full_path = await download_product_file_from_b2(main_file_url, product_id)
 
-                            # Use ffmpeg to extract first frame
-                            import subprocess
-                            result = subprocess.run([
-                                'ffmpeg', '-i', full_path,
-                                '-ss', '00:00:01',  # 1 second in
-                                '-vframes', '1',  # Extract 1 frame
-                                '-vf', 'scale=800:-1',  # Resize to 800px width
-                                '-y',  # Overwrite
-                                thumbnail_path
-                            ], capture_output=True, timeout=10)
+                        if full_path and os.path.exists(full_path):
+                            try:
+                                # Generate thumbnail from first frame
+                                thumbnail_path = f"/tmp/video_thumb_{product_id}.jpg"
 
-                            if os.path.exists(thumbnail_path):
-                                # Get video duration
-                                duration_result = subprocess.run([
-                                    'ffprobe', '-v', 'error',
-                                    '-show_entries', 'format=duration',
-                                    '-of', 'default=noprint_wrappers=1:nokey=1',
-                                    full_path
-                                ], capture_output=True, text=True, timeout=5)
+                                # Use ffmpeg to extract first frame
+                                import subprocess
+                                result = subprocess.run([
+                                    'ffmpeg', '-i', full_path,
+                                    '-ss', '00:00:01',  # 1 second in
+                                    '-vframes', '1',  # Extract 1 frame
+                                    '-vf', 'scale=800:-1',  # Resize to 800px width
+                                    '-y',  # Overwrite
+                                    thumbnail_path
+                                ], capture_output=True, timeout=10)
 
-                                duration_sec = int(float(duration_result.stdout.strip() or 0))
-                                duration_min = duration_sec // 60
-                                duration_sec_rem = duration_sec % 60
-                                duration_str = f"{duration_min}:{duration_sec_rem:02d}"
+                                if os.path.exists(thumbnail_path):
+                                    # Get video duration
+                                    duration_result = subprocess.run([
+                                        'ffprobe', '-v', 'error',
+                                        '-show_entries', 'format=duration',
+                                        '-of', 'default=noprint_wrappers=1:nokey=1',
+                                        full_path
+                                    ], capture_output=True, text=True, timeout=5)
 
-                                # Send thumbnail as new message (preserve payment info)
-                                with open(thumbnail_path, 'rb') as thumb_file:
-                                    await query.message.reply_photo(photo=thumb_file)
+                                    duration_sec = int(float(duration_result.stdout.strip() or 0))
+                                    duration_min = duration_sec // 60
+                                    duration_sec_rem = duration_sec % 60
+                                    duration_str = f"{duration_min}:{duration_sec_rem:02d}"
 
-                                # Cleanup
-                                os.remove(thumbnail_path)
-                                logger.info(f"[Video Preview] Thumbnail sent successfully!")
-                                media_preview_sent = True
-                            else:
-                                logger.warning(f"[Video Preview] Thumbnail not generated")
-                        except (psycopg2.Error, Exception) as e:
-                            logger.error(f"[Video Preview] Error: {e}")
+                                    # Send thumbnail as new message (preserve payment info)
+                                    with open(thumbnail_path, 'rb') as thumb_file:
+                                        await query.message.reply_photo(photo=thumb_file)
+
+                                    # Cleanup thumbnail
+                                    os.remove(thumbnail_path)
+                                    logger.info(f"[Video Preview] Thumbnail sent successfully!")
+                                    media_preview_sent = True
+                                else:
+                                    logger.warning(f"[Video Preview] Thumbnail not generated")
+                            except (psycopg2.Error, Exception) as e:
+                                logger.error(f"[Video Preview] Error: {e}")
+                            finally:
+                                # Cleanup downloaded video file
+                                try:
+                                    if os.path.exists(full_path):
+                                        os.remove(full_path)
+                                        temp_dir = os.path.dirname(full_path)
+                                        if os.path.exists(temp_dir) and not os.listdir(temp_dir):
+                                            os.rmdir(temp_dir)
+                                        logger.info(f"[Preview] Temporary video file cleaned up: {full_path}")
+                                except Exception as e:
+                                    logger.warning(f"[Preview] Failed to cleanup temp file: {e}")
 
                     # ═══════════════════════════════════════
                     # ZIP/ARCHIVE PREVIEW (file list)
                     # ═══════════════════════════════════════
                     elif file_ext in ['zip', 'rar', '7z', 'tar', 'gz']:
                         logger.info(f"[Archive Preview] Listing contents...")
-                        try:
-                            import zipfile
+                        # Download file from B2 temporarily
+                        logger.info(f"[Preview] Downloading archive from B2: {main_file_url}")
+                        full_path = await download_product_file_from_b2(main_file_url, product_id)
 
-                            file_list = []
-                            total_size = 0
+                        if full_path and os.path.exists(full_path):
+                            try:
+                                import zipfile
 
-                            if file_ext == 'zip':
-                                with zipfile.ZipFile(full_path, 'r') as zip_ref:
-                                    info_list = zip_ref.infolist()
+                                file_list = []
+                                total_size = 0
 
-                                    # Get first 10 files
-                                    for info in info_list[:10]:
-                                        if not info.is_dir():
-                                            size_mb = info.file_size / (1024 * 1024)
-                                            file_list.append(f"  • {info.filename} ({size_mb:.1f} MB)")
-                                            total_size += info.file_size
+                                if file_ext == 'zip':
+                                    with zipfile.ZipFile(full_path, 'r') as zip_ref:
+                                        info_list = zip_ref.infolist()
 
-                                    if len(info_list) > 10:
-                                        file_list.append(f"  ... et {len(info_list) - 10} fichiers de plus")
+                                        # Get first 10 files
+                                        for info in info_list[:10]:
+                                            if not info.is_dir():
+                                                size_mb = info.file_size / (1024 * 1024)
+                                                file_list.append(f"  • {info.filename} ({size_mb:.1f} MB)")
+                                                total_size += info.file_size
 
-                            # Archive preview as new message (preserve payment info)
-                            logger.info(f"[Archive Preview] Preview sent successfully!")
-                            media_preview_sent = True
-                        except (psycopg2.Error, Exception) as e:
-                            logger.error(f"[Archive Preview] Error: {e}")
+                                        if len(info_list) > 10:
+                                            file_list.append(f"  ... et {len(info_list) - 10} fichiers de plus")
 
-                    # Cleanup temporary file after preview generation
-                    try:
-                        if os.path.exists(full_path):
-                            # Remove downloaded file
-                            os.remove(full_path)
-                            # Remove temp directory if empty
-                            temp_dir = os.path.dirname(full_path)
-                            if os.path.exists(temp_dir) and not os.listdir(temp_dir):
-                                os.rmdir(temp_dir)
-                            logger.info(f"[Preview] Temporary file cleaned up: {full_path}")
-                    except Exception as e:
-                        logger.warning(f"[Preview] Failed to cleanup temp file: {e}")
+                                # Archive preview as new message (preserve payment info)
+                                logger.info(f"[Archive Preview] Preview sent successfully!")
+                                media_preview_sent = True
+                            except (psycopg2.Error, Exception) as e:
+                                logger.error(f"[Archive Preview] Error: {e}")
+                            finally:
+                                # Cleanup downloaded archive file
+                                try:
+                                    if os.path.exists(full_path):
+                                        os.remove(full_path)
+                                        temp_dir = os.path.dirname(full_path)
+                                        if os.path.exists(temp_dir) and not os.listdir(temp_dir):
+                                            os.rmdir(temp_dir)
+                                        logger.info(f"[Preview] Temporary archive file cleaned up: {full_path}")
+                                except Exception as e:
+                                    logger.warning(f"[Preview] Failed to cleanup temp file: {e}")
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"[Preview] General error: {e}")

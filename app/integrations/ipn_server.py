@@ -253,6 +253,7 @@ class UploadCompleteRequest(BaseModel):
     file_size: int
     user_id: int
     telegram_init_data: str
+    preview_url: Optional[str] = None  # URL aperçu PDF généré côté client
 
 class ClientErrorRequest(BaseModel):
     error_type: str
@@ -345,6 +346,11 @@ async def upload_complete(request: UploadCompleteRequest):
                 product_data['file_size'] = request.file_size
                 product_data['main_file_url'] = b2_url
                 product_data['seller_id'] = request.user_id
+
+                # Ajouter preview_url si fourni (PDF uniquement)
+                if request.preview_url:
+                    product_data['preview_url'] = request.preview_url
+                    logger.info(f"📸 Preview URL received: {request.preview_url}")
 
                 # Créer le produit (toutes les infos sont déjà présentes)
                 product_id = bot_instance.create_product(product_data)

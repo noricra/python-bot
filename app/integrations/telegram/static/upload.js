@@ -2,6 +2,11 @@
 const tg = window.Telegram.WebApp;
 tg.expand();
 
+// Configure PDF.js worker
+if (typeof pdfjsLib !== 'undefined') {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
 // Vérifier que l'app est bien dans Telegram
 if (!tg.initData || tg.initData.length === 0) {
     console.error('❌ Not running in Telegram WebApp or initData is empty');
@@ -64,6 +69,49 @@ fileInput.addEventListener('change', (e) => {
     }
 });
 
+// Generate PDF Preview (first page as PNG)
+async function generatePDFPreview(file) {
+    try {
+        console.log('📄 Generating PDF preview...');
+
+        // Read file as ArrayBuffer
+        const arrayBuffer = await file.arrayBuffer();
+
+        // Load PDF document
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        console.log(`📄 PDF loaded: ${pdf.numPages} pages`);
+
+        // Render first page
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 2.0 });
+
+        // Create canvas
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        // Render PDF page to canvas
+        await page.render({
+            canvasContext: context,
+            viewport: viewport
+        }).promise;
+
+        console.log('✅ PDF preview rendered to canvas');
+
+        // Convert canvas to PNG blob
+        return new Promise((resolve) => {
+            canvas.toBlob((blob) => {
+                console.log(`✅ Preview PNG generated: ${formatBytes(blob.size)}`);
+                resolve(blob);
+            }, 'image/png', 0.9);
+        });
+    } catch (error) {
+        console.error('❌ PDF preview generation failed:', error);
+        return null;
+    }
+}
+
 // Handle File Selection
 async function handleFileSelection(file) {
     console.log('File selected:', file.name, formatBytes(file.size));
@@ -82,19 +130,57 @@ async function handleFileSelection(file) {
     uploadArea.classList.add('hidden');
     progressSection.classList.remove('hidden');
 
-    // Request B2 Native Upload URL
+    // Check if file is PDF and generate preview
+    let previewUrl = null;
+    const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+    if (isPDF) {
+        try {
+            console.log('📄 PDF detected, generating preview...');
+            progressPercent.textContent = 'Génération aperçu...';
+
+            const previewBlob = await generatePDFPreview(file);
+
+            if (previewBlob) {
+                console.log('📤 Uploading preview to B2...');
+                progressPercent.textContent = 'Upload aperçu...';
+
+                // Request upload URL for preview
+                const previewUploadData = await requestPresignedUploadURL(
+                    `preview_${file.name}.png`,
+                    'image/png',
+                    userId
+                );
+
+                if (previewUploadData && previewUploadData.upload_url) {
+                    // Upload preview to B2
+                    await uploadFileToB2(previewBlob, previewUploadData);
+
+                    // Construct preview URL
+                    previewUrl = `https://s3.us-west-004.backblazeb2.com/${previewUploadData.object_key}`;
+                    console.log('✅ Preview uploaded:', previewUrl);
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ Preview generation failed, continuing without preview:', error);
+            // Continue with main file upload even if preview fails
+        }
+    }
+
+    // Request B2 Native Upload URL for main file
     try {
+        progressPercent.textContent = '0%';  // Reset progress
         const uploadData = await requestPresignedUploadURL(file.name, file.type, userId);
 
         if (!uploadData || !uploadData.upload_url) {
             throw new Error('Failed to get upload URL');
         }
 
-        // Upload to B2 Native API
+        // Upload main file to B2 Native API
         await uploadFileToB2(file, uploadData);
 
-        // Notify backend upload complete
-        await notifyUploadComplete(uploadData.object_key, file.name, file.size);
+        // Notify backend upload complete (with preview URL if generated)
+        await notifyUploadComplete(uploadData.object_key, file.name, file.size, previewUrl);
 
         // Show success
         showSuccess();
@@ -229,21 +315,29 @@ async function uploadFileToB2(file, uploadData) {
 }
 
 // Notify Backend Upload Complete
-async function notifyUploadComplete(objectKey, fileName, fileSize) {
+async function notifyUploadComplete(objectKey, fileName, fileSize, previewUrl = null) {
     console.log('📢 Notifying server...');
+
+    const payload = {
+        object_key: objectKey,
+        file_name: fileName,
+        file_size: fileSize,
+        user_id: userId,
+        telegram_init_data: tg.initData
+    };
+
+    // Add preview URL if generated (PDF only)
+    if (previewUrl) {
+        payload.preview_url = previewUrl;
+        console.log('📸 Sending preview URL:', previewUrl);
+    }
 
     const response = await fetch('/api/upload-complete', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-            object_key: objectKey,
-            file_name: fileName,
-            file_size: fileSize,
-            user_id: userId,
-            telegram_init_data: tg.initData
-        })
+        body: JSON.stringify(payload)
     });
 
     if (!response.ok) {

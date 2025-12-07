@@ -171,6 +171,7 @@ class DatabaseInitService:
                     thumbnail_url TEXT,
                     telegram_thumb_file_id TEXT,
                     telegram_cover_file_id TEXT,
+                    preview_url TEXT,
                     views_count INTEGER DEFAULT 0,
                     sales_count INTEGER DEFAULT 0,
                     rating REAL DEFAULT 0.0,
@@ -190,6 +191,7 @@ class DatabaseInitService:
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_status ON products(status)')
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_telegram_thumb ON products(telegram_thumb_file_id) WHERE telegram_thumb_file_id IS NOT NULL")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_telegram_cover ON products(telegram_cover_file_id) WHERE telegram_cover_file_id IS NOT NULL")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_preview_url ON products(preview_url) WHERE preview_url IS NOT NULL")
 
             conn.commit()
             logger.debug("✅ Products table created/verified (PostgreSQL)")

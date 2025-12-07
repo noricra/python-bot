@@ -19,8 +19,8 @@ class ProductRepository:
             cursor.execute(
                 '''
                 INSERT INTO products
-                (product_id, seller_user_id, title, description, category, price_usd, main_file_url, file_size_mb, cover_image_url, thumbnail_url, status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (product_id, seller_user_id, title, description, category, price_usd, main_file_url, file_size_mb, cover_image_url, thumbnail_url, preview_url, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''',
                 (
                     product['product_id'],
@@ -33,6 +33,7 @@ class ProductRepository:
                     product.get('file_size_mb'),
                     product.get('cover_image_url'),
                     product.get('thumbnail_url'),
+                    product.get('preview_url'),  # URL aperçu PDF généré côté client
                     product.get('status', 'active'),
                 ),
             )
@@ -416,6 +417,7 @@ class ProductRepository:
             'file_size_mb': round(product_data.get('file_size', 0) / (1024 * 1024), 2),
             'cover_image_url': product_data.get('cover_image_url'),
             'thumbnail_url': product_data.get('thumbnail_url'),
+            'preview_url': product_data.get('preview_url'),  # PDF preview généré côté client
             'status': 'active'
         }
 
