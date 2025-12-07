@@ -82,19 +82,19 @@ async function handleFileSelection(file) {
     uploadArea.classList.add('hidden');
     progressSection.classList.remove('hidden');
 
-    // Request Presigned Upload URL
+    // Request B2 Native Upload URL
     try {
-        const presignedData = await requestPresignedUploadURL(file.name, file.type, userId);
+        const uploadData = await requestPresignedUploadURL(file.name, file.type, userId);
 
-        if (!presignedData || !presignedData.upload_url) {
+        if (!uploadData || !uploadData.upload_url) {
             throw new Error('Failed to get upload URL');
         }
 
-        // Upload to B2
-        await uploadFileToB2(file, presignedData.upload_url, presignedData.object_key);
+        // Upload to B2 Native API
+        await uploadFileToB2(file, uploadData);
 
         // Notify backend upload complete
-        await notifyUploadComplete(presignedData.object_key, file.name, file.size);
+        await notifyUploadComplete(uploadData.object_key, file.name, file.size);
 
         // Show success
         showSuccess();
@@ -134,8 +134,8 @@ async function requestPresignedUploadURL(fileName, fileType, userId) {
     return data;
 }
 
-// Upload File to B2 via Presigned URL
-async function uploadFileToB2(file, uploadUrl, objectKey) {
+// Upload File to B2 via Native API (CORS-compatible)
+async function uploadFileToB2(file, uploadData) {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
 
@@ -161,6 +161,7 @@ async function uploadFileToB2(file, uploadUrl, objectKey) {
 
         xhr.addEventListener('load', () => {
             if (xhr.status >= 200 && xhr.status < 300) {
+                console.log('✅ Upload successful:', xhr.responseText);
                 resolve();
             } else {
                 // Log HTTP error details
@@ -210,8 +211,19 @@ async function uploadFileToB2(file, uploadUrl, objectKey) {
             reject(new Error(`Network error: ${xhr.status} ${xhr.statusText}`));
         });
 
-        xhr.open('PUT', uploadUrl);
-        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+        // B2 Native API requires specific headers
+        xhr.open('POST', uploadData.upload_url);
+        xhr.setRequestHeader('Authorization', uploadData.authorization_token);
+        xhr.setRequestHeader('X-Bz-File-Name', encodeURIComponent(uploadData.object_key));
+        xhr.setRequestHeader('Content-Type', uploadData.content_type);
+        xhr.setRequestHeader('X-Bz-Content-Sha1', 'do_not_verify'); // Skip SHA1 verification for speed
+
+        console.log('📤 Uploading to B2 Native API:', {
+            url: uploadData.upload_url,
+            fileName: uploadData.object_key,
+            contentType: uploadData.content_type
+        });
+
         xhr.send(file);
     });
 }

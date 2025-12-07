@@ -783,6 +783,46 @@ class SellHandlers:
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(i18n(lang, 'btn_cancel'), callback_data='seller_dashboard')]]),
             parse_mode='Markdown')
 
+    async def continue_after_miniapp_upload(self, bot, query, lang: str):
+        """Continue product creation after miniapp file upload"""
+        user_id = query.from_user.id
+
+        logger.info(f"📱 CONTINUE_AFTER_MINIAPP_UPLOAD - User {user_id}")
+
+        # Get existing product_data with file info from miniapp upload
+        user_state = bot.get_user_state(user_id)
+        product_data = user_state.get('product_data', {})
+
+        # Verify file was uploaded
+        if not product_data.get('main_file_url'):
+            await query.edit_message_text(
+                "❌ Erreur: Fichier non trouvé. Veuillez réessayer l'upload.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Retour", callback_data='seller_dashboard')
+                ]])
+            )
+            return
+
+        logger.info(f"   File uploaded via miniapp: {product_data.get('file_name')}")
+
+        # Initialize product creation state (title is first step)
+        bot.state_manager.update_state(
+            user_id,
+            adding_product=True,
+            step='title',
+            product_data=product_data,
+            lang=lang
+        )
+
+        # Ask for product title
+        await query.edit_message_text(
+            f"✅ Fichier reçu !\n\n{i18n(lang, 'product_add_title')}\n\n{i18n(lang, 'product_step1_prompt')}",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(i18n(lang, 'btn_cancel'), callback_data='seller_dashboard')
+            ]]),
+            parse_mode='Markdown'
+        )
+
     def _get_product_creation_keyboard(self, current_step: str, lang: str = 'fr'):
         """Generate navigation keyboard for product creation steps"""
         keyboard = []
@@ -1589,11 +1629,31 @@ class SellHandlers:
                 # DEBUG LOG
                 logger.info(f"📸 IMAGE STORED - Cover: {cover_path}, Thumbnail: {thumbnail_url}, Temp ID: {temp_product_id}")
 
-                await update.message.reply_text(
+                # Message clair pour encourager l'utilisation de la mini app
+                lang = user_state.get('lang', 'fr')
+
+                file_upload_message = (
                     f"✅ **Image de couverture enregistrée!**\n\n"
-                    f"📁 **Étape 6/6 :** Envoyez maintenant votre fichier produit",
+                    f"📁 **Étape 6/6 : Fichier de formation**\n\n"
+                    f"⚠️ **FICHIERS VOLUMINEUX (>20 MB):**\n"
+                    f"👉 Cliquez sur le bouton **\"📤 Upload via Mini App\"** ci-dessous\n"
+                    f"   _(Permet upload jusqu'à 10 GB avec barre de progression)_\n\n"
+                    f"📎 **Petits fichiers (<20 MB):**\n"
+                    f"   Vous pouvez aussi envoyer directement ici"
+                ) if lang == 'fr' else (
+                    f"✅ **Cover image saved!**\n\n"
+                    f"📁 **Step 6/6: Training file**\n\n"
+                    f"⚠️ **LARGE FILES (>20 MB):**\n"
+                    f"👉 Click the **\"📤 Upload via Mini App\"** button below\n"
+                    f"   _(Allows upload up to 10 GB with progress bar)_\n\n"
+                    f"📎 **Small files (<20 MB):**\n"
+                    f"   You can also send directly here"
+                )
+
+                await update.message.reply_text(
+                    file_upload_message,
                     parse_mode='Markdown',
-                    reply_markup=self._get_product_creation_keyboard('file', user_state.get('lang', 'fr'))
+                    reply_markup=self._get_product_creation_keyboard('file', lang)
                 )
             else:
                 await update.message.reply_text("❌ Erreur lors du traitement de l'image")

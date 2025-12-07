@@ -56,6 +56,7 @@ class CallbackRouter:
         sell_routes = {
             'create_seller': lambda query, lang: self.bot.sell_handlers.create_seller_prompt(self.bot, query, lang),
             'add_product': lambda query, lang: self.bot.sell_handlers.add_product_prompt(self.bot, query, lang),
+            'continue_after_miniapp_upload': lambda query, lang: self.bot.sell_handlers.continue_after_miniapp_upload(self.bot, query, lang),
             'my_products': lambda query, lang: self.bot.sell_handlers.show_my_products(self.bot, query, lang),
             'my_wallet': lambda query, lang: self.bot.sell_handlers.show_wallet(self.bot, query, lang),
             'seller_logout': lambda query, lang: self.bot.sell_handlers.seller_logout(self.bot, query),

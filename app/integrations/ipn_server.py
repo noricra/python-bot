@@ -261,7 +261,7 @@ class ClientErrorRequest(BaseModel):
 
 @app.post("/api/generate-upload-url")
 async def generate_upload_url(request: GenerateUploadURLRequest):
-    """Étape 1: Le frontend demande une URL d'upload B2 sécurisée"""
+    """Étape 1: Le frontend demande une URL d'upload B2 Native API (CORS-compatible)"""
     if not verify_telegram_webapp_data(request.telegram_init_data):
         raise HTTPException(status_code=401, detail="Unauthorized - Invalid Init Data")
 
@@ -275,30 +275,30 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
         # Structure: uploads/USER_ID/DATE_UID.ext
         object_key = f"uploads/{request.user_id}/{timestamp}_{unique_id}.{ext}"
 
-        # Appel service B2
+        # Appel service B2 Native API
         b2 = B2StorageService()
-        upload_url = b2.generate_presigned_upload_url(
+        upload_data = b2.get_native_upload_url(
             object_key,
-            content_type=request.file_type or 'application/octet-stream',
-            expires_in=3600
+            content_type=request.file_type or 'application/octet-stream'
         )
 
-        if not upload_url:
+        if not upload_data:
             logger.error(
-                f"❌ B2 presigned URL generation returned None\n"
+                f"❌ B2 Native upload URL generation failed\n"
                 f"   User: {request.user_id}\n"
                 f"   File: {request.file_name}\n"
                 f"   Type: {request.file_type}\n"
                 f"   Object key: {object_key}"
             )
-            raise HTTPException(status_code=500, detail="B2 Presigned URL generation failed")
+            raise HTTPException(status_code=500, detail="B2 Upload URL generation failed")
 
-        logger.info(f"✅ Generated presigned URL for user {request.user_id}: {object_key}")
+        logger.info(f"✅ Generated B2 Native upload URL for user {request.user_id}: {object_key}")
 
         return {
-            "upload_url": upload_url,
-            "object_key": object_key,
-            "expires_in": 3600
+            "upload_url": upload_data['upload_url'],
+            "authorization_token": upload_data['authorization_token'],
+            "object_key": upload_data['object_key'],
+            "content_type": upload_data['content_type']
         }
     except Exception as e:
         logger.error(f"❌ Error generating URL: {e}")
@@ -320,6 +320,8 @@ async def upload_complete(request: UploadCompleteRequest):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
         # Vérification B2
         b2 = B2StorageService()
         if not b2.file_exists(request.object_key):
@@ -328,24 +330,44 @@ async def upload_complete(request: UploadCompleteRequest):
         # URL publique (ou privée selon bucket settings) pour référence interne
         b2_url = f"{core_settings.B2_ENDPOINT}/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
 
-        # Notification utilisateur via Bot
+        # Sauvegarder les infos du fichier dans l'état utilisateur pour la suite
         global telegram_application
         if telegram_application:
+            # Stocker les infos du fichier uploadé via miniapp dans user_state
+            from bot_mlt import MarketplaceBot
+            bot_instance = telegram_application.bot_data.get('bot_instance')
+
+            if bot_instance:
+                user_state = bot_instance.get_user_state(request.user_id)
+                product_data = user_state.get('product_data', {})
+
+                # Sauvegarder les infos du fichier
+                product_data['file_name'] = request.file_name
+                product_data['file_size'] = request.file_size
+                product_data['main_file_url'] = b2_url
+                product_data['object_key'] = request.object_key
+
+                user_state['product_data'] = product_data
+                bot_instance.save_user_state(request.user_id, user_state)
+
+            # Message de succès avec bouton pour continuer
             msg_text = (
                 f"✅ **Fichier reçu avec succès !**\n\n"
                 f"📁 Nom: `{request.file_name}`\n"
                 f"📊 Taille: `{request.file_size / (1024*1024):.2f} MB`\n\n"
                 f"Je prépare la suite..."
             )
+
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ Compris", callback_data='continue_after_miniapp_upload')
+            ]])
+
             await telegram_application.bot.send_message(
                 chat_id=request.user_id,
                 text=msg_text,
+                reply_markup=keyboard,
                 parse_mode='Markdown'
             )
-
-            # --- ICI : LOGIQUE DE SUITE (Ex: FSM State Transition) ---
-            # Vous pouvez déclencher une fonction du bot pour passer à l'étape "Set Price"
-            # context.user_data['temp_file_url'] = b2_url ...
 
         return {"status": "success", "b2_url": b2_url}
 
