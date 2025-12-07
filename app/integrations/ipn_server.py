@@ -253,6 +253,7 @@ class UploadCompleteRequest(BaseModel):
     file_size: int
     user_id: int
     telegram_init_data: str
+    preview_url: Optional[str] = None  # URL aperçu PDF généré côté client
 
 class ClientErrorRequest(BaseModel):
     error_type: str
@@ -315,42 +316,109 @@ async def log_client_error(request: ClientErrorRequest):
 
 @app.post("/api/upload-complete")
 async def upload_complete(request: UploadCompleteRequest):
-    """Étape 2: Le frontend confirme que l'upload est fini"""
+    """Étape 2: Le frontend confirme que l'upload est fini - Création du produit"""
     if not verify_telegram_webapp_data(request.telegram_init_data):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
         # Vérification B2
         b2 = B2StorageService()
         if not b2.file_exists(request.object_key):
             raise HTTPException(status_code=404, detail="File not found on B2 after upload")
 
-        # URL publique (ou privée selon bucket settings) pour référence interne
+        # URL du fichier sur B2
         b2_url = f"{core_settings.B2_ENDPOINT}/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
 
-        # Notification utilisateur via Bot
         global telegram_application
         if telegram_application:
-            msg_text = (
-                f"✅ **Fichier reçu avec succès !**\n\n"
-                f"📁 Nom: `{request.file_name}`\n"
-                f"📊 Taille: `{request.file_size / (1024*1024):.2f} MB`\n\n"
-                f"Je prépare la suite..."
-            )
-            await telegram_application.bot.send_message(
-                chat_id=request.user_id,
-                text=msg_text,
-                parse_mode='Markdown'
-            )
+            bot_instance = telegram_application.bot_data.get('bot_instance')
 
-            # --- ICI : LOGIQUE DE SUITE (Ex: FSM State Transition) ---
-            # Vous pouvez déclencher une fonction du bot pour passer à l'étape "Set Price"
-            # context.user_data['temp_file_url'] = b2_url ...
+            if bot_instance:
+                # Récupérer product_data qui contient déjà titre, description, prix, etc.
+                user_state = bot_instance.get_user_state(request.user_id)
+                product_data = user_state.get('product_data', {})
+                lang = user_state.get('lang', 'fr')
 
-        return {"status": "success", "b2_url": b2_url}
+                # Ajouter les infos du fichier uploadé
+                product_data['file_name'] = request.file_name
+                product_data['file_size'] = request.file_size
+                product_data['main_file_url'] = b2_url
+                product_data['seller_id'] = request.user_id
+
+                # Ajouter preview_url si fourni (PDF uniquement)
+                if request.preview_url:
+                    product_data['preview_url'] = request.preview_url
+                    logger.info(f"📸 Preview URL received: {request.preview_url}")
+
+                # Créer le produit (toutes les infos sont déjà présentes)
+                product_id = bot_instance.create_product(product_data)
+
+                if product_id:
+                    # Réinitialiser l'état utilisateur
+                    bot_instance.reset_user_state_preserve_login(request.user_id)
+
+                    # Envoyer emails de notification
+                    try:
+                        from app.core.email_service import EmailService
+                        from app.domain.repositories.user_repo import UserRepository
+                        from app.domain.repositories.product_repo import ProductRepository
+
+                        email_service = EmailService()
+                        user_repo = UserRepository()
+                        product_repo = ProductRepository()
+
+                        user_data = user_repo.get_user(request.user_id)
+
+                        if user_data and user_data.get('email'):
+                            await email_service.send_product_added_email(
+                                to_email=user_data['email'],
+                                seller_name=user_data.get('seller_name', 'Vendeur'),
+                                product_title=product_data['title'],
+                                product_price=f"{product_data['price_usd']:.2f}",
+                                product_id=product_id
+                            )
+
+                            # Email premier produit si applicable
+                            total_products = product_repo.count_products_by_seller(request.user_id)
+                            if total_products == 1:
+                                await email_service.send_first_product_published_notification(
+                                    to_email=user_data['email'],
+                                    seller_name=user_data.get('seller_name', 'Vendeur'),
+                                    product_title=product_data['title'],
+                                    product_price=product_data['price_usd']
+                                )
+                    except Exception as e:
+                        logger.error(f"Erreur envoi emails produit: {e}")
+
+                    # Message de succès
+                    success_msg = f"✅ **Produit créé avec succès!**\n\n**ID:** {product_id}\n**Titre:** {product_data['title']}\n**Prix:** ${product_data['price_usd']:.2f}"
+
+                    keyboard = InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🏪 Dashboard" if lang == 'en' else "🏪 Dashboard", callback_data='seller_dashboard'),
+                        InlineKeyboardButton("📦 Mes produits" if lang == 'fr' else "📦 My Products", callback_data='my_products')
+                    ]])
+
+                    await telegram_application.bot.send_message(
+                        chat_id=request.user_id,
+                        text=success_msg,
+                        reply_markup=keyboard,
+                        parse_mode='Markdown'
+                    )
+                else:
+                    # Erreur création produit
+                    await telegram_application.bot.send_message(
+                        chat_id=request.user_id,
+                        text="❌ Erreur lors de la création du produit"
+                    )
+
+        return {"status": "success", "product_id": product_id if 'product_id' in locals() else None}
 
     except Exception as e:
         logger.error(f"❌ Error completing upload: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
