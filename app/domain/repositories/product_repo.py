@@ -413,7 +413,7 @@ class ProductRepository:
             'description': product_data.get('description', ''),
             'category': product_data.get('category', 'General'),
             'price_usd': product_data.get('price_usd', product_data.get('price_eur', 0)),  # USDT only
-            'main_file_url': None,  # Will be updated after B2 upload
+            'main_file_url': product_data.get('main_file_url'),  # Will be updated after B2 upload
             'file_size_mb': round(product_data.get('file_size', 0) / (1024 * 1024), 2),
             'cover_image_url': product_data.get('cover_image_url'),
             'thumbnail_url': product_data.get('thumbnail_url'),
