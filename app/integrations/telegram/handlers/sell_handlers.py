@@ -1589,11 +1589,31 @@ class SellHandlers:
                 # DEBUG LOG
                 logger.info(f"📸 IMAGE STORED - Cover: {cover_path}, Thumbnail: {thumbnail_url}, Temp ID: {temp_product_id}")
 
-                await update.message.reply_text(
+                # Message clair pour encourager l'utilisation de la mini app
+                lang = user_state.get('lang', 'fr')
+
+                file_upload_message = (
                     f"✅ **Image de couverture enregistrée!**\n\n"
-                    f"📁 **Étape 6/6 :** Envoyez maintenant votre fichier produit",
+                    f"📁 **Étape 6/6 : Fichier de formation**\n\n"
+                    f"⚠️ **FICHIERS VOLUMINEUX (>20 MB):**\n"
+                    f"👉 Cliquez sur le bouton **\"📤 Upload via Mini App\"** ci-dessous\n"
+                    f"   _(Permet upload jusqu'à 10 GB avec barre de progression)_\n\n"
+                    f"📎 **Petits fichiers (<20 MB):**\n"
+                    f"   Vous pouvez aussi envoyer directement ici"
+                ) if lang == 'fr' else (
+                    f"✅ **Cover image saved!**\n\n"
+                    f"📁 **Step 6/6: Training file**\n\n"
+                    f"⚠️ **LARGE FILES (>20 MB):**\n"
+                    f"👉 Click the **\"📤 Upload via Mini App\"** button below\n"
+                    f"   _(Allows upload up to 10 GB with progress bar)_\n\n"
+                    f"📎 **Small files (<20 MB):**\n"
+                    f"   You can also send directly here"
+                )
+
+                await update.message.reply_text(
+                    file_upload_message,
                     parse_mode='Markdown',
-                    reply_markup=self._get_product_creation_keyboard('file', user_state.get('lang', 'fr'))
+                    reply_markup=self._get_product_creation_keyboard('file', lang)
                 )
             else:
                 await update.message.reply_text("❌ Erreur lors du traitement de l'image")
