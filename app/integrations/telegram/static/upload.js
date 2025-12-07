@@ -2,9 +2,27 @@
 const tg = window.Telegram.WebApp;
 tg.expand();
 
+// Vérifier que l'app est bien dans Telegram
+if (!tg.initData || tg.initData.length === 0) {
+    console.error('❌ Not running in Telegram WebApp or initData is empty');
+    document.body.innerHTML = `
+        <div style="padding: 20px; text-align: center;">
+            <h2>⚠️ Erreur</h2>
+            <p>Cette application doit être ouverte depuis Telegram.</p>
+            <p>Utilisez le bouton "📤 Upload via Mini App" dans le bot.</p>
+        </div>
+    `;
+    throw new Error('Not in Telegram WebApp');
+}
+
 // Get user data from Telegram
 const userId = tg.initDataUnsafe?.user?.id;
 const username = tg.initDataUnsafe?.user?.username;
+
+// Log for debugging
+console.log('✅ Telegram WebApp initialized');
+console.log('User ID:', userId);
+console.log('Init data length:', tg.initData.length);
 
 // DOM Elements
 const uploadArea = document.getElementById('uploadArea');
@@ -89,6 +107,8 @@ async function handleFileSelection(file) {
 
 // Request Presigned Upload URL from Backend
 async function requestPresignedUploadURL(fileName, fileType, userId) {
+    console.log('📤 Requesting presigned URL...');
+
     const response = await fetch('/api/generate-upload-url', {
         method: 'POST',
         headers: {
@@ -103,10 +123,15 @@ async function requestPresignedUploadURL(fileName, fileType, userId) {
     });
 
     if (!response.ok) {
-        throw new Error('Failed to get upload URL');
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData.detail || `HTTP ${response.status}`;
+        console.error('❌ Failed to get upload URL:', errorMsg);
+        throw new Error(`Erreur serveur: ${errorMsg}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log('✅ Presigned URL received');
+    return data;
 }
 
 // Upload File to B2 via Presigned URL
@@ -138,12 +163,51 @@ async function uploadFileToB2(file, uploadUrl, objectKey) {
             if (xhr.status >= 200 && xhr.status < 300) {
                 resolve();
             } else {
-                reject(new Error('Upload failed: ' + xhr.status));
+                // Log HTTP error details
+                const errorDetails = {
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    responseText: xhr.responseText || 'No response'
+                };
+                console.error('❌ Upload HTTP Error:', errorDetails);
+
+                // Send to backend for logging
+                fetch('/api/log-client-error', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        error_type: 'xhr_http_error',
+                        details: errorDetails,
+                        user_id: userId
+                    })
+                }).catch(() => {});
+
+                reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
             }
         });
 
         xhr.addEventListener('error', () => {
-            reject(new Error('Network error during upload'));
+            // Capture detailed error information
+            const errorDetails = {
+                status: xhr.status,
+                statusText: xhr.statusText,
+                readyState: xhr.readyState,
+                responseText: xhr.responseText || 'No response'
+            };
+            console.error('❌ XHR Network Error:', errorDetails);
+
+            // Send to backend for logging
+            fetch('/api/log-client-error', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    error_type: 'xhr_network_error',
+                    details: errorDetails,
+                    user_id: userId
+                })
+            }).catch(() => {});
+
+            reject(new Error(`Network error: ${xhr.status} ${xhr.statusText}`));
         });
 
         xhr.open('PUT', uploadUrl);
@@ -154,6 +218,8 @@ async function uploadFileToB2(file, uploadUrl, objectKey) {
 
 // Notify Backend Upload Complete
 async function notifyUploadComplete(objectKey, fileName, fileSize) {
+    console.log('📢 Notifying server...');
+
     const response = await fetch('/api/upload-complete', {
         method: 'POST',
         headers: {
@@ -169,8 +235,13 @@ async function notifyUploadComplete(objectKey, fileName, fileSize) {
     });
 
     if (!response.ok) {
-        throw new Error('Failed to notify upload completion');
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData.detail || `HTTP ${response.status}`;
+        console.error('❌ Failed to notify completion:', errorMsg);
+        throw new Error(`Erreur notification: ${errorMsg}`);
     }
+
+    console.log('✅ Server notified');
 }
 
 // UI State Management

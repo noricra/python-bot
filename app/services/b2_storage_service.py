@@ -171,16 +171,31 @@ class B2StorageService:
             return None
 
         try:
+            # Log params before generation
+            params = {
+                'Bucket': self.bucket_name,
+                'Key': object_key,
+                'ContentType': content_type
+            }
+            logger.info(f"🔧 Generating presigned URL with params: {params}")
+
             url = self.client.generate_presigned_url(
                 'put_object',
-                Params={
-                    'Bucket': self.bucket_name,
-                    'Key': object_key,
-                    'ContentType': content_type
-                },
+                Params=params,
                 ExpiresIn=expires_in
             )
-            logger.info(f"✅ Presigned upload URL generated for: {object_key} (Content-Type: {content_type})")
+
+            # Log URL details
+            from urllib.parse import urlparse, parse_qs
+            parsed = urlparse(url)
+            query_params = parse_qs(parsed.query)
+            logger.info(
+                f"✅ Presigned URL generated:\n"
+                f"   Host: {parsed.scheme}://{parsed.netloc}\n"
+                f"   Path: {parsed.path}\n"
+                f"   Query params keys: {list(query_params.keys())}\n"
+                f"   Content-Type in URL: {'Content-Type' in url or 'content-type' in url.lower()}"
+            )
             return url
 
         except ClientError as e:
