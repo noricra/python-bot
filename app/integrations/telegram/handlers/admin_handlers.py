@@ -84,13 +84,12 @@ class AdminHandlers:
                 text += f"📊 Total: {len(users)} utilisateurs\n\n" if lang == 'fr' else f"📊 Total: {len(users)} users\n\n"
 
                 for i, user in enumerate(users[:30], 1):  # Show first 30 for readability
-                    status = "🟢 Vendeur" if user.get('is_seller') else "🔵 Acheteur"
-                    status_en = "🟢 Seller" if user.get('is_seller') else "🔵 Buyer"
+                    status = "🟢 Vendeur" if user.get('is_seller') else "🔵 User"
+                    status_en = "🟢 Seller" if user.get('is_seller') else "🔵 User"
                     display_status = status if lang == 'fr' else status_en
 
-                    # Utiliser seller_name pour les vendeurs, sinon first_name
-                    display_name = user.get('seller_name') or user.get('first_name', 'N/A')
                     username = user.get('username', 'N/A')
+                    first_name = user.get('first_name', 'N/A')
 
                     # Fix datetime subscriptable error
                     reg_date = user.get('registration_date')
@@ -125,14 +124,13 @@ class AdminHandlers:
             keyboard = []
             for i, user in enumerate(users[:8], 1):
                 user_id = user.get('user_id', 0)
-                # Utiliser seller_name en priorité (jamais NULL), sinon first_name
-                display_name = user.get('seller_name') or user.get('first_name') or f'User_{user_id}'
+                username = user.get('seller_name') if user.get('is_seller') else (user.get('username') or user.get('first_name') or f'User_{user_id}')
                 is_suspended = user.get('is_suspended', False)
                 emoji = "🚫" if is_suspended else ("🟢" if user.get('is_seller') else "🔵")
 
                 keyboard.append([
                     InlineKeyboardButton(
-                        f"{emoji} {display_name[:20]}",
+                        f"{emoji} {username[:20]}",
                         callback_data=f'admin_user_detail_{user_id}'
                     )
                 ])
