@@ -219,11 +219,6 @@ class AdminHandlers:
                 ])
 
             keyboard.append([
-                InlineKeyboardButton("📧 Voir email complet", callback_data=f'admin_show_email_{user_id}'),
-                InlineKeyboardButton("📊 Voir produits", callback_data=f'admin_user_products_{user_id}')
-            ])
-
-            keyboard.append([
                 InlineKeyboardButton("🔙 Liste utilisateurs" if lang == 'fr' else "🔙 Users List", callback_data='admin_users')
             ])
 
@@ -258,22 +253,15 @@ class AdminHandlers:
             [InlineKeyboardButton("❌ Annuler", callback_data=f'admin_user_detail_{user_id}')]
         ]
 
-        # Set state for text input
-        from bot_mlt import MarketplaceBot
-        if hasattr(query, 'from_user'):
-            admin_id = query.from_user.id
-            # Use bot's state manager
-            self.bot = MarketplaceBot() if not hasattr(self, 'bot') else self.bot
-            # Note: This is a simplified approach - ideally should be handled via state
-            await query.edit_message_text(
-                f"🚫 **SUSPENSION EN DÉVELOPPEMENT**\n\n"
-                f"Cette fonctionnalité nécessite l'input admin.\n"
-                f"Pour l'instant, utilisez:\n\n"
-                f"`/admin_suspend {user_id} <raison> <jours>`\n\n"
-                f"Exemple: `/admin_suspend {user_id} spam 7`",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+        await query.edit_message_text(
+            f"🚫 **SUSPENSION EN DÉVELOPPEMENT**\n\n"
+            f"Cette fonctionnalité nécessite l'input admin.\n"
+            f"Pour l'instant, utilisez:\n\n"
+            f"`/admin_suspend {user_id} <raison> <jours>`\n\n"
+            f"Exemple: `/admin_suspend {user_id} spam 7`",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
 
     async def admin_restore_user_confirm(self, query, lang, user_id: int):
         """Rétablir un utilisateur suspendu"""
@@ -586,7 +574,7 @@ class AdminHandlers:
             ''', (suspend_marker, user_id))
 
             # Suspend all their products
-            cursor.execute('UPDATE products SET status = "suspended" WHERE seller_user_id = %s', (user_id,))
+            cursor.execute("UPDATE products SET status = 'suspended' WHERE seller_user_id = %s", (user_id,))
 
             conn.commit()
             put_connection(conn)
@@ -725,7 +713,7 @@ class AdminHandlers:
             ''', (original_name, user_id))
 
             # Restore all their products (set back to active)
-            cursor.execute('UPDATE products SET status = "active" WHERE seller_user_id = %s AND status = "suspended"', (user_id,))
+            cursor.execute("UPDATE products SET status = 'active' WHERE seller_user_id = %s AND status = 'suspended'", (user_id,))
 
             conn.commit()
             put_connection(conn)
