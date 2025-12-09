@@ -88,8 +88,14 @@ class AdminHandlers:
                     status_en = "🟢 Seller" if user.get('is_seller') else "🔵 User"
                     display_status = status if lang == 'fr' else status_en
 
+                    # Échapper les caractères spéciaux Markdown
                     username = user.get('username', 'N/A')
                     first_name = user.get('first_name', 'N/A')
+                    # Échapper _ * [ ] ( ) ~ ` > # + - = | { } . !
+                    if username != 'N/A':
+                        username = username.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
+                    if first_name != 'N/A':
+                        first_name = first_name.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
 
                     # Fix datetime subscriptable error
                     reg_date = user.get('registration_date')
