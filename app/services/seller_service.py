@@ -73,6 +73,14 @@ class SellerService:
                 put_connection(conn)
                 return {'success': False, 'error': 'Cet email est déjà utilisé par un autre vendeur'}
 
+            # Vérifier si l'utilisateur est suspendu
+            cursor.execute("SELECT seller_name FROM users WHERE user_id = %s", (user_id,))
+            user_check = cursor.fetchone()
+            if user_check and user_check.get('seller_name') and user_check['seller_name'].startswith('[SUSPENDED]'):
+                put_connection(conn)
+                logger.warning(f"Suspended user {user_id} tried to re-register as seller")
+                return {'success': False, 'error': 'Votre compte est suspendu. Contactez l\'administration.'}
+
             try:
                 # Ensure user exists in database
                 self._ensure_user_exists(cursor, user_id)
