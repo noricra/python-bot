@@ -88,8 +88,9 @@ class AdminHandlers:
                     status_en = "🟢 Seller" if user.get('is_seller') else "🔵 Buyer"
                     display_status = status if lang == 'fr' else status_en
 
+                    # Utiliser seller_name pour les vendeurs, sinon first_name
+                    display_name = user.get('seller_name') or user.get('first_name', 'N/A')
                     username = user.get('username', 'N/A')
-                    first_name = user.get('first_name', 'N/A')
 
                     # Fix datetime subscriptable error
                     reg_date = user.get('registration_date')
@@ -124,13 +125,14 @@ class AdminHandlers:
             keyboard = []
             for i, user in enumerate(users[:8], 1):
                 user_id = user.get('user_id', 0)
-                username = user.get('username', user.get('first_name', f'User_{user_id}'))
+                # Utiliser seller_name en priorité (jamais NULL), sinon first_name
+                display_name = user.get('seller_name') or user.get('first_name') or f'User_{user_id}'
                 is_suspended = user.get('is_suspended', False)
                 emoji = "🚫" if is_suspended else ("🟢" if user.get('is_seller') else "🔵")
 
                 keyboard.append([
                     InlineKeyboardButton(
-                        f"{emoji} {username[:20]}",
+                        f"{emoji} {display_name[:20]}",
                         callback_data=f'admin_user_detail_{user_id}'
                     )
                 ])
