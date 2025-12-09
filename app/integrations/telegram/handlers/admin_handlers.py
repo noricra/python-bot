@@ -75,6 +75,7 @@ class AdminHandlers:
         """Gestion utilisateurs - Liste et recherche unifiées"""
         try:
             users = self.user_repo.get_all_users(limit=50)  # Increased limit
+            users = users or []  # Protection contre None
             text = "👥 **GESTION DES UTILISATEURS**\n\n" if lang == 'fr' else "👥 **USER MANAGEMENT**\n\n"
 
             if not users:
@@ -104,7 +105,7 @@ class AdminHandlers:
                     suspended_icon = " 🚫" if is_suspended else ""
 
                     text += f"**{i}.** {display_status}{suspended_icon}\n"
-                    text += f"   • ID: `{user['user_id']}`\n"
+                    text += f"   • ID: `{user.get('user_id', 'N/A')}`\n"
                     text += f"   • Nom: {first_name}\n" if lang == 'fr' else f"   • Name: {first_name}\n"
                     text += f"   • Username: @{username}\n" if username != 'N/A' else ""
 
@@ -122,7 +123,7 @@ class AdminHandlers:
             # Create user buttons (show first 8 users as buttons)
             keyboard = []
             for i, user in enumerate(users[:8], 1):
-                user_id = user['user_id']
+                user_id = user.get('user_id', 0)
                 username = user.get('username', user.get('first_name', f'User_{user_id}'))
                 is_suspended = user.get('is_suspended', False)
                 emoji = "🚫" if is_suspended else ("🟢" if user.get('is_seller') else "🔵")
