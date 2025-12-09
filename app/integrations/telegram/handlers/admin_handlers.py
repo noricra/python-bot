@@ -89,12 +89,12 @@ class AdminHandlers:
                     display_status = status if lang == 'fr' else status_en
 
                     # Échapper les caractères spéciaux Markdown
-                    username = user.get('username', 'N/A')
-                    first_name = user.get('first_name', 'N/A')
+                    username = user.get('username') or 'N/A'
+                    first_name = user.get('first_name') or 'N/A'
                     # Échapper _ * [ ] ( ) ~ ` > # + - = | { } . !
-                    if username != 'N/A':
+                    if username and username != 'N/A':
                         username = username.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
-                    if first_name != 'N/A':
+                    if first_name and first_name != 'N/A':
                         first_name = first_name.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
 
                     # Fix datetime subscriptable error
@@ -605,8 +605,14 @@ class AdminHandlers:
             else:
                 email_status = "⚠️ Pas d'email - notification non envoyée"
 
-            username = user_data.get('username', 'N/A')
-            first_name = user_data.get('first_name', 'N/A')
+            username = user_data.get('username') or 'N/A'
+            first_name = user_data.get('first_name') or 'N/A'
+
+            # Échapper les caractères Markdown
+            if username and username != 'N/A':
+                username = username.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
+            if first_name and first_name != 'N/A':
+                first_name = first_name.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
 
             await update.message.reply_text(
                 f"✅ **Utilisateur suspendu**\n\n👤 **ID:** `{user_id}`\n📝 **Nom:** {first_name}\n📝 **Username:** @{username}\n\n🚫 **Actions prises:**\n• Statut vendeur retiré\n• Produits suspendus\n• Accès marketplace restreint\n\n📧 **Notification:** {email_status}\n\nℹ️ Utilisez /admin pour le rétablir",
@@ -724,8 +730,14 @@ class AdminHandlers:
             conn.commit()
             put_connection(conn)
 
-            username = user_data.get('username', 'N/A')
-            first_name = user_data.get('first_name', 'N/A')
+            username = user_data.get('username') or 'N/A'
+            first_name = user_data.get('first_name') or 'N/A'
+
+            # Échapper les caractères Markdown
+            if username and username != 'N/A':
+                username = username.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
+            if first_name and first_name != 'N/A':
+                first_name = first_name.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
 
             await update.message.reply_text(
                 f"✅ **Utilisateur rétabli**\n\n **ID:** `{user_id}`\n **Nom:** {first_name}\n **Username:** @{username}\n\n🔄 **Actions prises:**\n• Statut vendeur rétabli ({suspended_products_count} produits réactivés)\n• Accès marketplace restauré",
