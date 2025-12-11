@@ -925,19 +925,31 @@ Contact support with your Order ID"""
             # Build keyboard
             keyboard = []
 
-            # Row 1: BUY BUTTON (always accessible - V2 SPEC)
-            # Pass context to maintain closed circuit
-            if category_key and index is not None:
-                buy_callback = f'buy_product_{product_id}_{category_key}_{index}'
-            else:
-                buy_callback = f'buy_product_{product_id}'
+            # Row 1: BUY/LIBRARY BUTTON - Vérifier ownership pour éviter achats en double
+            user_id = query.from_user.id
 
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"💳 ACHETER - {product['price_usd']}€ 💳" if lang == 'fr' else f"💳 BUY - {product['price_usd']}€ 💳",
-                    callback_data=buy_callback
-                )
-            ])
+            if self.order_repo.check_user_purchased_product(user_id, product_id):
+                # Utilisateur possède déjà ce produit → Bouton bibliothèque
+                keyboard.append([
+                    InlineKeyboardButton(
+                        "📚 Voir dans ma bibliothèque" if lang == 'fr' else "📚 View in Library",
+                        callback_data='library_menu'
+                    )
+                ])
+            else:
+                # Utilisateur ne possède pas encore → Bouton acheter
+                # Pass context to maintain closed circuit
+                if category_key and index is not None:
+                    buy_callback = f'buy_product_{product_id}_{category_key}_{index}'
+                else:
+                    buy_callback = f'buy_product_{product_id}'
+
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"💳 ACHETER - {product['price_usd']}$ 💳" if lang == 'fr' else f"💳 BUY - {product['price_usd']}$ 💳",
+                        callback_data=buy_callback
+                    )
+                ])
 
             # Row 2: Pagination (if needed) - Asymétrique sans boutons vides
             if total_reviews > reviews_per_page:
