@@ -36,12 +36,9 @@ class ReviewRepository:
 
             query = '''
                 SELECT
-                    r.review_id,
                     r.product_id,
                     r.buyer_user_id,
-                    r.order_id,
                     r.rating,
-                    r.comment,
                     r.review_text,
                     r.created_at,
                     r.updated_at,
@@ -61,12 +58,9 @@ class ReviewRepository:
             reviews = []
             for row in rows:
                 reviews.append({
-                    'id': row['review_id'],
                     'product_id': row['product_id'],
                     'buyer_user_id': row['buyer_user_id'],
-                    'order_id': row['order_id'],
                     'rating': row['rating'],
-                    'comment': row['comment'],
                     'review_text': row['review_text'],
                     'created_at': row['created_at'],
                     'updated_at': row['updated_at'],
@@ -146,17 +140,15 @@ class ReviewRepository:
                 'rating_distribution': {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
             }
 
-    def add_review(self, product_id: str, buyer_user_id: int, order_id: str,
-                   rating: int, comment: str = None, review_text: str = None) -> bool:
+    def add_review(self, product_id: str, buyer_user_id: int,
+                   rating: int, review_text: str = None) -> bool:
         """
         Add a new review for a product
 
         Args:
             product_id: Product ID
             buyer_user_id: Buyer's user ID
-            order_id: Order ID
             rating: Rating 1-5
-            comment: Short comment
             review_text: Detailed review text
 
         Returns:
@@ -168,9 +160,10 @@ class ReviewRepository:
 
             cursor.execute('''
                 INSERT INTO reviews
-                (product_id, buyer_user_id, order_id, rating, comment, review_text)
-                VALUES (%s, %s) ON CONFLICT DO NOTHING
-            ''', (product_id, buyer_user_id, order_id, rating, comment, review_text))
+                (product_id, buyer_user_id, rating, review_text)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (buyer_user_id, product_id) DO NOTHING
+            ''', (product_id, buyer_user_id, rating, review_text))
 
             conn.commit()
             put_connection(conn)
