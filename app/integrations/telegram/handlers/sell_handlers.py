@@ -5,7 +5,7 @@ import logging
 import asyncio  # <--- AJOUT CRITIQUE
 import psycopg2
 import psycopg2.extras
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from app.core.db_pool import put_connection
 from app.core.i18n import t as i18n
 from app.integrations.telegram.keyboards import sell_menu_keyboard, back_to_main_button
@@ -103,6 +103,11 @@ class SellHandlers:
                 InlineKeyboardButton(
                     "🚀 Créer mon compte vendeur" if lang == 'fr' else "🚀 Create seller account",
                     callback_data='create_seller'
+                )
+            ], [
+                InlineKeyboardButton(
+                    "🔐 Se reconnecter" if lang == 'fr' else "🔐 Login",
+                    callback_data='seller_login_menu'
                 )
             ], [
                 InlineKeyboardButton(
@@ -1596,19 +1601,19 @@ class SellHandlers:
                 file_upload_message = (
                     f"✅ **Image de couverture enregistrée!**\n\n"
                     f"📁 **Étape 6/6 : Fichier de formation**\n\n"
-                    f"⚠️ **FICHIERS VOLUMINEUX (>20 MB):**\n"
-                    f"👉 Cliquez sur le bouton **\"📤 Upload via Mini App\"** ci-dessous\n"
+                  
+                    f" Cliquez sur le bouton **\"📤 Upload via Mini App\"** ci-dessous\n"
                     f"   _(Permet upload jusqu'à 10 GB avec barre de progression)_\n\n"
-                    f"📎 **Petits fichiers (<20 MB):**\n"
-                    f"   Vous pouvez aussi envoyer directement ici"
+                   
+                 
                 ) if lang == 'fr' else (
                     f"✅ **Cover image saved!**\n\n"
                     f"📁 **Step 6/6: Training file**\n\n"
-                    f"⚠️ **LARGE FILES (>20 MB):**\n"
-                    f"👉 Click the **\"📤 Upload via Mini App\"** button below\n"
+                    
+                    f" Click the **\"📤 Upload via Mini App\"** button below\n"
                     f"   _(Allows upload up to 10 GB with progress bar)_\n\n"
-                    f"📎 **Small files (<20 MB):**\n"
-                    f"   You can also send directly here"
+                 
+                   
                 )
 
                 await update.message.reply_text(
@@ -1637,7 +1642,6 @@ class SellHandlers:
             # Validation du fichier
             # 1. Taille (20MB max pour chat, 10GB max pour miniapp)
             if document.file_size > 20 * 1024 * 1024:  # 20MB max chat
-                from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
                 from app.core import settings as core_settings
 
                 # Construire URL de la miniapp avec langue
@@ -1787,7 +1791,17 @@ class SellHandlers:
             logger.error(f"Error processing file upload: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            await update.message.reply_text("Erreur lors du traitement du fichier")
+
+            # Message d'erreur plus informatif selon le type d'erreur
+            error_type = type(e).__name__
+            if "B2" in str(e) or "upload" in str(e).lower():
+                error_msg = "❌ Erreur lors de l'upload du fichier. Vérifiez votre connexion et réessayez."
+            elif "database" in str(e).lower() or isinstance(e, psycopg2.Error):
+                error_msg = "❌ Erreur de base de données. Contactez le support."
+            else:
+                error_msg = f"❌ Erreur lors du traitement du fichier."
+
+            await update.message.reply_text(error_msg)
 
     async def _rename_product_images(self, seller_id, temp_product_id, final_product_id, product_data):
         """Rename product image directory, upload to B2, and UPDATE DATABASE with B2 URLs"""
