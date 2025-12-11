@@ -43,7 +43,7 @@ class BuyHandlers:
 
     def _build_buy_button_label(self, price_usd: float, lang: str = 'fr') -> str:
         """Génère le label du bouton buy (réutilisable partout)"""
-        return f"💳 ACHETER - ${price_usd:.2f} 💳 💳" if lang == 'fr' else f"💳 BUY - ${price_usd:.2f} 💳 💳"
+        return f"💳 ACHETER - ${price_usd:.2f} 💳" if lang == 'fr' else f"💳 BUY - ${price_usd:.2f} 💳"
 
     def _build_product_caption(self, product: Dict, mode: str = 'short', lang: str = 'fr') -> str:
         """
