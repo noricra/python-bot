@@ -1679,12 +1679,16 @@ class SellHandlers:
                 return
 
             # Télécharger et sauvegarder le fichier TEMPORAIREMENT
+            logger.info(f"📥 Downloading file from Telegram: {document.file_name}")
             file_info = await document.get_file()
             filename = await bot.save_uploaded_file(file_info, document.file_name)
 
             if not filename:
+                logger.error(f"❌ Failed to save uploaded file: {document.file_name}")
                 await update.message.reply_text("❌ Erreur lors de la sauvegarde du fichier")
                 return
+
+            logger.info(f"✅ File saved locally: {filename}")
 
             # Ajouter le fichier aux données produit (temporaire, sera uploadé sur B2)
             product_data['file_name'] = document.file_name
@@ -1693,6 +1697,7 @@ class SellHandlers:
 
             # Créer le produit avec le seller_id mappé
             product_data['seller_id'] = seller_id
+            logger.info(f"📦 Creating product in database with data: {product_data.get('title')}")
             product_id = bot.create_product(product_data)
 
             if product_id:
@@ -1708,18 +1713,21 @@ class SellHandlers:
                 # --- CORRECTIF UPLOAD B2 (Thread non-bloquant) ---
                 from app.core.file_utils import get_product_file_path
                 from app.services.b2_storage_service import B2StorageService
-                
+
+                logger.info(f"📤 Preparing B2 upload for product {product_id}")
                 local_file_path = get_product_file_path(filename)
-                
+
+                if not os.path.exists(local_file_path):
+                    logger.error(f"❌ Local file not found: {local_file_path}")
+                    await update.message.reply_text("❌ Fichier local introuvable après sauvegarde")
+                    return
+
                 # 1. On utilise le service directement (pas via helper obscure)
                 b2_service = B2StorageService()
-                
+
                 # 2. On exécute l'upload dans un thread séparé (Executor)
                 # Cela empêche le blocage du bot pendant les 20s de timeout ou l'upload
-                loop = asyncio.get_running_loop()
-                
-                # Note: b2_service.upload_file est synchrone (bloquant) de base
-                # On l'envoie dans un thread pool
+                logger.info(f"☁️ Uploading to B2: {local_file_path} -> {product_id}")
                 b2_url = await b2_service.upload_file(local_file_path, product_id)
 
                 if b2_url:
