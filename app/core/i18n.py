@@ -89,10 +89,14 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'err_purchase_error': "❌ Erreur lors de l'achat.",
         'err_invalid_price': "❌ Prix invalide ($2-5000).",
         'err_price_update_error': "❌ Prix invalide ($2-5000) ou erreur mise à jour.",
+        'err_title_update_error': "❌ Titre invalide (minimum 3 caractères) ou erreur mise à jour.",
+        'err_description_update_error': "❌ Description invalide ou erreur mise à jour.",
         'err_payment_creation': "💳 **Erreur de paiement**\n\n⚠️ Impossible de créer votre transaction crypto.\n\n🔧 **Solutions possibles :**\n• Vérifiez votre connexion internet\n• Réessayez avec une autre crypto\n• Contactez le support si le problème persiste\n\n💬 **Support disponible 24/7**",
 
         # Succès
         'success_price_updated': "✅ Prix mis à jour avec succès !",
+        'success_title_updated': "✅ Titre mis à jour avec succès !",
+        'success_description_updated': "✅ Description mise à jour avec succès !",
 
         # Admin
         'admin_back': "🔙 Retour",
@@ -198,10 +202,14 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'err_purchase_error': "❌ Purchase error.",
         'err_invalid_price': "❌ Invalid price ($2-5000).",
         'err_price_update_error': "❌ Invalid price ($2-5000) or update error.",
+        'err_title_update_error': "❌ Invalid title (minimum 3 characters) or update error.",
+        'err_description_update_error': "❌ Invalid description or update error.",
         'err_payment_creation': "❌ Error creating payment.",
 
         # Success
         'success_price_updated': "✅ Price updated successfully!",
+        'success_title_updated': "✅ Title updated successfully!",
+        'success_description_updated': "✅ Description updated successfully!",
 
         # Admin
         'admin_back': "🔙 Back",
