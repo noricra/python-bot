@@ -59,15 +59,21 @@ class OrderRepository:
         finally:
             put_connection(conn)
 
-    def update_payment_status(self, order_id: str, status: str) -> bool:
+    def update_payment_status(self, order_id: str, status: str, payment_id: str = None) -> bool:
         conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
-            # Mettre à jour le statut
-            cursor.execute(
-                'UPDATE orders SET payment_status = %s WHERE order_id = %s',
-                (status, order_id)
-            )
+            # Mettre à jour le statut (et payment_id si fourni)
+            if payment_id:
+                cursor.execute(
+                    'UPDATE orders SET payment_status = %s, payment_id = %s, completed_at = NOW() WHERE order_id = %s',
+                    (status, payment_id, order_id)
+                )
+            else:
+                cursor.execute(
+                    'UPDATE orders SET payment_status = %s WHERE order_id = %s',
+                    (status, order_id)
+                )
 
             # Si paiement complété, incrémenter sales_count et total_revenue
             if status == 'completed':
