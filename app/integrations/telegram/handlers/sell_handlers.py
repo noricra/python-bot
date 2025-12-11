@@ -222,7 +222,7 @@ class SellHandlers:
         # Storage limit: 10GB
         storage_limit_gb = 10
         storage_limit_mb = storage_limit_gb * 1024  # Conversion pour comparaison
-        storage_text = f"\n\n📦 Stockage: {storage_used_mb:.1f} MB / {storage_limit_gb} GB"
+        storage_text = f"\n\n Stockage: {storage_used_mb:.1f} MB / {storage_limit_gb} GB"
 
         # Message texte simple
         dashboard_text = i18n(lang, 'dashboard_welcome').format(
