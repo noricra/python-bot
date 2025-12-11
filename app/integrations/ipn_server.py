@@ -30,6 +30,8 @@ from app.core.database_init import get_postgresql_connection
 from app.core.db_pool import put_connection
 from app.core.file_utils import get_b2_presigned_url
 from app.services.b2_storage_service import B2StorageService
+from app.domain.repositories.order_repo import OrderRepository
+from app.services.seller_payout_service import SellerPayoutService
 
 # --- IMPORTS DU BOT ---
 from app.integrations.telegram.app_builder import build_application
@@ -599,44 +601,53 @@ async def nowpayments_ipn(request: Request):
     if payment_status not in ['finished', 'confirmed']:
         return {"status": "ignored", "reason": f"Status is {payment_status}"}
 
-    # 3. Mise à jour Base de Données
-    conn = get_postgresql_connection()
+    # 3. Mise à jour Base de Données via Repositories
     try:
-        cursor = conn.cursor()
+        order_repo = OrderRepository()
+        payout_service = SellerPayoutService()
 
-        # Vérifier si déjà traité
-        cursor.execute("SELECT status, buyer_id, product_id FROM orders WHERE order_id = %s", (order_id,))
-        row = cursor.fetchone()
+        # Vérifier si l'order existe
+        order = order_repo.get_order_by_id(order_id)
 
-        if not row:
+        if not order:
             logger.error(f"❌ Order {order_id} not found in DB")
             return {"status": "error", "message": "Order not found"}
 
-        current_status, buyer_id, product_id = row
+        payment_status = order.get('payment_status')
+        buyer_user_id = order.get('buyer_user_id')
+        product_id = order.get('product_id')
 
-        if current_status == 'completed':
+        # Vérifier si déjà traité
+        if payment_status == 'completed':
             logger.info(f"ℹ️ Commande {order_id} déjà complétée")
             return {"status": "ok", "message": "Already completed"}
 
-        # Update Status
-        cursor.execute("""
-            UPDATE orders
-            SET status = 'completed',
-                payment_id = %s,
-                updated_at = NOW()
-            WHERE order_id = %s
-        """, (payment_id, order_id))
+        # Mettre à jour le statut (incrémente automatiquement sales_count, total_sales, total_revenue)
+        success = order_repo.update_payment_status(order_id, 'completed', payment_id)
 
-        conn.commit()
+        if not success:
+            logger.error(f"❌ Failed to update payment status for order {order_id}")
+            raise HTTPException(status_code=500, detail="Failed to update order")
+
+        logger.info(f"✅ Order {order_id} marked as completed - sales_count incremented")
+
+        # Créer le payout pour le vendeur
+        payout_id = await payout_service.create_payout_from_order_async(order_id)
+
+        if payout_id:
+            logger.info(f"✅ Payout {payout_id} created for order {order_id}")
+        else:
+            logger.warning(f"⚠️ Could not create payout for order {order_id} (seller may not have wallet configured)")
 
         # 4. Livraison du produit
-        await send_formation_to_buyer(buyer_id, order_id, product_id)
+        await send_formation_to_buyer(buyer_user_id, order_id, product_id)
 
+    except HTTPException:
+        raise
     except Exception as e:
-        conn.rollback()
-        logger.error(f"❌ DB Error processing IPN: {e}")
+        logger.error(f"❌ Error processing IPN: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    finally:
-        put_connection(conn)
 
     return {"status": "ok"}
