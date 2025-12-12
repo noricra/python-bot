@@ -15,8 +15,8 @@ class CoreHandlers:
         """Nouveau menu d'accueil marketplace"""
         user = update.effective_user
 
-        # 🔧 FIX: Réinitialiser tous les états (support, recherche, etc.) sauf la langue
-        marketplace_bot.reset_user_state(user.id, keep={'lang'})
+        # 🔧 FIX: Réinitialiser tous les états (support, recherche, etc.) sauf la langue et requires_relogin
+        marketplace_bot.reset_user_state(user.id, keep={'lang', 'requires_relogin'})
 
         # Conserver l'état (ne pas déconnecter). Simplement assurer l'inscription DB.
         self.user_repo.add_user(user.id, user.username, user.first_name, user.language_code or 'fr')
@@ -160,9 +160,11 @@ class CoreHandlers:
 
     async def back_to_main_with_bot(self, marketplace_bot, query, lang):
         """Menu principal avec accès au MarketplaceBot - appelé via callback router"""
+        await query.answer()
+
         user_id = query.from_user.id
-        # 🔧 FIX: Réinitialiser TOUS les états quand on retourne au menu principal
-        marketplace_bot.reset_user_state(user_id, keep={'lang'})
+        # 🔧 FIX: Réinitialiser TOUS les états quand on retourne au menu principal (sauf requires_relogin)
+        marketplace_bot.reset_user_state(user_id, keep={'lang', 'requires_relogin'})
 
         # Utiliser la fonction centralisée pour garantir la cohérence
         from app.integrations.telegram.keyboards import main_menu_keyboard
