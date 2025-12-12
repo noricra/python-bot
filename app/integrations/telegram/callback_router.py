@@ -264,6 +264,9 @@ class CallbackRouter:
 
         # 🎠 Phase 2: Carousel navigation (carousel_{category}_{index})
         if callback_data.startswith('carousel_'):
+            # ⚡ FIX: Answer immediately to prevent button blinking
+            await query.answer()
+
             try:
                 # Parse: carousel_FinanceCrypto_2 or carousel_seller_123_1
                 parts = callback_data.replace('carousel_', '').rsplit('_', 1)
@@ -281,7 +284,8 @@ class CallbackRouter:
                             self.bot, query, category, active_products, index, lang
                         )
                     else:
-                        await query.answer("No products found" if lang == 'en' else "Aucun produit trouvé")
+                        # Already answered above, just return
+                        pass
                 else:
                     # Regular category navigation
                     products = self.bot.buy_handlers.product_repo.get_products_by_category(category, limit=100, offset=0)
@@ -291,16 +295,20 @@ class CallbackRouter:
                             self.bot, query, category, products, index, lang
                         )
                     else:
-                        await query.answer("No products found" if lang == 'en' else "Aucun produit trouvé")
+                        # Already answered above, just return
+                        pass
 
                 return True
             except Exception as e:
                 logger.error(f"Error in carousel navigation: {e}")
-                await query.answer("Error" if lang == 'en' else "Erreur")
+                # Already answered above, no need to answer again
                 return True
 
         # 🎠 Seller product carousel navigation (seller_carousel_{index})
         if callback_data.startswith('seller_carousel_'):
+            # ⚡ FIX: Answer immediately to prevent button blinking
+            await query.answer()
+
             try:
                 index = int(callback_data.replace('seller_carousel_', ''))
                 seller_id = self.bot.get_seller_id(query.from_user.id)
@@ -310,13 +318,11 @@ class CallbackRouter:
                     await self.bot.sell_handlers.show_seller_product_carousel(
                         self.bot, query, products, index, lang
                     )
-                else:
-                    await query.answer("No products found" if lang == 'en' else "Aucun produit trouvé")
 
                 return True
             except Exception as e:
                 logger.error(f"Error in seller carousel navigation: {e}")
-                await query.answer("Error" if lang == 'en' else "Erreur")
+                # Already answered above
                 return True
 
         # 🏪 Seller shop view (seller_shop_{seller_user_id})
@@ -343,6 +349,9 @@ class CallbackRouter:
 
         # 🔍 Search results navigation (search_nav_{query}_{index})
         if callback_data.startswith('search_nav_'):
+            # ⚡ FIX: Answer immediately to prevent button blinking
+            await query.answer()
+
             try:
                 # Parse: search_nav_trading_2
                 parts = callback_data.replace('search_nav_', '').rsplit('_', 1)
@@ -421,19 +430,20 @@ class CallbackRouter:
                             reply_markup=keyboard_markup,
                             parse_mode='HTML'
                         )
-                else:
-                    await query.answer("Produit introuvable" if lang == 'fr' else "Product not found")
 
                 return True
             except Exception as e:
                 logger.error(f"Error in search navigation: {e}")
                 import traceback
                 traceback.print_exc()
-                await query.answer("Erreur" if lang == 'fr' else "Error")
+                # Already answered above
                 return True
 
         # 🎠 Library carousel navigation (library_carousel_{index})
         if callback_data.startswith('library_carousel_'):
+            # ⚡ FIX: Answer immediately to prevent button blinking
+            await query.answer()
+
             try:
                 index = int(callback_data.replace('library_carousel_', ''))
                 user_id = query.from_user.id
@@ -483,13 +493,11 @@ class CallbackRouter:
                     await self.bot.library_handlers.show_library_carousel(
                         self.bot, query, purchases, index, lang
                     )
-                else:
-                    await query.answer("No products found" if lang == 'en' else "Aucun produit trouvé")
 
                 return True
             except Exception as e:
                 logger.error(f"Error in library carousel navigation: {e}")
-                await query.answer("Error" if lang == 'en' else "Erreur")
+                # Already answered above
                 return True
 
         # Categories with pagination
