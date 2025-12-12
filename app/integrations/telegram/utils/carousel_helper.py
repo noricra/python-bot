@@ -215,6 +215,8 @@ class CarouselHelper:
                             ),
                             reply_markup=keyboard_markup
                         )
+                        # ✅ Acknowledge callback to dismiss loading animation
+                        await query.answer()
                     elif os.path.exists(image_source):
                         # Send from local file
                         with open(image_source, 'rb') as photo_file:
@@ -226,6 +228,8 @@ class CarouselHelper:
                                 ),
                                 reply_markup=keyboard_markup
                             )
+                        # ✅ Acknowledge callback to dismiss loading animation
+                        await query.answer()
                 else:
                     # No image - text only
                     await query.edit_message_text(
@@ -233,6 +237,8 @@ class CarouselHelper:
                         reply_markup=keyboard_markup,
                         parse_mode=parse_mode
                     )
+                    # ✅ Acknowledge callback to dismiss loading animation
+                    await query.answer()
             else:
                 # Command (MockQuery) - send new message
                 
@@ -297,7 +303,7 @@ class CarouselHelper:
             # Fallback: send new message
             # --- CORRECTION ICI AUSSI ---
             chat_id = CarouselHelper._get_safe_chat_id(query)
-            
+
             if not chat_id:
                 logger.error("❌ Fallback impossible: chat_id introuvable")
                 return
@@ -338,6 +344,10 @@ class CarouselHelper:
                     reply_markup=keyboard_markup,
                     parse_mode=parse_mode
                 )
+
+            # ✅ Acknowledge callback (fallback path)
+            if hasattr(query, 'answer'):
+                await query.answer()
 
     @staticmethod
     def build_navigation_row(
