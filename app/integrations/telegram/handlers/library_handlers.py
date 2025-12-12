@@ -23,6 +23,8 @@ class LibraryHandlers:
 
     async def show_library(self, bot, query, lang: str, page: int = 0):
         """Affiche la bibliothèque de l'utilisateur avec carousel visuel"""
+        await query.answer()
+
         user_id = query.from_user.id
 
         # 🔧 FIX: Réinitialiser TOUS les états quand on entre dans la bibliothèque
@@ -198,6 +200,8 @@ class LibraryHandlers:
 
     async def download_product(self, bot, query, context, product_id: str, lang: str):
         """Télécharge un produit acheté"""
+        await query.answer()
+
         user_id = query.from_user.id
 
         try:
@@ -339,6 +343,8 @@ class LibraryHandlers:
 
     async def rate_product_prompt(self, bot, query, product_id: str, lang: str):
         """Affiche le menu de notation"""
+        await query.answer()
+
         text = (
             "⭐ **RATE THIS PRODUCT**\n\n"
             "How would you rate this product?\n"
@@ -374,6 +380,8 @@ class LibraryHandlers:
 
     async def set_rating(self, bot, query, product_id: str, rating: int, lang: str):
         """Enregistre la note et demande un avis optionnel"""
+        await query.answer()
+
         user_id = query.from_user.id
 
         try:
@@ -438,6 +446,8 @@ class LibraryHandlers:
 
     async def write_review_prompt(self, bot, query, product_id: str, lang: str):
         """Demande la note sur 5 étoiles d'abord"""
+        await query.answer()
+
         text = (
             "⭐ **RATE THIS PRODUCT**\n\n"
             "How would you rate this product?\n"
@@ -475,6 +485,8 @@ class LibraryHandlers:
 
     async def process_rating(self, bot, query, product_id: str, rating: int, lang: str):
         """Enregistre la note et demande le texte de l'avis"""
+        await query.answer()
+
         user_id = query.from_user.id
 
         try:
@@ -596,6 +608,8 @@ class LibraryHandlers:
 
     async def contact_seller(self, bot, query, product_id: str, lang: str):
         """Ouvre directement le chat Telegram privé avec le vendeur"""
+        await query.answer()
+
         user_id = query.from_user.id
 
         try:
