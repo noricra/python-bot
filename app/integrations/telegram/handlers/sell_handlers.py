@@ -30,6 +30,8 @@ class SellHandlers:
         """
         Verify product ownership and return product if owned by current seller
         """
+        await query.answer()
+
         # Get actual seller_id (handles multi-account mapping)
         user_id = query.from_user.id
 
@@ -76,14 +78,21 @@ class SellHandlers:
 
     async def sell_menu(self, bot, query, lang: str):
         """Menu vendeur - Connexion par email requise"""
+        await query.answer()
+
         user_id = query.from_user.id
 
-        # 🔧 FIX: Réinitialiser TOUS les états quand on entre dans le menu Vendre
-        bot.reset_user_state(user_id, keep={'lang'})
+        # 🔧 FIX: Réinitialiser TOUS les états quand on entre dans le menu Vendre (sauf requires_relogin)
+        bot.reset_user_state(user_id, keep={'lang', 'requires_relogin'})
 
         user_data = self.user_repo.get_user(user_id)
 
-        # Si déjà vendeur → Dashboard direct (aligné sur /stats)
+        # Si vendeur déconnecté → Forcer reconnexion
+        if user_data and user_data['is_seller'] and bot.get_user_state(user_id).get('requires_relogin'):
+            await self.seller_login_menu(bot, query, lang)
+            return
+
+        # Si vendeur connecté → Dashboard direct
         if user_data and user_data['is_seller']:
             await self.seller_dashboard(bot, query, lang)
             return
@@ -120,6 +129,8 @@ class SellHandlers:
 
     async def seller_login_menu(self, bot, query, lang: str):
         """Menu de reconnexion vendeur"""
+        await query.answer()
+
         user_id = query.from_user.id
 
         # Reset conflicting states
@@ -151,6 +162,8 @@ class SellHandlers:
 
     async def create_seller_prompt(self, bot, query, lang: str):
         """Demande création compte vendeur - SIMPLIFIÉ (email + Solana uniquement)"""
+        await query.answer()
+
         bot.reset_conflicting_states(query.from_user.id, keep={'creating_seller'})
         bot.state_manager.update_state(query.from_user.id, creating_seller=True, step='email', lang=lang)
 
@@ -175,6 +188,8 @@ class SellHandlers:
 
     async def seller_dashboard(self, bot, query, lang: str):
         """Dashboard vendeur avec graphiques visuels"""
+        await query.answer()
+
         from datetime import datetime, timedelta
 
         # Get actual seller_id (handles multi-account mapping)
@@ -769,6 +784,8 @@ class SellHandlers:
 
     async def add_product_prompt(self, bot, query, lang: str):
         """Prompt ajout produit"""
+        await query.answer()
+
         user_id = query.from_user.id
 
         # 🔍 DEBUG: État AVANT reset
@@ -941,6 +958,8 @@ class SellHandlers:
 
     async def show_my_products(self, bot, query, lang: str, page: int = 0):
         """Affiche produits vendeur avec carousel visuel"""
+        await query.answer()
+
         # Get actual seller_id (handles multi-account mapping)
         seller_id = query.from_user.id
         products = self.product_repo.get_products_by_seller(seller_id, limit=100, offset=0)
@@ -958,6 +977,8 @@ class SellHandlers:
 
     async def show_wallet(self, bot, query, lang: str):
         """Affiche wallet vendeur"""
+        await query.answer()
+
         user_data = self.user_repo.get_user(query.from_user.id)
         if not user_data:
             return
@@ -976,6 +997,8 @@ class SellHandlers:
 
     async def seller_analytics(self, bot, query, lang: str):
         """Analytics vendeur"""
+        await query.answer()
+
         # Get actual seller_id (handles multi-account mapping)
         seller_id = query.from_user.id
         products = self.product_repo.get_products_by_seller(seller_id)
@@ -1009,6 +1032,8 @@ class SellHandlers:
 
     async def seller_settings(self, bot, query, lang: str):
         """Paramètres vendeur - Enhanced avec tous les boutons (SELLER_WORKFLOW_SPEC)"""
+        await query.answer()
+
         user_id = query.from_user.id
 
         # 🔧 FIX: Réinitialiser les états d'édition quand on entre dans Settings
@@ -1045,6 +1070,8 @@ class SellHandlers:
 
     async def seller_logout(self, bot, query):
         """Déconnexion vendeur"""
+        await query.answer()
+
         user_id = query.from_user.id
         lang = bot.get_user_state(user_id).get('lang', 'fr')
 
@@ -1082,6 +1109,8 @@ class SellHandlers:
 
     async def delete_seller_prompt(self, bot, query):
         """Confirmation suppression compte vendeur"""
+        await query.answer()
+
         await query.edit_message_text(
             "⚠️ **ATTENTION**\n\nVoulez-vous vraiment supprimer votre compte vendeur ?\n\n❌ Cette action est **irréversible**",
             reply_markup=InlineKeyboardMarkup([
@@ -1092,6 +1121,8 @@ class SellHandlers:
 
     async def delete_seller_confirm(self, bot, query):
         """Suppression définitive compte vendeur"""
+        await query.answer()
+
         user_id = query.from_user.id
         success = self.user_repo.delete_seller_account(user_id)
         if success:
@@ -1429,6 +1460,8 @@ class SellHandlers:
 
     async def handle_category_selection(self, bot, query, category_index, lang):
         """Traite la sélection de catégorie lors de l'ajout de produit"""
+        await query.answer()
+
         from app.core.settings import settings
 
         user_id = query.from_user.id
@@ -1454,6 +1487,8 @@ class SellHandlers:
 
     async def handle_skip_cover_image(self, bot, query):
         """Skip cover image upload step"""
+        await query.answer()
+
         user_id = query.from_user.id
         user_state = bot.state_manager.get_state(user_id)
         user_state['step'] = 'file'
@@ -1469,6 +1504,8 @@ class SellHandlers:
 
     async def handle_product_cancel(self, bot, query, lang: str):
         """Cancel product creation and reset state"""
+        await query.answer()
+
         user_id = query.from_user.id
         bot.state_manager.reset_state(user_id, keep={'lang'})
 
@@ -1481,6 +1518,8 @@ class SellHandlers:
 
     async def handle_product_back(self, bot, query, target_step: str, lang: str):
         """Go back to previous step in product creation"""
+        await query.answer()
+
         user_id = query.from_user.id
         user_state = bot.state_manager.get_state(user_id)
         product_data = user_state.get('product_data', {})
@@ -1967,6 +2006,8 @@ class SellHandlers:
     # Missing methods from monolith - extracted from bot_mlt.py
     async def payout_history(self, bot, query, lang):
         """Historique payouts vendeur"""
+        await query.answer()
+
         user_id = query.from_user.id
         try:
             conn = bot.get_db_connection()
@@ -2007,6 +2048,8 @@ class SellHandlers:
 
     async def copy_address(self, bot, query, lang):
         """Copier adresse Solana vendeur"""
+        await query.answer()
+
         user_id = query.from_user.id
         user_data = self.user_repo.get_user(user_id)
 
@@ -2030,6 +2073,8 @@ class SellHandlers:
 
     async def edit_product_menu(self, bot, query, product_id: str, lang: str):
         """Show product edit menu"""
+        await query.answer()
+
         try:
             # 🔧 FIX: Réinitialiser les états d'édition pour ce produit
             user_id = query.from_user.id
@@ -2087,6 +2132,8 @@ class SellHandlers:
 
     async def confirm_delete_product(self, bot, query, product_id: str, lang: str):
         """Confirm product deletion"""
+        await query.answer()
+
         try:
             # Get product details
             product = self.product_repo.get_product_by_id(product_id)
@@ -2169,6 +2216,8 @@ class SellHandlers:
 
     async def edit_product_field(self, bot, query, field: str, product_id: str, lang: str):
         """Handle product field editing"""
+        await query.answer()
+
         try:
             # Verify ownership using helper
             product = await self._verify_product_ownership(bot, query, product_id)
@@ -2237,6 +2286,8 @@ class SellHandlers:
 
     async def edit_seller_name(self, bot, query, lang):
         """Edit seller name"""
+        await query.answer()
+
         try:
             user_id = query.from_user.id
 
@@ -2279,6 +2330,8 @@ class SellHandlers:
 
     async def edit_seller_bio(self, bot, query, lang):
         """Edit seller bio"""
+        await query.answer()
+
         try:
             user_id = query.from_user.id
 
@@ -2429,6 +2482,8 @@ class SellHandlers:
 
     async def edit_seller_email(self, bot, query, lang):
         """Edit seller email"""
+        await query.answer()
+
         try:
             user_id = query.from_user.id
             user_data = self.user_repo.get_user(user_id)
@@ -2452,6 +2507,8 @@ class SellHandlers:
 
     async def edit_solana_address(self, bot, query, lang):
         """Edit Solana address"""
+        await query.answer()
+
         try:
             user_id = query.from_user.id
             user_data = self.user_repo.get_user(user_id)
@@ -2475,6 +2532,8 @@ class SellHandlers:
 
     async def disable_seller_account(self, bot, query, lang):
         """Disable seller account temporarily"""
+        await query.answer()
+
         await query.edit_message_text(
             "⚠️ **DÉSACTIVER COMPTE VENDEUR**\n\nÊtes-vous sûr de vouloir désactiver votre compte vendeur ?\n\n• Vos produits seront cachés\n• Vous pourrez réactiver plus tard" if lang == 'fr' else "⚠️ **DISABLE SELLER ACCOUNT**\n\nAre you sure you want to disable your seller account?\n\n• Your products will be hidden\n• You can reactivate later",
             reply_markup=InlineKeyboardMarkup([
@@ -2486,6 +2545,8 @@ class SellHandlers:
 
     async def disable_seller_confirm(self, bot, query):
         """Confirm seller account disable"""
+        await query.answer()
+
         user_id = query.from_user.id
         success = self.user_repo.disable_seller_account(user_id)
         if success:
@@ -2499,6 +2560,8 @@ class SellHandlers:
 
     async def edit_product_price_prompt(self, bot, query, product_id, lang):
         """Prompt for editing product price"""
+        await query.answer()
+
         try:
             # Verify ownership using helper
             product = await self._verify_product_ownership(bot, query, product_id)
@@ -2535,6 +2598,8 @@ class SellHandlers:
 
     async def edit_product_title_prompt(self, bot, query, product_id, lang):
         """Prompt for editing product title"""
+        await query.answer()
+
         try:
             # Verify ownership using helper
             product = await self._verify_product_ownership(bot, query, product_id)
@@ -2569,6 +2634,8 @@ class SellHandlers:
 
     async def toggle_product_status(self, bot, query, product_id, lang):
         """Toggle product active/inactive status"""
+        await query.answer()
+
         try:
             # Verify ownership using helper
             product = await self._verify_product_ownership(bot, query, product_id)
@@ -2787,6 +2854,8 @@ class SellHandlers:
 
     async def seller_messages(self, bot, query, lang: str):
         """Affiche les messages/tickets reçus par le vendeur concernant ses produits"""
+        await query.answer()
+
         seller_id = query.from_user.id
         
         try:
