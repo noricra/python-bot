@@ -312,7 +312,11 @@ class MarketplaceBot:
     async def button_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler principal des callbacks - ROUTAGE CENTRALISÉ"""
         query = update.callback_query
-        await query.answer()
+
+        # ⚠️ FIX: Ne pas appeler query.answer() ici car:
+        # - Les callbacks qui éditent le message (carousel, etc.) répondent automatiquement
+        # - Appeler answer() trop tôt cause le clignotement des boutons
+        # - Chaque handler doit gérer son propre answer() si nécessaire
 
         try:
             # Router centralisé gère tous les callbacks
@@ -321,6 +325,7 @@ class MarketplaceBot:
             if not routed:
                 # Fallback pour callbacks non routés
                 logger.warning(f"Callback non routé: {query.data}")
+                await query.answer()  # Answer seulement si non routé
                 await self._handle_unknown_callback(query)
 
         except (psycopg2.Error, Exception) as e:
@@ -689,15 +694,10 @@ class MarketplaceBot:
 
             # Vérifier si l'utilisateur est dans le processus d'ajout de produit
             if not user_state.get('adding_product') or user_state.get('step') != 'file':
-                # 🔍 DEBUG: Pourquoi rejeté
+                # Logging seulement - ne pas exposer l'état interne à l'utilisateur
                 logger.warning(f"❌ DOCUMENT REJECTED - adding_product={user_state.get('adding_product')}, step={user_state.get('step')} (expected 'file')")
-                await update.message.reply_text(
-                    f"❌ Pas d'ajout de produit en cours ou étape incorrecte.\n\n"
-                    f"🔍 DEBUG:\n"
-                    f"• État: {user_state.get('step')}\n"
-                    f"• adding_product: {user_state.get('adding_product')}\n"
-                    f"• Attendu: step='file'"
-                )
+                logger.debug(f"Debug state: {user_state.get('step')}, adding_product: {user_state.get('adding_product')}")
+                # Ignorer silencieusement - l'utilisateur peut être dans un autre workflow
                 return
 
             # Déléguer au sell_handlers
@@ -706,7 +706,12 @@ class MarketplaceBot:
 
         except Exception as e:
             logger.error(f"Error handling document upload: {e}")
-            await update.message.reply_text("Erreur lors du traitement du fichier.")
+            import traceback
+            logger.error(traceback.format_exc())
+            await update.message.reply_text(
+                "❌ Erreur lors du traitement du document.\n\n"
+                "Si le problème persiste, contactez le support."
+            )
 
     async def handle_photo_upload(self, update, context):
         """Handle photo uploads for product cover images"""
@@ -727,19 +732,10 @@ class MarketplaceBot:
                 logger.info(f"✅ PHOTO ACCEPTED - Delegating to process_cover_image_upload")
                 await self.sell_handlers.process_cover_image_upload(self, update, update.message.photo)
             else:
-                # DEBUG: Show why it was rejected
+                # Photo rejected - not in cover_image step
                 logger.warning(f"❌ PHOTO REJECTED - adding_product={user_state.get('adding_product')}, step={user_state.get('step')} (expected 'cover_image')")
-                if user_state.get('adding_product'):
-                    await update.message.reply_text(
-                        f"⚠️ État actuel: {user_state.get('step')}\n"
-                        f"Attendu: cover_image\n\n"
-                        f"🔍 DEBUG:\n"
-                        f"• product_data keys: {list(user_state.get('product_data', {}).keys())}\n"
-                        f"• Full state keys: {list(user_state.keys())}"
-                    )
-                else:
-                    # Ignore photos sent in other contexts (could be in chat, support, etc.)
-                    logger.info(f"Photo ignored - User not in product creation mode")
+                # Ignore silently - user might be in different workflow step
+                logger.info(f"Photo ignored - Current step: {user_state.get('step')}, Expected: cover_image")
 
         except Exception as e:
             logger.error(f"Error handling photo upload: {e}")
