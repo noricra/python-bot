@@ -20,6 +20,8 @@ class AdminHandlers:
 
     async def admin_menu(self, bot, query, lang):
         """Menu principal admin"""
+        await query.answer()
+
         # 🔧 FIX: Réinitialiser TOUS les états quand on entre dans l'admin
         user_id = query.from_user.id
         bot.reset_user_state(user_id, keep={'lang'})
@@ -39,6 +41,8 @@ class AdminHandlers:
 
     async def admin_users_menu(self, query, lang):
         """Menu gestion utilisateurs"""
+        await query.answer()
+
         # 🔧 FIX: Réinitialiser les états admin users
         from bot_mlt import MarketplaceBot
         # On ne peut pas accéder à bot ici, mais ce menu est déjà safe car appelé depuis admin_menu
@@ -57,6 +61,8 @@ class AdminHandlers:
 
     async def admin_products_menu(self, query, lang):
         """Menu gestion produits"""
+        await query.answer()
+
         products_keyboard = [
             [InlineKeyboardButton(" Voir produits", callback_data='admin_products'),
              InlineKeyboardButton(" Rechercher produit", callback_data='admin_search_product')],
@@ -73,6 +79,8 @@ class AdminHandlers:
 
     async def admin_users(self, query, lang):
         """Gestion utilisateurs - Liste et recherche unifiées"""
+        await query.answer()
+
         try:
             users = self.user_repo.get_all_users(limit=50)  # Increased limit
             users = users or []  # Protection contre None
@@ -161,6 +169,8 @@ class AdminHandlers:
 
     async def admin_user_detail(self, query, lang, user_id: int):
         """Détails et actions pour un utilisateur spécifique"""
+        await query.answer()
+
         try:
             user = self.user_repo.get_user(user_id)
 
@@ -241,6 +251,8 @@ class AdminHandlers:
 
     async def admin_suspend_user_prompt(self, query, lang, user_id: int):
         """Demander confirmation avant suspension"""
+        await query.answer()
+
         user = self.user_repo.get_user(user_id)
 
         if not user:
@@ -318,6 +330,8 @@ class AdminHandlers:
 
     async def admin_products(self, query, lang):
         """Gestion produits"""
+        await query.answer()
+
         try:
             products = self.product_repo.get_all_products(limit=20)
             text = i18n(lang, 'admin_products_title') + "\n\n"
@@ -333,6 +347,8 @@ class AdminHandlers:
 
     async def admin_payouts(self, query, lang, page: int = 1):
         """Liste paginée des vendeurs à payer"""
+        await query.answer()
+
         try:
             from app.services.seller_payout_service import SellerPayoutService
             seller_payout_service = SellerPayoutService()
@@ -441,6 +457,8 @@ class AdminHandlers:
 
     async def admin_marketplace_stats(self, query, lang):
         """Stats marketplace"""
+        await query.answer()
+
         try:
             total_users = self.user_repo.count_users()
             total_sellers = self.user_repo.count_sellers()
@@ -465,6 +483,8 @@ class AdminHandlers:
 
     async def admin_search_user_prompt(self, query, lang):
         """Prompt recherche utilisateur"""
+        await query.answer()
+
         # Set searching state for this user
         user_id = query.from_user.id
 
@@ -475,6 +495,8 @@ class AdminHandlers:
 
     async def admin_search_product_prompt(self, query, lang):
         """Prompt recherche produit"""
+        await query.answer()
+
         # Set searching state for this user
         user_id = query.from_user.id
 
@@ -485,6 +507,8 @@ class AdminHandlers:
 
     async def admin_suspend_product_prompt(self, query, lang):
         """Prompt suspension produit - étape 1: choisir la raison"""
+        await query.answer()
+
         user_id = query.from_user.id
 
         # Liste des raisons prédéfinies
@@ -507,6 +531,8 @@ class AdminHandlers:
 
     async def admin_suspend_product_id_prompt(self, bot, query, reason_key, lang):
         """Prompt suspension produit - étape 2: demander l'ID après sélection raison"""
+        await query.answer()
+
         user_id = query.from_user.id
 
         # Mapping des raisons
@@ -533,6 +559,8 @@ class AdminHandlers:
 
     async def admin_restore_product_prompt(self, bot, query, lang):
         """Prompt rétablissement produit"""
+        await query.answer()
+
         user_id = query.from_user.id
         bot.state_manager.update_state(user_id, restoring_product=True, lang=lang)
 
@@ -543,6 +571,8 @@ class AdminHandlers:
 
     async def admin_suspend_user_prompt(self, bot, query, lang):
         """Prompt suspension utilisateur"""
+        await query.answer()
+
         user_id = query.from_user.id
         bot.state_manager.update_state(user_id, suspending_user=True, lang=lang)
 
@@ -585,6 +615,10 @@ class AdminHandlers:
             conn.commit()
             put_connection(conn)
 
+            # Préparer les données pour affichage
+            username = user_data.get('username') or 'N/A'
+            first_name = user_data.get('first_name') or 'N/A'
+
             # Send suspension notification email if email exists
             user_email = user_data.get('email')
             if user_email:
@@ -601,12 +635,11 @@ class AdminHandlers:
                     )
                     email_status = "✅ Email de suspension envoyé" if success else "❌ Échec envoi email"
                 except (psycopg2.Error, Exception) as e:
-                    email_status = f"❌ Erreur email: {str(e)}"
+                    # Échapper le message d'erreur
+                    error_msg = str(e).replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
+                    email_status = f"❌ Erreur email: {error_msg}"
             else:
                 email_status = "⚠️ Pas d'email - notification non envoyée"
-
-            username = user_data.get('username') or 'N/A'
-            first_name = user_data.get('first_name') or 'N/A'
 
             # Échapper les caractères Markdown
             if username and username != 'N/A':
@@ -626,6 +659,8 @@ class AdminHandlers:
 
     async def admin_restore_user_prompt(self, bot, query, lang):
         """Prompt rétablissement utilisateur"""
+        await query.answer()
+
         user_id = query.from_user.id
         bot.state_manager.update_state(user_id, restoring_user=True, lang=lang)
 
@@ -777,6 +812,8 @@ class AdminHandlers:
 
     async def admin_export_users(self, query, lang):
         """Export utilisateurs en CSV"""
+        await query.answer()
+
         try:
             import io
             import csv
@@ -843,6 +880,8 @@ class AdminHandlers:
 
     async def admin_export_payouts_csv(self, query, lang):
         """Export payouts en CSV avec tous les détails"""
+        await query.answer()
+
         try:
             from app.services.seller_payout_service import SellerPayoutService
             from app.domain.repositories.user_repo import UserRepository
@@ -925,6 +964,8 @@ class AdminHandlers:
 
     async def admin_export_payouts(self, query, lang):
         """Export payouts (legacy text format)"""
+        await query.answer()
+
         try:
             payouts = self.payout_service.get_all_payouts()
             export_text = "📄 **EXPORT PAYOUTS**\n\n"
@@ -941,6 +982,8 @@ class AdminHandlers:
 
     async def export_products(self, query, lang):
         """Export products to text format"""
+        await query.answer()
+
         try:
             products = self.product_repo.get_all_products(limit=100)
 
@@ -1130,6 +1173,8 @@ class AdminHandlers:
 
     async def admin_export_products_csv(self, query, lang):
         """Export products to CSV file"""
+        await query.answer()
+
         try:
             import csv
             import io
