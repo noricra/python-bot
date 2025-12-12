@@ -742,4 +742,3 @@ class MarketplaceBot:
             import traceback
             logger.error(traceback.format_exc())
             await update.message.reply_text("Erreur lors du traitement de l'image.")
-
