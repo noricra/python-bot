@@ -1244,8 +1244,6 @@ Contact support with your Order ID"""
         V2: Visual product display with FULL description + V2 features + Telegram file_id caching
         Uses helper functions + supports "Réduire" button with context
         """
-        await query.answer()
-
         # Build caption with FULL description (mode='full')
         caption = self._build_product_caption(product, mode='full', lang=lang)
 
@@ -1758,8 +1756,6 @@ Contact support with your Order ID"""
             category_key: Optional category for "Précédent" button context
             index: Optional product index for "Précédent" button context
         """
-        await query.answer()
-
         try:
             # Get product details
             product = bot.get_product_by_id(product_id)
@@ -1886,8 +1882,6 @@ Contact support with your Order ID"""
 
     async def process_crypto_payment(self, bot, query, crypto_code: str, product_id: str, lang: str):
         """Create payment with selected crypto using NowPayments"""
-        await query.answer()
-
         try:
             # Get product details
             product = bot.get_product_by_id(product_id)
@@ -2224,8 +2218,6 @@ Contact support with your Order ID"""
 
     async def mark_as_paid(self, bot, query, product_id: str, lang: str):
         """Mark order as paid (test functionality)"""
-        await query.answer()
-
         try:
             user_id = query.from_user.id
 
@@ -2361,8 +2353,6 @@ Contact support with your Order ID"""
 
     async def _safe_edit_message(self, query, text: str, reply_markup=None):
         """Safely edit message, handling photo messages and identical content"""
-        await query.answer()
-
         try:
             if query.message.photo:
                 # Can't edit photo caption as text message, send new message
