@@ -71,6 +71,7 @@ class AnalyticsHandlers:
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
+            await query.answer()
 
         except Exception as e:
             logger.error(f"Error showing analytics dashboard: {e}")
@@ -78,6 +79,7 @@ class AnalyticsHandlers:
                 "❌ Erreur lors du chargement des analytics.\n\n"
                 "Réessayez dans quelques instants."
             )
+            await query.answer()
 
     # ═══════════════════════════════════════════════════════
     # PRODUCT PERFORMANCE DETAILS
@@ -105,6 +107,7 @@ class AnalyticsHandlers:
 
             if not perf:
                 await query.edit_message_text("❌ Produit introuvable")
+                await query.answer()
                 return
 
             # Format performance card
@@ -157,10 +160,12 @@ Tendance          {perf.trend.capitalize()}
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
+            await query.answer()
 
         except Exception as e:
             logger.error(f"Error showing product performance: {e}")
             await query.edit_message_text("❌ Erreur d'analyse")
+            await query.answer()
 
     # ═══════════════════════════════════════════════════════
     # PRODUCT LIST WITH PERFORMANCE SCORES
@@ -190,6 +195,7 @@ Tendance          {perf.trend.capitalize()}
                     "Aucun produit actif.\n\n"
                     "Créez votre premier produit pour accéder aux analytics."
                 )
+                await query.answer()
                 return
 
             # Calculate scores for all
@@ -258,10 +264,12 @@ Tendance          {perf.trend.capitalize()}
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
+            await query.answer()
 
         except Exception as e:
             logger.error(f"Error showing products with scores: {e}")
             await query.edit_message_text("❌ Erreur de chargement")
+            await query.answer()
 
     # ═══════════════════════════════════════════════════════
     # RECOMMENDATIONS VIEW
@@ -325,10 +333,12 @@ Tendance          {perf.trend.capitalize()}
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
+            await query.answer()
 
         except Exception as e:
             logger.error(f"Error showing recommendations: {e}")
             await query.edit_message_text("❌ Erreur")
+            await query.answer()
 
     # ═══════════════════════════════════════════════════════
     # CHARTS VIEW (Revenue & Sales over time)
@@ -353,6 +363,7 @@ Tendance          {perf.trend.capitalize()}
                     "Pas encore de données de ventes.\n\n"
                     "Créez des produits et attendez les premières ventes."
                 )
+                await query.answer()
                 return
 
             # Extract data
@@ -411,10 +422,12 @@ Tendance          {perf.trend.capitalize()}
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
+            await query.answer()
 
         except Exception as e:
             logger.error(f"Error showing charts: {e}")
             await query.edit_message_text("❌ Erreur d'affichage")
+            await query.answer()
 
     # ═══════════════════════════════════════════════════════
     # QUICK STATS (For dashboard integration)
