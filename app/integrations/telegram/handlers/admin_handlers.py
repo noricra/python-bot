@@ -38,6 +38,7 @@ class AdminHandlers:
             "🔧 **ADMINISTRATION**\n\nChoisissez une section :",
             reply_markup=InlineKeyboardMarkup(admin_keyboard),
             parse_mode='Markdown')
+        await query.answer()
 
     async def admin_users_menu(self, query, lang):
         """Menu gestion utilisateurs"""
@@ -58,6 +59,7 @@ class AdminHandlers:
             "👥 **GESTION UTILISATEURS**\n\nChoisissez une action :",
             reply_markup=InlineKeyboardMarkup(users_keyboard),
             parse_mode='Markdown')
+        await query.answer()
 
     async def admin_products_menu(self, query, lang):
         """Menu gestion produits"""
@@ -76,6 +78,7 @@ class AdminHandlers:
             " **GESTION PRODUITS**\n\nChoisissez une action :",
             reply_markup=InlineKeyboardMarkup(products_keyboard),
             parse_mode='Markdown')
+        await query.answer()
 
     async def admin_users(self, query, lang):
         """Gestion utilisateurs - Liste et recherche unifiées"""
@@ -159,6 +162,7 @@ class AdminHandlers:
             ])
 
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            await query.answer()
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in admin_users: {e}")
@@ -166,6 +170,7 @@ class AdminHandlers:
                 f"❌ Erreur lors du chargement des utilisateurs: {str(e)}" if lang == 'fr' else f"❌ Error loading users: {str(e)}",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]])
             )
+            await query.answer()
 
     async def admin_user_detail(self, query, lang, user_id: int):
         """Détails et actions pour un utilisateur spécifique"""
@@ -181,6 +186,7 @@ class AdminHandlers:
                         InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='admin_users')
                     ]])
                 )
+                await query.answer()
                 return
 
             # Format dates
@@ -239,6 +245,7 @@ class AdminHandlers:
             ])
 
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            await query.answer()
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in admin_user_detail: {e}")
@@ -248,6 +255,7 @@ class AdminHandlers:
                     InlineKeyboardButton("🔙 Retour", callback_data='admin_users')
                 ]])
             )
+            await query.answer()
 
     async def admin_suspend_user_prompt(self, query, lang, user_id: int):
         """Demander confirmation avant suspension"""
@@ -280,6 +288,7 @@ class AdminHandlers:
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
+        await query.answer()
 
     async def admin_restore_user_confirm(self, query, lang, user_id: int):
         """Rétablir un utilisateur suspendu"""
@@ -311,6 +320,7 @@ class AdminHandlers:
                     ]]),
                     parse_mode='Markdown'
                 )
+                await query.answer()
 
                 # Notify user (optional)
                 try:
@@ -342,8 +352,10 @@ class AdminHandlers:
 
             keyboard = [[InlineKeyboardButton("🔙 Products Menu", callback_data='admin_products_menu')]]
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            await query.answer()
         except (psycopg2.Error, Exception) as e:
             await query.edit_message_text(f"❌ Erreur: {str(e)}")
+            await query.answer()
 
     async def admin_payouts(self, query, lang, page: int = 1):
         """Liste paginée des vendeurs à payer"""
@@ -401,8 +413,10 @@ class AdminHandlers:
                 keyboard.append([InlineKeyboardButton("Retour Admin", callback_data='admin_menu')])
 
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            await query.answer()
         except (psycopg2.Error, Exception) as e:
             await query.edit_message_text(f"Erreur: {str(e)}")
+            await query.answer()
 
     async def admin_payout_details(self, query, lang, payout_id: int):
         """Afficher les détails complets d'un payout"""
@@ -452,8 +466,10 @@ class AdminHandlers:
             ]
 
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            await query.answer()
         except Exception as e:
             await query.edit_message_text(f"Erreur: {str(e)}")
+            await query.answer()
 
     async def admin_marketplace_stats(self, query, lang):
         """Stats marketplace"""
@@ -478,8 +494,10 @@ class AdminHandlers:
                 stats_text,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]]),
                 parse_mode='Markdown')
+            await query.answer()
         except (psycopg2.Error, Exception) as e:
             await query.edit_message_text(f"❌ Erreur: {str(e)}")
+            await query.answer()
 
     async def admin_search_user_prompt(self, query, lang):
         """Prompt recherche utilisateur"""
@@ -492,6 +510,7 @@ class AdminHandlers:
             "🔍 **Recherche Utilisateur**\n\nEntrez l'ID utilisateur à rechercher :" if lang == 'fr' else "🔍 **User Search**\n\nEnter user ID to search:",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='admin_menu')]]),
             parse_mode='Markdown')
+        await query.answer()
 
     async def admin_search_product_prompt(self, query, lang):
         """Prompt recherche produit"""
@@ -504,6 +523,7 @@ class AdminHandlers:
             "🔍 **Recherche Produit**\n\nEntrez l'ID produit à rechercher :" if lang == 'fr' else "🔍 **Product Search**\n\nEnter product ID to search:",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='admin_menu')]]),
             parse_mode='Markdown')
+        await query.answer()
 
     async def admin_suspend_product_prompt(self, query, lang):
         """Prompt suspension produit - étape 1: choisir la raison"""
@@ -528,6 +548,7 @@ class AdminHandlers:
             else "❌ **Suspend Product**\n\nChoose suspension reason:",
             reply_markup=InlineKeyboardMarkup(reasons_keyboard),
             parse_mode='Markdown')
+        await query.answer()
 
     async def admin_suspend_product_id_prompt(self, bot, query, reason_key, lang):
         """Prompt suspension produit - étape 2: demander l'ID après sélection raison"""
@@ -556,6 +577,7 @@ class AdminHandlers:
             else f"❌ **Suspend Product**\n\n📋 Reason: {reason_text}\n\nEnter product ID to suspend:",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='admin_menu')]]),
             parse_mode='Markdown')
+        await query.answer()
 
     async def admin_restore_product_prompt(self, bot, query, lang):
         """Prompt rétablissement produit"""
@@ -568,6 +590,7 @@ class AdminHandlers:
             "✅ **Rétablir Produit**\n\nEntrez l'ID du produit à rétablir :" if lang == 'fr' else "✅ **Restore Product**\n\nEnter product ID to restore:",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='admin_menu')]]),
             parse_mode='Markdown')
+        await query.answer()
 
     async def admin_suspend_user_prompt(self, bot, query, lang):
         """Prompt suspension utilisateur"""
@@ -580,6 +603,7 @@ class AdminHandlers:
             "❌ **Suspendre Utilisateur**\n\nEntrez l'ID utilisateur à suspendre :" if lang == 'fr' else "❌ **Suspend User**\n\nEnter user ID to suspend:",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='admin_menu')]]),
             parse_mode='Markdown')
+        await query.answer()
 
     async def process_admin_suspend_user(self, update, message_text: str):
         """Process suspension d'utilisateur"""
@@ -693,12 +717,14 @@ class AdminHandlers:
                 text,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='admin_users_menu')]]),
                 parse_mode='Markdown')
+            await query.answer()
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error showing suspended users: {e}")
             await query.edit_message_text(
                 "✅ **Rétablir Utilisateur**\n\nEntrez l'ID utilisateur OU email à rétablir :" if lang == 'fr' else "✅ **Restore User**\n\nEnter user ID OR email to restore:",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='admin_users_menu')]]),
                 parse_mode='Markdown')
+            await query.answer()
 
     async def process_admin_restore_user(self, update, message_text: str):
         """Process rétablissement d'utilisateur"""
@@ -826,6 +852,7 @@ class AdminHandlers:
                     " Aucun utilisateur à exporter." if lang == 'fr' else " No users to export.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu Admin" if lang == 'fr' else "🔙 Admin Menu", callback_data='admin_menu')]])
                 )
+                await query.answer()
                 return
 
             # Create CSV content
@@ -870,6 +897,7 @@ class AdminHandlers:
                 "✅ Fichier CSV généré avec succès!" if lang == 'fr' else "✅ CSV file generated successfully!",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu Admin" if lang == 'fr' else "🔙 Admin Menu", callback_data='admin_menu')]])
             )
+            await query.answer()
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in admin_export_users: {e}")
@@ -877,6 +905,7 @@ class AdminHandlers:
                 "❌ Erreur lors de la génération du CSV." if lang == 'fr' else "❌ Error generating CSV.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]])
             )
+            await query.answer()
 
     async def admin_export_payouts_csv(self, query, lang):
         """Export payouts en CSV avec tous les détails"""
@@ -914,6 +943,7 @@ class AdminHandlers:
                     "📄 Aucun payout à exporter",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]])
                 )
+                await query.answer()
                 return
 
             # Create CSV in memory
@@ -1023,6 +1053,7 @@ class AdminHandlers:
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown'
             )
+            await query.answer()
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in export_products: {e}")
@@ -1030,6 +1061,7 @@ class AdminHandlers:
                 "❌ Erreur lors de l'export des produits." if lang == 'fr' else "❌ Error exporting products.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]])
             )
+            await query.answer()
 
     # Text processing methods compatible with compact architecture
     async def handle_user_search_message(self, bot, update, user_state):
@@ -1187,6 +1219,7 @@ class AdminHandlers:
                     " Aucun produit à exporter." if lang == 'fr' else " No products to export.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu Admin" if lang == 'fr' else "🔙 Admin Menu", callback_data='admin_menu')]])
                 )
+                await query.answer()
                 return
 
             # Create CSV content
@@ -1226,6 +1259,7 @@ class AdminHandlers:
                 "✅ Fichier CSV généré avec succès!" if lang == 'fr' else "✅ CSV file generated successfully!",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu Admin" if lang == 'fr' else "🔙 Admin Menu", callback_data='admin_menu')]])
             )
+            await query.answer()
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in admin_export_products_csv: {e}")
@@ -1233,3 +1267,4 @@ class AdminHandlers:
                 "❌ Erreur lors de la génération du CSV." if lang == 'fr' else "❌ Error generating CSV.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Admin Menu", callback_data='admin_menu')]])
             )
+            await query.answer()
