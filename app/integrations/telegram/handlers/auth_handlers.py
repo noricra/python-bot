@@ -53,6 +53,7 @@ Choisissez votre méthode :""")
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
+        await query.answer()
 
     async def recovery_by_email_prompt(self, bot, query, lang):
         """Prompt pour récupération par email"""
@@ -79,6 +80,7 @@ Nous vous enverrons un code de récupération pour retrouver l'accès.""")
             ]]),
             parse_mode='Markdown'
         )
+        await query.answer()
 
     # Text processing methods
     async def process_recovery_email(self, bot, update, message_text: str):
