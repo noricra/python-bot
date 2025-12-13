@@ -581,6 +581,7 @@ class SupportHandlers:
                         InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')
                     ]])
                 )
+                await query.answer()
                 return
 
             # Set state to wait for problem description
@@ -622,6 +623,7 @@ Send your message now."""
                     InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='back_main')
                 ]])
             )
+            await query.answer()
 
         except Exception as e:
             from app.core.db_pool import put_connection
@@ -634,6 +636,7 @@ Send your message now."""
                     InlineKeyboardButton("🏠 Menu principal", callback_data='back_main')
                 ]])
             )
+            await query.answer()
 
     async def contact_seller_start(self, bot, query, product_id: str, lang: str) -> None:
         buyer_id = query.from_user.id
@@ -653,15 +656,18 @@ Send your message now."""
             put_connection(conn)
             if not row:
                 await query.edit_message_text("❌ Vous devez avoir acheté ce produit pour contacter le vendeur.")
+                await query.answer()
                 return
             order_id, seller_user_id, title = row['order_id'], row['seller_user_id'], row['title']
         except Exception:
             await query.edit_message_text("❌ Erreur lors de l'initiation du contact.")
+            await query.answer()
             return
 
         ticket_id = MessagingService(bot.db_path).start_or_get_ticket(buyer_id, order_id, seller_user_id, f"Contact vendeur: {title}")
         if not ticket_id:
             await query.edit_message_text("❌ Impossible de créer le ticket.")
+            await query.answer()
             return
         bot.reset_conflicting_states(buyer_id, keep={'waiting_reply_ticket_id'})
         bot.state_manager.update_state(buyer_id, waiting_reply_ticket_id=ticket_id)
@@ -670,6 +676,7 @@ Send your message now."""
             f"📨 Contact vendeur pour `{safe_title}`\n\n✍️ Écrivez votre message:",
             parse_mode='Markdown'
         )
+        await query.answer()
 
     async def process_messaging_reply(self, bot, update, message_text: str) -> None:
         user_id = update.effective_user.id
@@ -700,6 +707,7 @@ Send your message now."""
         messages = MessagingService(bot.db_path).list_recent_messages(ticket_id, 10)
         if not messages:
             await query.edit_message_text("🎫 Aucun message dans ce ticket.")
+            await query.answer()
             return
         thread = "\n".join([f"[{m['created_at']}] {m['sender_role']}: {m['message']}" for m in reversed(messages)])
         keyboard = [[
@@ -707,27 +715,33 @@ Send your message now."""
             InlineKeyboardButton(" Escalader", callback_data=f'escalate_ticket_{ticket_id}')
         ]]
         await query.edit_message_text(f" Thread ticket `{ticket_id}`:\n\n{thread}", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.answer()
 
     async def reply_ticket_prepare(self, bot, query, ticket_id: str) -> None:
         bot.reset_conflicting_states(query.from_user.id, keep={'waiting_reply_ticket_id'})
         bot.state_manager.update_state(query.from_user.id, waiting_reply_ticket_id=ticket_id)
         await query.edit_message_text("✍️ Écrivez votre réponse:")
+        await query.answer()
 
     async def escalate_ticket(self, bot, query, ticket_id: str) -> None:
         admin_id = core_settings.ADMIN_USER_ID or query.from_user.id
         ok = MessagingService(bot.db_path).escalate(ticket_id, admin_id)
         if not ok:
             await query.edit_message_text("❌ Impossible d'escalader ce ticket.")
+            await query.answer()
             return
         await query.edit_message_text(" Ticket escaladé au support.")
+        await query.answer()
 
     async def admin_tickets(self, bot, query) -> None:
         if core_settings.ADMIN_USER_ID is None or query.from_user.id != core_settings.ADMIN_USER_ID:
             await query.edit_message_text("❌ Accès non autorisé.")
+            await query.answer()
             return
         rows = MessagingService(bot.db_path).list_recent_tickets(10)
         if not rows:
             await query.edit_message_text(" Aucun ticket.")
+            await query.answer()
             return
         text = " Tickets récents:\n\n"
         keyboard = []
@@ -738,14 +752,17 @@ Send your message now."""
                 InlineKeyboardButton("↩️ Répondre", callback_data=f"admin_reply_ticket_{t['ticket_id']}")
             ])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.answer()
 
     async def admin_reply_prepare(self, bot, query, ticket_id: str) -> None:
         if core_settings.ADMIN_USER_ID is None or query.from_user.id != core_settings.ADMIN_USER_ID:
             await query.edit_message_text("❌ Accès non autorisé.")
+            await query.answer()
             return
         bot.reset_conflicting_states(query.from_user.id, keep={'waiting_admin_reply_ticket_id'})
         bot.state_manager.update_state(query.from_user.id, waiting_admin_reply_ticket_id=ticket_id)
         await query.edit_message_text("✍️ Écrivez votre réponse admin:")
+        await query.answer()
 
     async def process_admin_reply(self, bot, update, message_text: str) -> None:
         admin_id = update.effective_user.id
@@ -832,6 +849,7 @@ Send your message now."""
         ]
 
         await query.edit_message_text(faq_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.answer()
 
     async def create_ticket_prompt(self, bot, query, lang):
         """Create ticket prompt"""
@@ -844,6 +862,7 @@ Send your message now."""
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='back_main')
             ]]))
+        await query.answer()
 
     async def my_tickets(self, query, lang):
         """Show user's tickets"""
@@ -858,6 +877,7 @@ Send your message now."""
                     back_to_main_button(lang)
                 ]])
             )
+            await query.answer()
             return
 
         text = " Vos tickets:" if lang == 'fr' else " Your tickets:"
@@ -869,6 +889,7 @@ Send your message now."""
         keyboard.append([back_to_main_button(lang)])
 
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.answer()
 
     async def process_ticket_creation(self, bot, update, message_text: str):
         """Process ticket creation based on current step"""
@@ -1043,6 +1064,7 @@ You will receive a response at: {user_email}""",
         """Admin reply to ticket prompt"""
         if core_settings.ADMIN_USER_ID is None or query.from_user.id != core_settings.ADMIN_USER_ID:
             await query.edit_message_text("❌ Accès non autorisé.")
+            await query.answer()
             return
 
         user_id = query.from_user.id
