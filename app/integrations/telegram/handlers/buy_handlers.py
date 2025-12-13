@@ -602,12 +602,14 @@ class BuyHandlers:
                     reply_markup=keyboard,
                     parse_mode='Markdown'
                 )
+                await query.answer()
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in buy_menu V2: {e}")
             await query.edit_message_text(
                 "❌ Error loading products" if lang == 'en' else "❌ Erreur chargement produits",
                 parse_mode='Markdown'
             )
+            await query.answer()
 
     async def search_product_prompt(self, bot, query, lang: str) -> None:
         """Demande de saisir un ID produit"""
@@ -624,6 +626,7 @@ class BuyHandlers:
                     [[InlineKeyboardButton("Retour" if lang == 'fr' else "Back",
                                            callback_data='buy_menu')]]),
                 parse_mode='Markdown')
+            await query.answer()
         except Exception:
             await query.message.reply_text(
                 prompt_text,
@@ -1232,6 +1235,7 @@ Contact support with your Order ID"""
                                          callback_data='back_main')
                 ]]),
                 parse_mode='Markdown')
+            await query.answer()
             return
 
         self.product_repo.increment_views(product_id)
@@ -1278,6 +1282,7 @@ Contact support with your Order ID"""
                     reply_markup=keyboard_markup,
                     parse_mode='HTML'
                 )
+                await query.answer()
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error displaying product details V2: {e}")
@@ -1287,6 +1292,7 @@ Contact support with your Order ID"""
                 reply_markup=keyboard_markup,
                 parse_mode='HTML'
             )
+            await query.answer()
 
     async def process_product_search(self, bot, update, message_text):
         """Traite la recherche de produit par ID OU texte libre"""
@@ -1934,6 +1940,7 @@ Contact support with your Order ID"""
                         InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data=f'buy_product_{product_id}')
                     ]])
                 )
+                await query.answer()
                 return
 
             # Store order in database
@@ -1971,6 +1978,7 @@ Contact support with your Order ID"""
                     InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data=f'buy_product_{product_id}')
                 ]])
             )
+            await query.answer()
 
     async def preview_product(self, query, product_id: str, lang: str, category_key: str = None, index: int = None):
         """
@@ -1996,6 +2004,7 @@ Contact support with your Order ID"""
         if not product:
             from app.core.i18n import t as i18n
             await query.edit_message_text(i18n(lang, 'err_product_not_found'))
+            await query.answer()
             return
 
         safe_title = escape_markdown(str(product.get('title') or ''))
@@ -2252,6 +2261,7 @@ Contact support with your Order ID"""
                 ]),
                 parse_mode='Markdown'
             )
+            await query.answer()
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error marking as paid: {e}")
@@ -2261,6 +2271,7 @@ Contact support with your Order ID"""
                     InlineKeyboardButton("Retour" if lang == 'fr' else "Back", callback_data='back_main')
                 ]])
             )
+            await query.answer()
 
     async def _display_payment_details(self, query, payment_data, title, price_usd, order_id, product_id, crypto_code, lang):
         """Display comprehensive payment details with QR code and exact amounts"""
@@ -2339,6 +2350,7 @@ Contact support with your Order ID"""
                 parse_mode='HTML',
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
+            await query.answer()
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error displaying payment details: {e}")
@@ -2350,6 +2362,7 @@ Contact support with your Order ID"""
                     InlineKeyboardButton("Retour / Back", callback_data=f'buy_product_{product_id}')
                 ]])
             )
+            await query.answer()
 
     async def _safe_edit_message(self, query, text: str, reply_markup=None):
         """Safely edit message, handling photo messages and identical content"""
@@ -2359,6 +2372,7 @@ Contact support with your Order ID"""
                 await query.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
             else:
                 await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+                await query.answer()
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in _safe_edit_message: {e}")
             # Fallback: send new message
@@ -2390,6 +2404,7 @@ Contact support with your Order ID"""
                     InlineKeyboardButton("Retour" if lang == 'fr' else "Back", callback_data='back_main')
                 ]])
             )
+            await query.answer()
             return
 
         # Get all products from this seller
@@ -2406,6 +2421,7 @@ Contact support with your Order ID"""
                 ]]),
                 parse_mode='Markdown'
             )
+            await query.answer()
             return
 
         # Show first product in seller's shop using carousel
