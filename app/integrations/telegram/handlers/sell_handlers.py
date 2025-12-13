@@ -126,6 +126,7 @@ class SellHandlers:
             ]]),
             parse_mode='Markdown'
         )
+        await query.answer()
 
     async def seller_login_menu(self, bot, query, lang: str):
         """Menu de reconnexion vendeur"""
@@ -159,6 +160,7 @@ class SellHandlers:
             ]]),
             parse_mode='Markdown'
         )
+        await query.answer()
 
     async def create_seller_prompt(self, bot, query, lang: str):
         """Demande création compte vendeur - SIMPLIFIÉ (email + Solana uniquement)"""
@@ -184,6 +186,7 @@ class SellHandlers:
             ]]),
             parse_mode='Markdown'
         )
+        await query.answer()
 
 
     async def seller_dashboard(self, bot, query, lang: str):
@@ -260,6 +263,7 @@ class SellHandlers:
 
         try:
             await query.edit_message_text(dashboard_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            await query.answer()
         except Exception:
             await query.message.reply_text(dashboard_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
@@ -319,6 +323,7 @@ class SellHandlers:
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown'
             )
+            await query.answer()
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in seller_analytics_visual: {e}")
@@ -805,6 +810,7 @@ class SellHandlers:
             f"{i18n(lang, 'product_add_title')}\n\n{i18n(lang, 'product_step1_prompt')}",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(i18n(lang, 'btn_cancel'), callback_data='seller_dashboard')]]),
             parse_mode='Markdown')
+        await query.answer()
 
     def _get_product_creation_keyboard(self, current_step: str, lang: str = 'fr'):
         """Generate navigation keyboard for product creation steps"""
@@ -970,6 +976,7 @@ class SellHandlers:
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(i18n(lang, 'btn_add_product'), callback_data='add_product')],
                                                    [InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='seller_dashboard')]]),
                 parse_mode='Markdown')
+            await query.answer()
             return
 
         # Launch carousel mode starting at index 0
@@ -994,6 +1001,7 @@ class SellHandlers:
         ]
 
         await query.edit_message_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.answer()
 
     async def seller_analytics(self, bot, query, lang: str):
         """Analytics vendeur"""
@@ -1029,6 +1037,7 @@ class SellHandlers:
             analytics_text,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(i18n(lang, 'btn_back'), callback_data='seller_dashboard')]]),
             parse_mode='Markdown')
+        await query.answer()
 
     async def seller_settings(self, bot, query, lang: str):
         """Paramètres vendeur - Enhanced avec tous les boutons (SELLER_WORKFLOW_SPEC)"""
@@ -1067,6 +1076,7 @@ class SellHandlers:
         ]
 
         await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.answer()
 
     async def seller_logout(self, bot, query):
         """Déconnexion vendeur"""
@@ -1106,6 +1116,7 @@ class SellHandlers:
             ]]),
             parse_mode='Markdown'
         )
+        await query.answer()
 
     async def delete_seller_prompt(self, bot, query):
         """Confirmation suppression compte vendeur"""
@@ -1118,6 +1129,7 @@ class SellHandlers:
                 [InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='seller_settings')]
             ]),
             parse_mode='Markdown')
+        await query.answer()
 
     async def delete_seller_confirm(self, bot, query):
         """Suppression définitive compte vendeur"""
@@ -1131,8 +1143,10 @@ class SellHandlers:
                 "✅ **Compte vendeur supprimé**\n\nVos données ont été effacées.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu principal", callback_data='back_main')]]),
                 parse_mode='Markdown')
+            await query.answer()
         else:
             await query.edit_message_text("❌ Erreur lors de la suppression")
+            await query.answer()
 
     # Text processing methods
     async def process_seller_creation(self, bot, update, message_text: str):
@@ -1484,6 +1498,7 @@ class SellHandlers:
             parse_mode='Markdown',
             reply_markup=self._get_product_creation_keyboard('price', lang)
         )
+        await query.answer()
 
     async def handle_skip_cover_image(self, bot, query):
         """Skip cover image upload step"""
@@ -1501,6 +1516,7 @@ class SellHandlers:
             parse_mode='Markdown',
             reply_markup=self._get_product_creation_keyboard('file', user_state.get('lang', 'fr'))
         )
+        await query.answer()
 
     async def handle_product_cancel(self, bot, query, lang: str):
         """Cancel product creation and reset state"""
@@ -1515,6 +1531,7 @@ class SellHandlers:
                 InlineKeyboardButton("🏪 Dashboard", callback_data='seller_dashboard')
             ]])
         )
+        await query.answer()
 
     async def handle_product_back(self, bot, query, target_step: str, lang: str):
         """Go back to previous step in product creation"""
@@ -1562,6 +1579,7 @@ class SellHandlers:
                 parse_mode='Markdown',
                 reply_markup=keyboard
             )
+            await query.answer()
 
     async def process_cover_image_upload(self, bot, update, photo=None, photo_as_document=None):
         """Process cover image upload for product"""
@@ -2036,6 +2054,7 @@ class SellHandlers:
                 ]]),
                 parse_mode='Markdown'
             )
+            await query.answer()
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Erreur payout history: {e}")
@@ -2045,6 +2064,7 @@ class SellHandlers:
                     back_to_main_button(lang)
                 ]])
             )
+            await query.answer()
 
     async def copy_address(self, bot, query, lang):
         """Copier adresse Solana vendeur"""
@@ -2213,6 +2233,7 @@ class SellHandlers:
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='my_products')
                 ]])
             )
+            await query.answer()
 
     async def edit_product_field(self, bot, query, field: str, product_id: str, lang: str):
         """Handle product field editing"""
@@ -2300,6 +2321,7 @@ class SellHandlers:
                         InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')
                     ]])
                 )
+                await query.answer()
                 return
 
             # Set editing state using helper
@@ -2318,6 +2340,7 @@ class SellHandlers:
                     InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='seller_settings')
                 ]])
             )
+            await query.answer()
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_seller_name: {e}")
@@ -2327,6 +2350,7 @@ class SellHandlers:
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')
                 ]])
             )
+            await query.answer()
 
     async def edit_seller_bio(self, bot, query, lang):
         """Edit seller bio"""
@@ -2344,6 +2368,7 @@ class SellHandlers:
                         InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')
                     ]])
                 )
+                await query.answer()
                 return
 
             # Set editing state using helper
@@ -2362,6 +2387,7 @@ class SellHandlers:
                     InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='seller_settings')
                 ]])
             )
+            await query.answer()
 
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_seller_bio: {e}")
@@ -2371,6 +2397,7 @@ class SellHandlers:
                     InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')
                 ]])
             )
+            await query.answer()
 
     async def generate_shop_link(self, bot, query, lang):
         """Generate a shop link for the seller to share on social media"""
@@ -2492,6 +2519,7 @@ class SellHandlers:
                     "❌ Vous devez être vendeur pour modifier ces informations." if lang == 'fr' else "❌ You must be a seller to edit this information.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]])
                 )
+                await query.answer()
                 return
 
             bot.state_manager.update_state(user_id, editing_settings=True, step='edit_email')
@@ -2501,9 +2529,11 @@ class SellHandlers:
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='seller_settings')]])
             )
+            await query.answer()
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_seller_email: {e}")
             await query.edit_message_text("❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]]))
+            await query.answer()
 
     async def edit_solana_address(self, bot, query, lang):
         """Edit Solana address"""
@@ -2517,6 +2547,7 @@ class SellHandlers:
                     "❌ Vous devez être vendeur pour modifier ces informations." if lang == 'fr' else "❌ You must be a seller to edit this information.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]])
                 )
+                await query.answer()
                 return
 
             bot.state_manager.update_state(user_id, editing_settings=True, step='edit_solana_address')
@@ -2526,9 +2557,11 @@ class SellHandlers:
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler" if lang == 'fr' else "❌ Cancel", callback_data='seller_settings')]])
             )
+            await query.answer()
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error in edit_solana_address: {e}")
             await query.edit_message_text("❌ Erreur lors de l'édition." if lang == 'fr' else "❌ Edit error.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Retour" if lang == 'fr' else "🔙 Back", callback_data='seller_settings')]]))
+            await query.answer()
 
     async def disable_seller_account(self, bot, query, lang):
         """Disable seller account temporarily"""
@@ -2542,6 +2575,7 @@ class SellHandlers:
             ]),
             parse_mode='Markdown'
         )
+        await query.answer()
 
     async def disable_seller_confirm(self, bot, query):
         """Confirm seller account disable"""
@@ -2555,8 +2589,10 @@ class SellHandlers:
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu principal", callback_data='back_main')]]),
                 parse_mode='Markdown'
             )
+            await query.answer()
         else:
             await query.edit_message_text("❌ Erreur lors de la désactivation")
+            await query.answer()
 
     async def edit_product_price_prompt(self, bot, query, product_id, lang):
         """Prompt for editing product price"""
@@ -2902,8 +2938,9 @@ class SellHandlers:
                     ]]),
                     parse_mode='Markdown'
                 )
+                await query.answer()
                 return
-            
+
             # Construire le message avec la liste des tickets
             text = (
                 f"💬 **MESSAGES FROM BUYERS** ({len(tickets)})\n\n"
@@ -2940,7 +2977,8 @@ class SellHandlers:
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown'
             )
-            
+            await query.answer()
+
         except (psycopg2.Error, Exception) as e:
             logger.error(f"Error showing seller messages: {e}")
             await query.edit_message_text(
@@ -2952,3 +2990,4 @@ class SellHandlers:
                     )
                 ]])
             )
+            await query.answer()
