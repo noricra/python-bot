@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 import psycopg2.extras
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from app.core.utils import logger, escape_markdown
 from app.core.i18n import t as i18n
@@ -199,7 +199,10 @@ class LibraryHandlers:
         )
 
     async def download_product(self, bot, query, context, product_id: str, lang: str):
-        """Télécharge un produit acheté"""
+        """
+        Ouvre la MiniApp de téléchargement (Railway-proof, scalable)
+        Download direct B2 → Browser (pas de usage disque Railway)
+        """
         await query.answer()
 
         user_id = query.from_user.id
@@ -208,9 +211,9 @@ class LibraryHandlers:
             conn = bot.get_db_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-            # Vérifier l'achat et récupérer le fichier
+            # Vérifier l'achat et récupérer les infos produit
             cursor.execute('''
-                SELECT p.main_file_url, p.title, o.order_id
+                SELECT p.title, p.file_size_mb, o.order_id
                 FROM orders o
                 JOIN products p ON o.product_id = p.product_id
                 WHERE o.buyer_user_id = %s AND o.product_id = %s AND o.payment_status = 'completed'
@@ -218,124 +221,75 @@ class LibraryHandlers:
             ''', (user_id, product_id))
 
             result = cursor.fetchone()
-
-            if not result:
-                put_connection(conn)
-                await safe_transition_to_text(
-                    query,
-                    "❌ Product not purchased or not found." if lang == 'en' else "❌ Produit non acheté ou introuvable.",
-                    InlineKeyboardMarkup([[
-                        InlineKeyboardButton(
-                            " My Library" if lang == 'en' else " Ma Bibliothèque",
-                            callback_data='library_menu'
-                        )
-                    ]])
-                )
-                return
-
-            # Extraire les valeurs du dictionnaire (RealDictCursor retourne des dicts)
-            b2_file_url = result['main_file_url']
-            title = result['title']
-            order_id = result['order_id']
-
-            # Incrémenter le compteur de téléchargements
-            cursor.execute('''
-                UPDATE orders
-                SET download_count = COALESCE(download_count, 0) + 1,
-                    last_download_at = CURRENT_TIMESTAMP
-                WHERE order_id = %s
-            ''', (order_id,))
-            conn.commit()
             put_connection(conn)
 
-            # Vérifier que l'URL B2 existe
-            if not b2_file_url:
-                logger.error(f"No B2 URL for product {product_id}")
+            if not result:
                 await safe_transition_to_text(
                     query,
-                    "❌ File not available. Contact support." if lang == 'en' else "❌ Fichier non disponible. Contactez le support.",
+                    "Product not purchased or not found." if lang == 'en' else "Produit non acheté ou introuvable.",
                     InlineKeyboardMarkup([[
                         InlineKeyboardButton(
-                            " Support" if lang == 'en' else " Support",
-                            callback_data='support_menu'
-                        ),
-                        InlineKeyboardButton(
-                            " Back" if lang == 'en' else " Retour",
+                            "My Library" if lang == 'en' else "Ma Bibliothèque",
                             callback_data='library_menu'
                         )
                     ]])
                 )
                 return
 
-            # Télécharger depuis B2
-            from app.core.file_utils import download_product_file_from_b2
+            title = result['title']
+            file_size_mb = result.get('file_size_mb', 0)
 
-            local_path = await download_product_file_from_b2(b2_file_url, product_id)
+            # Formater taille fichier
+            if file_size_mb < 1:
+                size_text = f"{file_size_mb * 1024:.0f} KB"
+            elif file_size_mb < 1024:
+                size_text = f"{file_size_mb:.1f} MB"
+            else:
+                size_text = f"{file_size_mb / 1024:.2f} GB"
 
-            if not local_path or not os.path.exists(local_path):
-                logger.error(f"Failed to download file from B2: {b2_file_url}")
-                await safe_transition_to_text(
-                    query,
-                    "❌ File download failed. Contact support." if lang == 'en' else "❌ Échec du téléchargement. Contactez le support.",
-                    InlineKeyboardMarkup([[
-                        InlineKeyboardButton(
-                            " Support" if lang == 'en' else " Support",
-                            callback_data='support_menu'
-                        ),
-                        InlineKeyboardButton(
-                            " Back" if lang == 'en' else " Retour",
-                            callback_data='library_menu'
-                        )
-                    ]])
-                )
-                return
+            # Obtenir l'URL de la MiniApp
+            from app.core.settings import WEBAPP_URL
+            webapp_url = WEBAPP_URL or "https://python-bot-production.up.railway.app"
+            miniapp_url = f"{webapp_url}/static/download.html?product_id={product_id}&lang={lang}"
 
-            full_file_path = local_path
-
-            # Message de téléchargement en cours
-            try:
-                await safe_transition_to_text(
-                    query,
-                    " Preparing download..." if lang == 'en' else " Préparation du téléchargement..."
-                )
-            except:
-                pass
-
-            # Envoyer le fichier - utiliser context.bot ou query.get_bot()
-            bot_instance = context.bot if context else getattr(query, 'get_bot', lambda: query.bot)()
-
-            with open(full_file_path, 'rb') as file:
-                await bot_instance.send_document(
-                    chat_id=query.message.chat_id,
-                    document=file,
-                )
-
-            # Message de confirmation
-            await query.message.reply_text(
-                "✅ Téléchargement terminé !" if lang == 'fr' else "✅ Download complete!",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(
-                        " Retour à ma bibliothèque" if lang == 'fr' else " Back to my library",
-                        callback_data='library_menu'
-                    )
-                ]])
+            # Afficher le bouton MiniApp pour télécharger
+            text = (
+                f"**{title}**\n\n"
+                f"Taille : {size_text}\n\n"
+                f"Cliquez sur le bouton ci-dessous pour télécharger votre fichier.\n"
+                f"Le téléchargement se fera directement dans votre navigateur."
+            ) if lang == 'fr' else (
+                f"**{title}**\n\n"
+                f"Size: {size_text}\n\n"
+                f"Click the button below to download your file.\n"
+                f"The download will happen directly in your browser."
             )
 
-            # Nettoyer le fichier temporaire
-            try:
-                if local_path and os.path.exists(local_path):
-                    os.remove(local_path)
-                    logger.info(f"🗑️ Cleaned up temp file: {local_path}")
-            except Exception as cleanup_error:
-                logger.warning(f"⚠️ Could not clean up temp file: {cleanup_error}")
+            keyboard = [
+                [InlineKeyboardButton(
+                    "Télécharger" if lang == 'fr' else "Download",
+                    web_app=WebAppInfo(url=miniapp_url)
+                )],
+                [InlineKeyboardButton(
+                    "Retour" if lang == 'fr' else "Back",
+                    callback_data='library_menu'
+                )]
+            ]
+
+            await safe_transition_to_text(
+                query,
+                text,
+                InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
 
         except Exception as e:
-            logger.error(f"Error downloading product: {e}")
+            logger.error(f"Error preparing download: {e}")
             await query.message.reply_text(
-                "❌ Download error. Please try again." if lang == 'en' else "❌ Erreur de téléchargement. Réessayez.",
+                "Error preparing download. Please try again." if lang == 'en' else "Erreur de préparation. Réessayez.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
-                        "🔙 Back" if lang == 'en' else "🔙 Retour",
+                        "Back" if lang == 'en' else "Retour",
                         callback_data='library_menu'
                     )
                 ]])
