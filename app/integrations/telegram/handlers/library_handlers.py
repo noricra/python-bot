@@ -248,8 +248,8 @@ class LibraryHandlers:
                 size_text = f"{file_size_mb / 1024:.2f} GB"
 
             # Obtenir l'URL de la MiniApp
-            from app.core.settings import WEBAPP_URL
-            webapp_url = WEBAPP_URL or "https://python-bot-production.up.railway.app"
+            from app.core.settings import settings
+            webapp_url = settings.WEBAPP_URL or "https://python-bot-production.up.railway.app"
             miniapp_url = f"{webapp_url}/static/download.html?product_id={product_id}&lang={lang}"
 
             # Afficher le bouton MiniApp pour télécharger
