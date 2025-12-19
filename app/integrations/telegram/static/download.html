@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Télécharger Produit</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="title">📥 Téléchargement</h1>
+            <p class="subtitle">Téléchargez votre produit acheté</p>
+        </header>
+
+        <!-- Loading Section (initial state) -->
+        <div id="loadingSection" class="loading-section">
+            <div class="loading-spinner">⏳</div>
+            <h3 class="loading-title">Vérification de votre achat...</h3>
+            <p class="loading-description">Veuillez patienter</p>
+        </div>
+
+        <!-- Product Info Section (hidden initially) -->
+        <div id="productSection" class="product-section hidden">
+            <div class="product-card">
+                <h2 id="productTitle" class="product-title"></h2>
+                <div class="product-info">
+                    <p id="productSize" class="product-size"></p>
+                    <p id="downloadCount" class="download-count"></p>
+                </div>
+                <button id="downloadBtn" class="btn-primary btn-large">
+                    📥 Télécharger
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress Section (hidden initially) -->
+        <div id="progressSection" class="progress-section hidden">
+            <h3 class="progress-title">Téléchargement en cours...</h3>
+
+            <div class="progress-bar-container">
+                <div id="progressBar" class="progress-bar"></div>
+            </div>
+
+            <div class="progress-stats">
+                <span id="progressPercent">0%</span>
+                <span id="downloadSpeed">0 MB/s</span>
+            </div>
+
+            <p id="fileName" class="file-name"></p>
+            <div class="progress-details">
+                <span id="downloadedSize">0 MB</span>
+                <span>/</span>
+                <span id="totalSize">0 MB</span>
+            </div>
+        </div>
+
+        <!-- Success Section (hidden initially) -->
+        <div id="successSection" class="success-section hidden">
+            <div class="success-icon">✅</div>
+            <h2 class="success-title">Téléchargement terminé !</h2>
+            <p class="success-description">Votre fichier a été téléchargé avec succès.</p>
+            <p class="success-file" id="successFileName"></p>
+            <button class="btn-primary" onclick="window.Telegram.WebApp.close()">
+                Fermer
+            </button>
+        </div>
+
+        <!-- Error Section (hidden initially) -->
+        <div id="errorSection" class="error-section hidden">
+            <div class="error-icon">❌</div>
+            <h2 class="error-title">Erreur</h2>
+            <p id="errorMessage" class="error-description"></p>
+            <button class="btn-primary" onclick="location.reload()">
+                Réessayer
+            </button>
+            <button class="btn-secondary" onclick="window.Telegram.WebApp.close()">
+                Fermer
+            </button>
+        </div>
+    </div>
+
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="/static/download.js"></script>
+</body>
+</html>
