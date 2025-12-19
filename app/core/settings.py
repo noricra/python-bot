@@ -63,6 +63,7 @@ class Settings:
             "IPN_CALLBACK_URL", "http://localhost:8000/ipn/nowpayments"
         )
         self.WEBHOOK_URL: Optional[str] = os.getenv("WEBHOOK_URL", "http://localhost:8000")
+        self.WEBAPP_URL: Optional[str] = os.getenv("WEBAPP_URL") or self.WEBHOOK_URL
 
 
         # Platform commission (3.14% - π number)
