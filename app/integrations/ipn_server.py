@@ -532,7 +532,181 @@ async def upload_complete(request: UploadCompleteRequest):
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 5. IPN NOWPAYMENTS (PAIEMENTS)
+# 5. DOWNLOAD API (MINI APP - RAILWAY-PROOF)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class VerifyPurchaseRequest(BaseModel):
+    product_id: str
+    user_id: int
+    telegram_init_data: str
+
+class GenerateDownloadURLRequest(BaseModel):
+    product_id: str
+    order_id: str
+    user_id: int
+    telegram_init_data: str
+
+@app.post("/api/verify-purchase")
+async def verify_purchase(request: VerifyPurchaseRequest):
+    """
+    Vérifie qu'un utilisateur a acheté un produit
+    Utilisé par MiniApp download pour validation avant téléchargement
+    """
+    # 1. Authentification Telegram
+    if not verify_telegram_webapp_data(request.telegram_init_data):
+        raise HTTPException(status_code=401, detail="Unauthorized - Invalid Init Data")
+
+    try:
+        # 2. Vérifier l'achat dans la DB
+        from app.domain.repositories.product_repo import ProductRepository
+
+        conn = get_postgresql_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Query similaire à library_handlers.py:212-218
+            cursor.execute('''
+                SELECT
+                    p.product_id,
+                    p.title,
+                    p.file_size_mb,
+                    p.main_file_url,
+                    o.order_id,
+                    o.download_count,
+                    o.last_download_at
+                FROM orders o
+                JOIN products p ON o.product_id = p.product_id
+                WHERE o.buyer_user_id = %s
+                  AND o.product_id = %s
+                  AND o.payment_status = 'completed'
+                LIMIT 1
+            ''', (request.user_id, request.product_id))
+
+            result = cursor.fetchone()
+
+            if not result:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Product not purchased or payment not completed"
+                )
+
+            product_id, title, file_size_mb, main_file_url, order_id, download_count, last_download_at = result
+
+            # 3. Retourner les infos pour le MiniApp
+            return {
+                "valid": True,
+                "product_id": product_id,
+                "product_title": title,
+                "file_size_mb": file_size_mb,
+                "order_id": order_id,
+                "download_count": download_count or 0,
+                "last_download_at": last_download_at.isoformat() if last_download_at else None,
+                "has_file": bool(main_file_url)
+            }
+
+        finally:
+            put_connection(conn)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error verifying purchase: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/generate-download-url")
+async def generate_download_url(request: GenerateDownloadURLRequest):
+    """
+    Génère une URL présignée B2 pour téléchargement direct (Browser → B2)
+    Architecture identique à l'upload, mais sens inverse
+    """
+    # 1. Authentification Telegram
+    if not verify_telegram_webapp_data(request.telegram_init_data):
+        raise HTTPException(status_code=401, detail="Unauthorized - Invalid Init Data")
+
+    try:
+        conn = get_postgresql_connection()
+        try:
+            cursor = conn.cursor()
+
+            # 2. Re-vérifier l'achat (sécurité)
+            cursor.execute('''
+                SELECT p.main_file_url, p.title, p.file_size_mb
+                FROM orders o
+                JOIN products p ON o.product_id = p.product_id
+                WHERE o.order_id = %s
+                  AND o.buyer_user_id = %s
+                  AND o.payment_status = 'completed'
+                LIMIT 1
+            ''', (request.order_id, request.user_id))
+
+            result = cursor.fetchone()
+
+            if not result:
+                raise HTTPException(status_code=404, detail="Order not found or unauthorized")
+
+            main_file_url, title, file_size_mb = result
+
+            if not main_file_url:
+                raise HTTPException(status_code=404, detail="Product file not available")
+
+            # 3. Extraire object_key depuis l'URL B2
+            # Format: https://s3.us-west-004.backblazeb2.com/bucket-name/products/USER/PRODUCT/main_file.pdf
+            # On veut: products/USER/PRODUCT/main_file.pdf
+            try:
+                bucket_name = os.getenv('B2_BUCKET_NAME')
+                if f"/{bucket_name}/" in main_file_url:
+                    object_key = main_file_url.split(f"/{bucket_name}/")[1]
+                else:
+                    # Fallback: assumer que c'est juste le path
+                    object_key = main_file_url.split('.com/')[-1]
+            except Exception as e:
+                logger.error(f"Error extracting object_key from {main_file_url}: {e}")
+                raise HTTPException(status_code=500, detail="Invalid file URL format")
+
+            # 4. Générer URL présignée B2 (valide 1 heure)
+            b2_service = B2StorageService()
+            download_url = b2_service.get_download_url(object_key, expires_in=3600)
+
+            # 5. Extraire filename depuis object_key
+            file_name = object_key.split('/')[-1]
+
+            # 6. Incrémenter download_count
+            cursor.execute('''
+                UPDATE orders
+                SET download_count = COALESCE(download_count, 0) + 1,
+                    last_download_at = CURRENT_TIMESTAMP
+                WHERE order_id = %s
+            ''', (request.order_id,))
+            conn.commit()
+
+            logger.info(f"✅ Generated download URL for order {request.order_id}, user {request.user_id}")
+
+            # 7. Retourner URL au MiniApp
+            return {
+                "download_url": download_url,
+                "file_name": file_name,
+                "file_size_mb": file_size_mb,
+                "product_title": title,
+                "expires_in": 3600  # 1 hour
+            }
+
+        finally:
+            put_connection(conn)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating download URL: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 6. IPN NOWPAYMENTS (PAIEMENTS)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def verify_ipn_signature(secret: str, payload: bytes, signature: str) -> bool:
