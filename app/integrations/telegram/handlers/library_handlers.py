@@ -146,11 +146,15 @@ class LibraryHandlers:
         def build_keyboard(product, index, total, lang):
             keyboard = []
 
-            # Row 1: Download
+            # Row 1: Download (direct WebApp)
+            from app.core.settings import settings
+            webapp_url = settings.WEBAPP_URL or "https://python-bot-production.up.railway.app"
+            miniapp_url = f"{webapp_url}/static/download.html?product_id={product['product_id']}&lang={lang}"
+
             keyboard.append([
                 InlineKeyboardButton(
-                    " Télécharger" if lang == 'fr' else " Download",
-                    callback_data=f'download_product_{product["product_id"]}'
+                    "Télécharger" if lang == 'fr' else "Download",
+                    web_app=WebAppInfo(url=miniapp_url)
                 )
             ])
 
@@ -197,103 +201,6 @@ class LibraryHandlers:
             lang=lang,
             parse_mode='HTML'
         )
-
-    async def download_product(self, bot, query, context, product_id: str, lang: str):
-        """
-        Ouvre la MiniApp de téléchargement (Railway-proof, scalable)
-        Download direct B2 → Browser (pas de usage disque Railway)
-        """
-        await query.answer()
-
-        user_id = query.from_user.id
-
-        try:
-            conn = bot.get_db_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-            # Vérifier l'achat et récupérer les infos produit
-            cursor.execute('''
-                SELECT p.title, p.file_size_mb, o.order_id
-                FROM orders o
-                JOIN products p ON o.product_id = p.product_id
-                WHERE o.buyer_user_id = %s AND o.product_id = %s AND o.payment_status = 'completed'
-                LIMIT 1
-            ''', (user_id, product_id))
-
-            result = cursor.fetchone()
-            put_connection(conn)
-
-            if not result:
-                await safe_transition_to_text(
-                    query,
-                    "Product not purchased or not found." if lang == 'en' else "Produit non acheté ou introuvable.",
-                    InlineKeyboardMarkup([[
-                        InlineKeyboardButton(
-                            "My Library" if lang == 'en' else "Ma Bibliothèque",
-                            callback_data='library_menu'
-                        )
-                    ]])
-                )
-                return
-
-            title = result['title']
-            file_size_mb = result.get('file_size_mb', 0)
-
-            # Formater taille fichier
-            if file_size_mb < 1:
-                size_text = f"{file_size_mb * 1024:.0f} KB"
-            elif file_size_mb < 1024:
-                size_text = f"{file_size_mb:.1f} MB"
-            else:
-                size_text = f"{file_size_mb / 1024:.2f} GB"
-
-            # Obtenir l'URL de la MiniApp
-            from app.core.settings import settings
-            webapp_url = settings.WEBAPP_URL or "https://python-bot-production.up.railway.app"
-            miniapp_url = f"{webapp_url}/static/download.html?product_id={product_id}&lang={lang}"
-
-            # Afficher le bouton MiniApp pour télécharger
-            text = (
-                f"**{title}**\n\n"
-                f"Taille : {size_text}\n\n"
-                f"Cliquez sur le bouton ci-dessous pour télécharger votre fichier.\n"
-                f"Le téléchargement se fera directement dans votre navigateur."
-            ) if lang == 'fr' else (
-                f"**{title}**\n\n"
-                f"Size: {size_text}\n\n"
-                f"Click the button below to download your file.\n"
-                f"The download will happen directly in your browser."
-            )
-
-            keyboard = [
-                [InlineKeyboardButton(
-                    "Télécharger" if lang == 'fr' else "Download",
-                    web_app=WebAppInfo(url=miniapp_url)
-                )],
-                [InlineKeyboardButton(
-                    "Retour" if lang == 'fr' else "Back",
-                    callback_data='library_menu'
-                )]
-            ]
-
-            await safe_transition_to_text(
-                query,
-                text,
-                InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-
-        except Exception as e:
-            logger.error(f"Error preparing download: {e}")
-            await query.message.reply_text(
-                "Error preparing download. Please try again." if lang == 'en' else "Erreur de préparation. Réessayez.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(
-                        "Back" if lang == 'en' else "Retour",
-                        callback_data='library_menu'
-                    )
-                ]])
-            )
 
     async def rate_product_prompt(self, bot, query, product_id: str, lang: str):
         """Affiche le menu de notation"""
