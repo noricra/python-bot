@@ -38,10 +38,10 @@ const t = (key) => translations[userLang][key] || translations['fr'][key];
 
 // Vérifier que l'app est bien dans Telegram
 if (!tg.initData || tg.initData.length === 0) {
-    console.error('❌ Not running in Telegram WebApp or initData is empty');
+    console.error('Not running in Telegram WebApp or initData is empty');
     document.body.innerHTML = `
         <div style="padding: 20px; text-align: center;">
-            <h2>⚠️ ${t('error')}</h2>
+            <h2>${t('error')}</h2>
             <p>${t('notInTelegram')}</p>
             <p>${t('useButton')}</p>
         </div>
@@ -54,34 +54,42 @@ const userId = tg.initDataUnsafe?.user?.id;
 const username = tg.initDataUnsafe?.user?.username;
 
 // Log for debugging
-console.log('✅ Telegram WebApp initialized');
+console.log('Telegram WebApp initialized');
 console.log('User ID:', userId);
 console.log('Product ID:', productId);
 
-// DOM Elements
-const loadingSection = document.getElementById('loadingSection');
-const productSection = document.getElementById('productSection');
-const progressSection = document.getElementById('progressSection');
-const successSection = document.getElementById('successSection');
-const errorSection = document.getElementById('errorSection');
-
-const productTitle = document.getElementById('productTitle');
-const productSize = document.getElementById('productSize');
-const downloadCount = document.getElementById('downloadCount');
-const downloadBtn = document.getElementById('downloadBtn');
-
-const progressBar = document.getElementById('progressBar');
-const progressPercent = document.getElementById('progressPercent');
-const downloadSpeed = document.getElementById('downloadSpeed');
-const fileName = document.getElementById('fileName');
-const downloadedSize = document.getElementById('downloadedSize');
-const totalSize = document.getElementById('totalSize');
-
-const successFileName = document.getElementById('successFileName');
-const errorMessage = document.getElementById('errorMessage');
-
 // Global variables
 let purchaseData = null;
+
+// DOM Elements (will be set after DOM loads)
+let loadingSection, productSection, progressSection, successSection, errorSection;
+let productTitle, productSize, downloadCount, downloadBtn;
+let progressBar, progressPercent, downloadSpeed, fileName, downloadedSize, totalSize;
+let successFileName, errorMessage;
+
+// Initialize DOM elements
+function initDOMElements() {
+    loadingSection = document.getElementById('loadingSection');
+    productSection = document.getElementById('productSection');
+    progressSection = document.getElementById('progressSection');
+    successSection = document.getElementById('successSection');
+    errorSection = document.getElementById('errorSection');
+
+    productTitle = document.getElementById('productTitle');
+    productSize = document.getElementById('productSize');
+    downloadCount = document.getElementById('downloadCount');
+    downloadBtn = document.getElementById('downloadBtn');
+
+    progressBar = document.getElementById('progressBar');
+    progressPercent = document.getElementById('progressPercent');
+    downloadSpeed = document.getElementById('downloadSpeed');
+    fileName = document.getElementById('fileName');
+    downloadedSize = document.getElementById('downloadedSize');
+    totalSize = document.getElementById('totalSize');
+
+    successFileName = document.getElementById('successFileName');
+    errorMessage = document.getElementById('errorMessage');
+}
 
 // Show/hide sections helper
 function showSection(sectionId) {
@@ -123,7 +131,7 @@ async function verifyPurchase() {
     }
 
     try {
-        console.log('🔍 Verifying purchase...');
+        console.log('Verifying purchase...');
         const response = await fetch('/api/verify-purchase', {
             method: 'POST',
             headers: {
@@ -137,28 +145,33 @@ async function verifyPurchase() {
         });
 
         if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorDetail = errorData.detail || `HTTP ${response.status}`;
+            console.error('API Error:', response.status, errorDetail);
+
             if (response.status === 404) {
                 showError(t('notPurchased'));
                 return;
             } else if (response.status === 401) {
-                showError('Authentification échouée');
+                showError('Authentification échouée: ' + errorDetail);
                 return;
             }
-            throw new Error(`HTTP ${response.status}`);
+            showError(`Erreur ${response.status}: ${errorDetail}`);
+            return;
         }
 
         const data = await response.json();
-        console.log('✅ Purchase verified:', data);
+        console.log('Purchase verified:', data);
         purchaseData = data;
 
         // Display product info
         productTitle.textContent = data.product_title;
-        productSize.textContent = `📦 Taille: ${formatFileSize(data.file_size_mb)}`;
+        productSize.textContent = `Taille: ${formatFileSize(data.file_size_mb)}`;
 
         const downloadCountText = userLang === 'fr'
             ? `Téléchargé ${data.download_count} fois`
             : `Downloaded ${data.download_count} times`;
-        downloadCount.textContent = `📊 ${downloadCountText}`;
+        downloadCount.textContent = downloadCountText;
 
         // Check if file is available
         if (!data.has_file) {
@@ -170,64 +183,71 @@ async function verifyPurchase() {
         showSection('productSection');
 
     } catch (error) {
-        console.error('❌ Error verifying purchase:', error);
+        console.error('Error verifying purchase:', error);
         showError(t('networkError'));
     }
 }
 
 // Handle download button click
-downloadBtn.addEventListener('click', async () => {
-    if (!purchaseData) {
-        showError('Purchase data not available');
-        return;
-    }
-
-    try {
-        console.log('📥 Requesting download URL...');
-        showSection('progressSection');
-
-        // Request presigned download URL
-        const response = await fetch('/api/generate-download-url', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                product_id: purchaseData.product_id,
-                order_id: purchaseData.order_id,
-                user_id: userId,
-                telegram_init_data: tg.initData
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+function setupDownloadButton() {
+    downloadBtn.addEventListener('click', async () => {
+        if (!purchaseData) {
+            showError('Purchase data not available');
+            return;
         }
 
-        const data = await response.json();
-        console.log('✅ Download URL received');
+        try {
+            console.log('Requesting download URL...');
+            showSection('progressSection');
 
-        fileName.textContent = data.file_name;
-        totalSize.textContent = formatFileSize(data.file_size_mb);
+            // Request presigned download URL
+            const response = await fetch('/api/generate-download-url', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    product_id: purchaseData.product_id,
+                    order_id: purchaseData.order_id,
+                    user_id: userId,
+                    telegram_init_data: tg.initData
+                })
+            });
 
-        // Start download with progress tracking
-        await downloadFile(data.download_url, data.file_name, data.file_size_mb);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const errorDetail = errorData.detail || `HTTP ${response.status}`;
+                console.error('Generate URL Error:', response.status, errorDetail);
+                showError(`Erreur génération URL: ${errorDetail}`);
+                return;
+            }
 
-    } catch (error) {
-        console.error('❌ Error downloading:', error);
-        showError(t('downloadError'));
-    }
-});
+            const data = await response.json();
+            console.log('Download URL received');
+
+            fileName.textContent = data.file_name;
+            totalSize.textContent = formatFileSize(data.file_size_mb);
+
+            // Start download with progress tracking
+            await downloadFile(data.download_url, data.file_name, data.file_size_mb);
+
+        } catch (error) {
+            console.error('Error downloading:', error);
+            showError(t('downloadError'));
+        }
+    });
+}
 
 // Download file with progress tracking
 async function downloadFile(url, filename, fileSizeMb) {
     try {
-        console.log('⬇️ Downloading file...');
+        console.log('Downloading file...');
 
         const response = await fetch(url);
 
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            console.error('Download failed:', response.status, response.statusText);
+            throw new Error(`Téléchargement échoué: ${response.status} ${response.statusText}`);
         }
 
         const contentLength = response.headers.get('Content-Length');
@@ -235,7 +255,7 @@ async function downloadFile(url, filename, fileSizeMb) {
 
         if (!total || isNaN(total)) {
             // Fallback: no progress tracking
-            console.warn('⚠️ Content-Length not available, downloading without progress');
+            console.warn('Content-Length not available, downloading without progress');
             const blob = await response.blob();
             triggerDownload(blob, filename);
             return;
@@ -270,7 +290,7 @@ async function downloadFile(url, filename, fileSizeMb) {
 
         // Combine chunks into blob
         const blob = new Blob(chunks);
-        console.log('✅ Download complete');
+        console.log('Download complete');
 
         // Trigger browser download
         triggerDownload(blob, filename);
@@ -280,7 +300,7 @@ async function downloadFile(url, filename, fileSizeMb) {
         showSection('successSection');
 
     } catch (error) {
-        console.error('❌ Download error:', error);
+        console.error('Download error:', error);
         showError(t('downloadError'));
     }
 }
@@ -296,17 +316,19 @@ function triggerDownload(blob, filename) {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
-    console.log('✅ File download triggered');
+    console.log('File download triggered');
 }
 
 // Initialize on page load
 window.addEventListener('DOMContentLoaded', () => {
+    initDOMElements();
+    setupDownloadButton();
     verifyPurchase();
 });
 
 // Handle errors globally
 window.addEventListener('error', (event) => {
-    console.error('💥 Global error:', event.error);
+    console.error('Global error:', event.error);
     // Send error to backend for logging
     fetch('/api/log-client-error', {
         method: 'POST',
