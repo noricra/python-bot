@@ -27,6 +27,8 @@ def build_application(bot_instance) -> Application:
                     self.effective_chat = update_obj.effective_chat # AJOUT CRITIQUE
                 async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
                     await self.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+                async def answer(self):
+                    pass  # Mock: no-op for command-triggered queries
 
             mock_query = MockQuery(update.effective_user, update, bot_instance)
             lang = bot_instance.get_user_language(update.effective_user.id)
@@ -50,6 +52,8 @@ def build_application(bot_instance) -> Application:
                 self.effective_chat = update_obj.effective_chat
             async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
                 await self.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+            async def answer(self):
+                pass  # Mock: no-op for command-triggered queries
 
         mock_query = MockQuery(update.effective_user, update)
         lang = bot_instance.get_user_language(update.effective_user.id)
@@ -60,10 +64,12 @@ def build_application(bot_instance) -> Application:
         class MockQuery:
             def __init__(self, user, update_obj):
                 self.from_user = user
-                self.message = update_obj.message 
+                self.message = update_obj.message
                 self.effective_chat = update_obj.effective_chat
             async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
                 await self.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+            async def answer(self):
+                pass  # Mock: no-op for command-triggered queries
 
         mock_query = MockQuery(update.effective_user, update)
         lang = bot_instance.get_user_language(update.effective_user.id)
@@ -74,10 +80,12 @@ def build_application(bot_instance) -> Application:
         class MockQuery:
             def __init__(self, user, update_obj):
                 self.from_user = user
-                self.message = update_obj.message 
+                self.message = update_obj.message
                 self.effective_chat = update_obj.effective_chat
             async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
                 await self.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+            async def answer(self):
+                pass  # Mock: no-op for command-triggered queries
             def get_bot(self):
                 return context.bot
 
@@ -171,9 +179,11 @@ def build_application(bot_instance) -> Application:
                 self.effective_chat = update_obj.effective_chat
                 self.bot = bot
                 self._update = update_obj
-                self.message = update_obj.message 
+                self.message = update_obj.message
             async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
                 await self._update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+            async def answer(self):
+                pass  # Mock: no-op for command-triggered queries
 
         mock_query = MockQuery(update.effective_user, update, context.bot)
         lang = bot_instance.get_user_language(update.effective_user.id)
