@@ -148,11 +148,15 @@ class B2StorageService:
             return None
 
         try:
+            # Extract filename from object_key
+            filename = object_key.split('/')[-1]
+
             url = self.client.generate_presigned_url(
                 'get_object',
                 Params={
                     'Bucket': self.bucket_name,
-                    'Key': object_key
+                    'Key': object_key,
+                    'ResponseContentDisposition': f'attachment; filename="{filename}"'
                 },
                 ExpiresIn=expires_in
             )
