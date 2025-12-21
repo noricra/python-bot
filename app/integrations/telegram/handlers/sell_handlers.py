@@ -1782,10 +1782,14 @@ class SellHandlers:
                 # 1. On utilise le service directement (pas via helper obscure)
                 b2_service = B2StorageService()
 
-                # 2. On exécute l'upload dans un thread séparé (Executor)
+                # 2. Construire le chemin B2 complet (comme pour cover/thumb)
+                # ✅ NOUVELLE STRUCTURE: products/seller_id/product_id/filename
+                main_file_b2_key = f"products/{seller_id}/{product_id}/{filename}"
+
+                # 3. On exécute l'upload dans un thread séparé (Executor)
                 # Cela empêche le blocage du bot pendant les 20s de timeout ou l'upload
-                logger.info(f"☁️ Uploading to B2: {local_file_path} -> {product_id}")
-                b2_url = await b2_service.upload_file(local_file_path, product_id)
+                logger.info(f"☁️ Uploading to B2: {local_file_path} -> {main_file_b2_key}")
+                b2_url = await b2_service.upload_file(local_file_path, main_file_b2_key)
 
                 if b2_url:
                     # Update product with B2 URL
