@@ -200,8 +200,8 @@ def get_b2_presigned_url(b2_url: str, expires_in: int = 3600) -> Optional[str]:
 
         object_key = parts[1]
 
-        # Generate presigned URL
-        presigned_url = b2_service.get_download_url(object_key, expires_in)
+        # Generate presigned URL using Native B2 API (CORS-compatible)
+        presigned_url = b2_service.get_native_download_url(object_key, expires_in)
         return presigned_url
 
     except Exception as e:
