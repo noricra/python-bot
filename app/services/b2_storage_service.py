@@ -143,13 +143,18 @@ class B2StorageService:
 
     def get_download_url(self, object_key: str, expires_in: int = 3600) -> Optional[str]:
         """Generate a presigned URL for downloading a file"""
+        logger.info(f"🔗 [B2-DOWNLOAD] get_download_url called with object_key={object_key}, expires_in={expires_in}")
+
         if not self.client:
-            logger.error("❌ B2 client not initialized")
+            logger.error("❌ [B2-DOWNLOAD] B2 client not initialized")
             return None
 
         try:
             # Extract filename from object_key
             filename = object_key.split('/')[-1]
+            logger.info(f"📄 [B2-DOWNLOAD] Extracted filename: {filename}")
+
+            logger.info(f"🔧 [B2-DOWNLOAD] Calling boto3 generate_presigned_url with bucket={self.bucket_name}, key={object_key}")
 
             url = self.client.generate_presigned_url(
                 'get_object',
@@ -160,14 +165,21 @@ class B2StorageService:
                 },
                 ExpiresIn=expires_in
             )
-            logger.info(f"✅ Presigned URL generated for: {object_key}")
+
+            logger.info(f"✅ [B2-DOWNLOAD] Presigned URL generated successfully: {url[:100]}...")
+            logger.info(f"🔍 [B2-DOWNLOAD] URL length: {len(url)}, contains bucket: {self.bucket_name in url}")
+
             return url
 
         except ClientError as e:
-            logger.error(f"❌ Failed to generate presigned URL: {e}")
+            logger.error(f"❌ [B2-DOWNLOAD] ClientError generating presigned URL: {e}")
+            logger.error(f"❌ [B2-DOWNLOAD] Error code: {e.response.get('Error', {}).get('Code', 'Unknown')}")
+            logger.error(f"❌ [B2-DOWNLOAD] Error message: {e.response.get('Error', {}).get('Message', 'Unknown')}")
             return None
         except Exception as e:
-            logger.error(f"❌ Unexpected error generating URL: {e}")
+            logger.error(f"❌ [B2-DOWNLOAD] Unexpected error generating URL: {e}")
+            import traceback
+            logger.error(f"❌ [B2-DOWNLOAD] Traceback:\n{traceback.format_exc()}")
             return None
 
     def generate_presigned_upload_url(self, object_key: str, content_type: str = 'application/octet-stream', expires_in: int = 3600) -> Optional[str]:
@@ -234,19 +246,26 @@ class B2StorageService:
 
     def file_exists(self, object_key: str) -> bool:
         """Check if a file exists in B2"""
+        logger.info(f"🔍 [B2-EXISTS] Checking if file exists: bucket={self.bucket_name}, key={object_key}")
+
         if not self.client:
+            logger.error("❌ [B2-EXISTS] B2 client not initialized")
             return False
 
         try:
-            self.client.head_object(
+            response = self.client.head_object(
                 Bucket=self.bucket_name,
                 Key=object_key
             )
+            logger.info(f"✅ [B2-EXISTS] File exists: {object_key}, size={response.get('ContentLength', 0)} bytes")
             return True
 
-        except ClientError:
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            logger.warning(f"⚠️ [B2-EXISTS] File not found or access error: {object_key}, error_code={error_code}")
             return False
-        except Exception:
+        except Exception as e:
+            logger.error(f"❌ [B2-EXISTS] Unexpected error checking file: {e}")
             return False
 
     def get_file_size(self, object_key: str) -> Optional[int]:
