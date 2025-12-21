@@ -394,3 +394,58 @@ class B2StorageService:
         except Exception as e:
             logger.error(f"❌ Get upload URL exception: {e}")
             return None
+
+    def get_native_download_url(self, object_key: str, expires_in: int = 3600) -> Optional[str]:
+        """
+        Get B2 Native API download URL with authorization token (CORS-compatible)
+
+        Returns:
+            URL with embedded authorization token or None if failed
+        """
+        logger.info(f"🔗 [B2-NATIVE-DOWNLOAD] Getting native download URL for: {object_key}")
+
+        # Step 1: Authenticate
+        auth_result = self._get_b2_auth_token()
+        if not auth_result:
+            logger.error("❌ [B2-NATIVE-DOWNLOAD] Failed to authenticate with B2")
+            return None
+
+        auth_token, api_url, account_id = auth_result
+
+        # Step 2: Get bucket ID
+        bucket_id = self._get_bucket_id(auth_token, api_url, account_id)
+        if not bucket_id:
+            logger.error("❌ [B2-NATIVE-DOWNLOAD] Failed to get bucket ID")
+            return None
+
+        # Step 3: Generate download authorization
+        try:
+            response = requests.post(
+                f"{api_url}/b2api/v2/b2_get_download_authorization",
+                headers={'Authorization': auth_token},
+                json={
+                    'bucketId': bucket_id,
+                    'fileNamePrefix': object_key,
+                    'validDurationInSeconds': expires_in
+                }
+            )
+
+            if response.status_code != 200:
+                logger.error(f"❌ [B2-NATIVE-DOWNLOAD] Failed to get download auth: {response.text}")
+                return None
+
+            data = response.json()
+            download_auth_token = data['authorizationToken']
+
+            # Step 4: Construct download URL with auth token
+            # Format: https://f{bucket_id}.backblazeb2.com/file/{bucket_name}/{object_key}?Authorization={token}
+            download_url = f"https://f{bucket_id[:3]}{bucket_id[3:]}.backblazeb2.com/file/{self.bucket_name}/{object_key}?Authorization={download_auth_token}"
+
+            logger.info(f"✅ [B2-NATIVE-DOWNLOAD] Native download URL generated: {download_url[:100]}...")
+            return download_url
+
+        except Exception as e:
+            logger.error(f"❌ [B2-NATIVE-DOWNLOAD] Exception: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
