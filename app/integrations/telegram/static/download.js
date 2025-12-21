@@ -126,28 +126,42 @@ function formatFileSize(mb) {
 // Verify purchase on page load
 async function verifyPurchase() {
     if (!productId) {
+        console.error('❌ [VERIFY] Product ID manquant dans l\'URL');
         showError('Product ID manquant dans l\'URL');
         return;
     }
 
     try {
-        console.log('Verifying purchase...');
+        const requestBody = {
+            product_id: productId,
+            user_id: userId,
+            telegram_init_data: tg.initData
+        };
+        console.log('🔍 [VERIFY] Starting verification with params:', {
+            product_id: productId,
+            user_id: userId,
+            initData_length: tg.initData?.length || 0
+        });
+
         const response = await fetch('/api/verify-purchase', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                product_id: productId,
-                user_id: userId,
-                telegram_init_data: tg.initData
-            })
+            body: JSON.stringify(requestBody)
         });
+
+        console.log(`📡 [VERIFY] Response status: ${response.status} ${response.statusText}`);
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             const errorDetail = errorData.detail || `HTTP ${response.status}`;
-            console.error('API Error:', response.status, errorDetail);
+            console.error('❌ [VERIFY] API Error:', {
+                status: response.status,
+                statusText: response.statusText,
+                detail: errorDetail,
+                fullError: errorData
+            });
 
             if (response.status === 404) {
                 showError(t('notPurchased'));
@@ -161,7 +175,7 @@ async function verifyPurchase() {
         }
 
         const data = await response.json();
-        console.log('Purchase verified:', data);
+        console.log('✅ [VERIFY] Purchase verified successfully:', data);
         purchaseData = data;
 
         // Display product info
@@ -192,12 +206,25 @@ async function verifyPurchase() {
 function setupDownloadButton() {
     downloadBtn.addEventListener('click', async () => {
         if (!purchaseData) {
+            console.error('❌ [DOWNLOAD] Purchase data not available');
             showError('Purchase data not available');
             return;
         }
 
         try {
-            console.log('Requesting download URL...');
+            const requestBody = {
+                product_id: purchaseData.product_id,
+                order_id: purchaseData.order_id,
+                user_id: userId,
+                telegram_init_data: tg.initData
+            };
+            console.log('📥 [DOWNLOAD] Requesting download URL with params:', {
+                product_id: purchaseData.product_id,
+                order_id: purchaseData.order_id,
+                user_id: userId,
+                initData_length: tg.initData?.length || 0
+            });
+
             showSection('progressSection');
 
             // Request presigned download URL
@@ -206,24 +233,32 @@ function setupDownloadButton() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    product_id: purchaseData.product_id,
-                    order_id: purchaseData.order_id,
-                    user_id: userId,
-                    telegram_init_data: tg.initData
-                })
+                body: JSON.stringify(requestBody)
             });
+
+            console.log(`📡 [DOWNLOAD] Generate URL Response: ${response.status} ${response.statusText}`);
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 const errorDetail = errorData.detail || `HTTP ${response.status}`;
-                console.error('Generate URL Error:', response.status, errorDetail);
+                console.error('❌ [DOWNLOAD] Generate URL Error:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    detail: errorDetail,
+                    fullError: errorData
+                });
                 showError(`Erreur génération URL: ${errorDetail}`);
                 return;
             }
 
             const data = await response.json();
-            console.log('Download URL received');
+            console.log('✅ [DOWNLOAD] URL received:', {
+                file_name: data.file_name,
+                file_size_mb: data.file_size_mb,
+                expires_in: data.expires_in,
+                download_url_length: data.download_url?.length || 0,
+                download_url_preview: data.download_url?.substring(0, 100) + '...'
+            });
 
             fileName.textContent = data.file_name;
             totalSize.textContent = formatFileSize(data.file_size_mb);
@@ -232,7 +267,11 @@ function setupDownloadButton() {
             await downloadFile(data.download_url, data.file_name, data.file_size_mb);
 
         } catch (error) {
-            console.error('Error downloading:', error);
+            console.error('❌ [DOWNLOAD] Exception caught:', {
+                message: error.message,
+                stack: error.stack,
+                error: error
+            });
             showError(t('downloadError'));
         }
     });
@@ -241,27 +280,46 @@ function setupDownloadButton() {
 // Download file with progress tracking
 async function downloadFile(url, filename, fileSizeMb) {
     try {
-        console.log('Downloading file...');
+        console.log('📦 [FILE] Starting file download:', {
+            filename: filename,
+            expected_size_mb: fileSizeMb,
+            url_length: url?.length || 0,
+            url_preview: url?.substring(0, 100) + '...'
+        });
 
         const response = await fetch(url);
 
+        console.log(`📡 [FILE] B2 Response:`, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries([...response.headers.entries()]),
+            ok: response.ok
+        });
+
         if (!response.ok) {
-            console.error('Download failed:', response.status, response.statusText);
+            console.error('❌ [FILE] Download failed:', {
+                status: response.status,
+                statusText: response.statusText
+            });
             throw new Error(`Téléchargement échoué: ${response.status} ${response.statusText}`);
         }
 
         const contentLength = response.headers.get('Content-Length');
         const total = parseInt(contentLength, 10);
 
+        console.log(`📊 [FILE] Content-Length: ${contentLength} (${total} bytes)`);
+
         if (!total || isNaN(total)) {
             // Fallback: no progress tracking
-            console.warn('Content-Length not available, downloading without progress');
+            console.warn('⚠️ [FILE] Content-Length not available, downloading without progress');
             const blob = await response.blob();
+            console.log(`✅ [FILE] Blob created: ${blob.size} bytes, type: ${blob.type}`);
             triggerDownload(blob, filename);
             return;
         }
 
         // Download with progress tracking
+        console.log('📥 [FILE] Starting streaming download with progress tracking');
         const reader = response.body.getReader();
         const chunks = [];
         let receivedLength = 0;
@@ -271,6 +329,7 @@ async function downloadFile(url, filename, fileSizeMb) {
             const {done, value} = await reader.read();
 
             if (done) {
+                console.log('✅ [FILE] Stream complete');
                 break;
             }
 
@@ -286,11 +345,22 @@ async function downloadFile(url, filename, fileSizeMb) {
             progressPercent.textContent = `${percent}%`;
             downloadSpeed.textContent = `${speed.toFixed(2)} MB/s`;
             downloadedSize.textContent = formatFileSize(receivedLength / 1024 / 1024);
+
+            // Log progress every 25%
+            if (percent % 25 === 0 && percent > 0) {
+                console.log(`📊 [FILE] Progress: ${percent}% (${receivedLength}/${total} bytes, ${speed.toFixed(2)} MB/s)`);
+            }
         }
 
         // Combine chunks into blob
         const blob = new Blob(chunks);
-        console.log('Download complete');
+        console.log('✅ [FILE] Download complete:', {
+            total_chunks: chunks.length,
+            blob_size: blob.size,
+            blob_type: blob.type,
+            expected_size: total,
+            match: blob.size === total
+        });
 
         // Trigger browser download
         triggerDownload(blob, filename);
@@ -300,23 +370,38 @@ async function downloadFile(url, filename, fileSizeMb) {
         showSection('successSection');
 
     } catch (error) {
-        console.error('Download error:', error);
+        console.error('❌ [FILE] Download error:', {
+            message: error.message,
+            stack: error.stack,
+            error: error
+        });
         showError(t('downloadError'));
     }
 }
 
 // Trigger browser download
 function triggerDownload(blob, filename) {
+    console.log('💾 [TRIGGER] Creating download trigger:', {
+        blob_size: blob.size,
+        blob_type: blob.type,
+        filename: filename
+    });
+
     const url = window.URL.createObjectURL(blob);
+    console.log('🔗 [TRIGGER] Object URL created:', url.substring(0, 50) + '...');
+
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
     a.download = filename;
     document.body.appendChild(a);
+
+    console.log('🖱️ [TRIGGER] Clicking download link...');
     a.click();
+
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
-    console.log('File download triggered');
+    console.log('✅ [TRIGGER] File download triggered successfully');
 }
 
 // Initialize on page load
