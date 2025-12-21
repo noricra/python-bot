@@ -552,14 +552,21 @@ async def verify_purchase(request: VerifyPurchaseRequest):
     Vérifie qu'un utilisateur a acheté un produit
     Utilisé par MiniApp download pour validation avant téléchargement
     """
+    logger.info(f"🔍 [VERIFY-API] Request received: user_id={request.user_id}, product_id={request.product_id}")
+
     # 1. Authentification Telegram
-    if not verify_telegram_webapp_data(request.telegram_init_data):
+    auth_valid = verify_telegram_webapp_data(request.telegram_init_data)
+    logger.info(f"🔐 [VERIFY-API] Auth validation result: {auth_valid}")
+
+    if not auth_valid:
+        logger.error(f"❌ [VERIFY-API] Auth failed for user {request.user_id}")
         raise HTTPException(status_code=401, detail="Unauthorized - Invalid Init Data")
 
     try:
         # 2. Vérifier l'achat dans la DB
         from app.domain.repositories.product_repo import ProductRepository
 
+        logger.info(f"💾 [VERIFY-API] Querying DB for user {request.user_id}, product {request.product_id}")
         conn = get_postgresql_connection()
         try:
             cursor = conn.cursor()
@@ -585,6 +592,7 @@ async def verify_purchase(request: VerifyPurchaseRequest):
             result = cursor.fetchone()
 
             if not result:
+                logger.warning(f"⚠️ [VERIFY-API] No completed purchase found for user {request.user_id}, product {request.product_id}")
                 raise HTTPException(
                     status_code=404,
                     detail="Product not purchased or payment not completed"
@@ -592,8 +600,10 @@ async def verify_purchase(request: VerifyPurchaseRequest):
 
             product_id, title, file_size_mb, main_file_url, order_id, download_count, last_download_at = result
 
+            logger.info(f"✅ [VERIFY-API] Purchase verified: order_id={order_id}, title={title}, has_file={bool(main_file_url)}")
+
             # 3. Retourner les infos pour le MiniApp
-            return {
+            response_data = {
                 "valid": True,
                 "product_id": product_id,
                 "product_title": title,
@@ -603,6 +613,8 @@ async def verify_purchase(request: VerifyPurchaseRequest):
                 "last_download_at": last_download_at.isoformat() if last_download_at else None,
                 "has_file": bool(main_file_url)
             }
+            logger.info(f"📤 [VERIFY-API] Returning response: {response_data}")
+            return response_data
 
         finally:
             put_connection(conn)
@@ -610,7 +622,7 @@ async def verify_purchase(request: VerifyPurchaseRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error verifying purchase: {e}")
+        logger.error(f"❌ [VERIFY-API] Exception: {e}")
         import traceback
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -622,16 +634,24 @@ async def generate_download_url(request: GenerateDownloadURLRequest):
     Génère une URL présignée B2 pour téléchargement direct (Browser → B2)
     Architecture identique à l'upload, mais sens inverse
     """
+    logger.info(f"📥 [GEN-URL-API] Request received: user_id={request.user_id}, order_id={request.order_id}, product_id={request.product_id}")
+
     # 1. Authentification Telegram
-    if not verify_telegram_webapp_data(request.telegram_init_data):
+    auth_valid = verify_telegram_webapp_data(request.telegram_init_data)
+    logger.info(f"🔐 [GEN-URL-API] Auth validation result: {auth_valid}")
+
+    if not auth_valid:
+        logger.error(f"❌ [GEN-URL-API] Auth failed for user {request.user_id}")
         raise HTTPException(status_code=401, detail="Unauthorized - Invalid Init Data")
 
     try:
+        logger.info(f"💾 [GEN-URL-API] Connecting to DB...")
         conn = get_postgresql_connection()
         try:
             cursor = conn.cursor()
 
             # 2. Re-vérifier l'achat (sécurité)
+            logger.info(f"🔍 [GEN-URL-API] Verifying order {request.order_id} for user {request.user_id}")
             cursor.execute('''
                 SELECT p.main_file_url, p.title, p.file_size_mb
                 FROM orders o
@@ -645,11 +665,15 @@ async def generate_download_url(request: GenerateDownloadURLRequest):
             result = cursor.fetchone()
 
             if not result:
+                logger.warning(f"⚠️ [GEN-URL-API] Order not found or unauthorized: order={request.order_id}, user={request.user_id}")
                 raise HTTPException(status_code=404, detail="Order not found or unauthorized")
 
             main_file_url, title, file_size_mb = result
 
+            logger.info(f"📂 [GEN-URL-API] Found product: title={title}, file_url={main_file_url}, size={file_size_mb}MB")
+
             if not main_file_url:
+                logger.error(f"❌ [GEN-URL-API] Product file URL is null for order {request.order_id}")
                 raise HTTPException(status_code=404, detail="Product file not available")
 
             # 3. Extraire object_key depuis l'URL B2
@@ -657,23 +681,46 @@ async def generate_download_url(request: GenerateDownloadURLRequest):
             # On veut: products/USER/PRODUCT/main_file.pdf
             try:
                 bucket_name = os.getenv('B2_BUCKET_NAME')
+                logger.info(f"🔧 [GEN-URL-API] Extracting object_key from URL: {main_file_url}, bucket={bucket_name}")
+
                 if f"/{bucket_name}/" in main_file_url:
                     object_key = main_file_url.split(f"/{bucket_name}/")[1]
                 else:
                     # Fallback: assumer que c'est juste le path
                     object_key = main_file_url.split('.com/')[-1]
+
+                logger.info(f"✅ [GEN-URL-API] Extracted object_key: {object_key}")
             except Exception as e:
-                logger.error(f"Error extracting object_key from {main_file_url}: {e}")
+                logger.error(f"❌ [GEN-URL-API] Error extracting object_key from {main_file_url}: {e}")
                 raise HTTPException(status_code=500, detail="Invalid file URL format")
 
-            # 4. Générer URL présignée B2 (valide 1 heure)
+            # 4. Vérifier que le fichier existe sur B2 avant de générer l'URL
             b2_service = B2StorageService()
+            logger.info(f"🔍 [GEN-URL-API] Checking if file exists on B2: {object_key}")
+
+            file_exists = b2_service.file_exists(object_key)
+            logger.info(f"📂 [GEN-URL-API] File exists check result: {file_exists}")
+
+            if not file_exists:
+                logger.error(f"❌ [GEN-URL-API] File does not exist on B2: {object_key}")
+                raise HTTPException(status_code=404, detail=f"File not found on storage: {object_key}")
+
+            # 5. Générer URL présignée B2 (valide 1 heure)
+            logger.info(f"🔗 [GEN-URL-API] Generating presigned URL for object_key: {object_key}")
             download_url = b2_service.get_download_url(object_key, expires_in=3600)
 
-            # 5. Extraire filename depuis object_key
-            file_name = object_key.split('/')[-1]
+            if not download_url:
+                logger.error(f"❌ [GEN-URL-API] B2 service failed to generate presigned URL")
+                raise HTTPException(status_code=500, detail="Failed to generate download URL")
 
-            # 6. Incrémenter download_count
+            logger.info(f"✅ [GEN-URL-API] Presigned URL generated: {download_url[:100]}...")
+
+            # 6. Extraire filename depuis object_key
+            file_name = object_key.split('/')[-1]
+            logger.info(f"📄 [GEN-URL-API] Extracted filename: {file_name}")
+
+            # 7. Incrémenter download_count
+            logger.info(f"📊 [GEN-URL-API] Incrementing download count for order {request.order_id}")
             cursor.execute('''
                 UPDATE orders
                 SET download_count = COALESCE(download_count, 0) + 1,
@@ -682,16 +729,18 @@ async def generate_download_url(request: GenerateDownloadURLRequest):
             ''', (request.order_id,))
             conn.commit()
 
-            logger.info(f"✅ Generated download URL for order {request.order_id}, user {request.user_id}")
+            logger.info(f"✅ [GEN-URL-API] Download count updated successfully")
 
-            # 7. Retourner URL au MiniApp
-            return {
+            # 8. Retourner URL au MiniApp
+            response_data = {
                 "download_url": download_url,
                 "file_name": file_name,
                 "file_size_mb": file_size_mb,
                 "product_title": title,
                 "expires_in": 3600  # 1 hour
             }
+            logger.info(f"📤 [GEN-URL-API] Returning response: file_name={file_name}, size={file_size_mb}MB, expires=3600s")
+            return response_data
 
         finally:
             put_connection(conn)
@@ -699,9 +748,9 @@ async def generate_download_url(request: GenerateDownloadURLRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error generating download URL: {e}")
+        logger.error(f"❌ [GEN-URL-API] Exception: {e}")
         import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"❌ [GEN-URL-API] Traceback:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
