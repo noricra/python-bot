@@ -806,35 +806,18 @@ async def stream_download(request: GenerateDownloadURLRequest):
                 logger.error(f"[STREAM-DOWNLOAD] Product file URL is null for order {request.order_id}")
                 raise HTTPException(status_code=404, detail="Product file not available")
 
-            # 3. Extraire object_key depuis URL B2
-            try:
-                bucket_name = os.getenv('B2_BUCKET_NAME')
-                logger.info(f"[STREAM-DOWNLOAD] Extracting object_key from URL: {main_file_url}, bucket={bucket_name}")
+            # 3. Utiliser l'URL B2 deja stockee en DB (publiquement accessible)
+            logger.info(f"[STREAM-DOWNLOAD] Using stored B2 URL: {main_file_url}")
 
-                if f"/{bucket_name}/" in main_file_url:
-                    object_key = main_file_url.split(f"/{bucket_name}/")[1]
-                else:
-                    # Fallback: assumer que c'est juste le path
-                    object_key = main_file_url.split('.com/')[-1]
+            # main_file_url contient deja l'URL complete B2
+            # Format: https://s3.eu-central-003.backblazeb2.com/Uzeur-StockFiles/products/...
+            download_url = main_file_url
 
-                logger.info(f"[STREAM-DOWNLOAD] Extracted object_key: {object_key}")
-            except Exception as e:
-                logger.error(f"[STREAM-DOWNLOAD] Error extracting object_key from {main_file_url}: {e}")
-                raise HTTPException(status_code=500, detail="Invalid file URL format")
+            if not download_url or not download_url.startswith('https://'):
+                logger.error(f"[STREAM-DOWNLOAD] Invalid main_file_url: {main_file_url}")
+                raise HTTPException(status_code=500, detail="Invalid file URL")
 
-            # 4. Generer URL presignee B2 (privee, backend only)
-            b2_service = B2StorageService()
-            logger.info(f"[STREAM-DOWNLOAD] Generating presigned URL for object_key: {object_key}")
-
-            presigned_url = b2_service.get_download_url(object_key, expires_in=300)
-
-            if not presigned_url:
-                logger.error(f"[STREAM-DOWNLOAD] B2 service failed to generate presigned URL")
-                raise HTTPException(status_code=500, detail="Failed to generate download URL")
-
-            logger.info(f"[STREAM-DOWNLOAD] Presigned URL generated: {presigned_url[:100]}...")
-
-            # 5. Incrementer download_count
+            # 4. Incrementer download_count
             logger.info(f"[STREAM-DOWNLOAD] Incrementing download count for order {request.order_id}")
             cursor.execute('''
                 UPDATE orders
@@ -849,15 +832,15 @@ async def stream_download(request: GenerateDownloadURLRequest):
         finally:
             put_connection(conn)
 
-        # 6. Stream depuis B2 vers frontend
+        # 5. Stream depuis B2 vers frontend
         import httpx
 
         async def download_stream():
             """Generator qui stream les chunks depuis B2"""
             try:
-                logger.error(f"[STREAM-DOWNLOAD] Starting stream from B2 URL: {presigned_url[:100]}...")
+                logger.error(f"[STREAM-DOWNLOAD] Starting stream from B2 URL: {download_url[:100]}...")
                 async with httpx.AsyncClient(timeout=300.0) as client:
-                    async with client.stream('GET', presigned_url) as response:
+                    async with client.stream('GET', download_url) as response:
                         if response.status_code != 200:
                             logger.error(f"[STREAM-DOWNLOAD] B2 returned status {response.status_code}")
                             logger.error(f"[STREAM-DOWNLOAD] B2 response headers: {dict(response.headers)}")
@@ -878,8 +861,9 @@ async def stream_download(request: GenerateDownloadURLRequest):
                 logger.error(f"[STREAM-DOWNLOAD] Traceback: {traceback.format_exc()}")
                 raise
 
-        # 7. Retourner streaming response
-        filename = object_key.split('/')[-1]
+        # 6. Retourner streaming response
+        # Extraire filename depuis l'URL
+        filename = main_file_url.split('/')[-1].split('?')[0]  # Enlever query params si presents
         content_length = int(file_size_mb * 1024 * 1024) if file_size_mb else None
 
         headers = {
