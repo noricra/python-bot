@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -705,9 +706,9 @@ async def generate_download_url(request: GenerateDownloadURLRequest):
                 logger.error(f"❌ [GEN-URL-API] File does not exist on B2: {object_key}")
                 raise HTTPException(status_code=404, detail=f"File not found on storage: {object_key}")
 
-            # 5. Générer URL présignée B2 (valide 1 heure)
-            logger.info(f"🔗 [GEN-URL-API] Generating presigned URL for object_key: {object_key}")
-            download_url = b2_service.get_download_url(object_key, expires_in=3600)
+            # 5. Générer URL avec B2 Native API (CORS-compatible, comme pour upload)
+            logger.info(f"🔗 [GEN-URL-API] Generating Native B2 download URL for object_key: {object_key}")
+            download_url = b2_service.get_native_download_url(object_key, expires_in=3600)
 
             if not download_url:
                 logger.error(f"❌ [GEN-URL-API] B2 service failed to generate presigned URL")
@@ -740,6 +741,7 @@ async def generate_download_url(request: GenerateDownloadURLRequest):
                 "expires_in": 3600  # 1 hour
             }
             logger.info(f"📤 [GEN-URL-API] Returning response: file_name={file_name}, size={file_size_mb}MB, expires=3600s")
+            logger.info(f"🔗 [GEN-URL-API] FULL PRESIGNED URL FOR DEBUGGING: {download_url}")
             return response_data
 
         finally:
@@ -751,6 +753,146 @@ async def generate_download_url(request: GenerateDownloadURLRequest):
         logger.error(f"❌ [GEN-URL-API] Exception: {e}")
         import traceback
         logger.error(f"❌ [GEN-URL-API] Traceback:\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/stream-download")
+async def stream_download(request: GenerateDownloadURLRequest):
+    """
+    Proxy download: Backend stream depuis B2 vers frontend
+    Evite CORS car tout passe par Railway (meme origine)
+    """
+    logger.info(f"[STREAM-DOWNLOAD] Request received: user_id={request.user_id}, order_id={request.order_id}, product_id={request.product_id}")
+
+    # 1. Authentification Telegram
+    auth_valid = verify_telegram_webapp_data(request.telegram_init_data)
+    logger.info(f"[STREAM-DOWNLOAD] Auth validation result: {auth_valid}")
+
+    if not auth_valid:
+        logger.error(f"[STREAM-DOWNLOAD] Auth failed for user {request.user_id}")
+        raise HTTPException(status_code=401, detail="Unauthorized - Invalid Init Data")
+
+    try:
+        logger.info(f"[STREAM-DOWNLOAD] Connecting to DB...")
+        conn = get_postgresql_connection()
+        try:
+            cursor = conn.cursor()
+
+            # 2. Verifier ownership order
+            logger.info(f"[STREAM-DOWNLOAD] Verifying order {request.order_id} for user {request.user_id}")
+            cursor.execute('''
+                SELECT p.main_file_url, p.title, p.file_size_mb
+                FROM orders o
+                JOIN products p ON o.product_id = p.product_id
+                WHERE o.order_id = %s
+                  AND o.buyer_user_id = %s
+                  AND o.payment_status = 'completed'
+                LIMIT 1
+            ''', (request.order_id, request.user_id))
+
+            result = cursor.fetchone()
+
+            if not result:
+                logger.warning(f"[STREAM-DOWNLOAD] Order not found or unauthorized: order={request.order_id}, user={request.user_id}")
+                raise HTTPException(status_code=404, detail="Order not found or unauthorized")
+
+            main_file_url, title, file_size_mb = result
+
+            logger.info(f"[STREAM-DOWNLOAD] Found product: title={title}, file_url={main_file_url}, size={file_size_mb}MB")
+
+            if not main_file_url:
+                logger.error(f"[STREAM-DOWNLOAD] Product file URL is null for order {request.order_id}")
+                raise HTTPException(status_code=404, detail="Product file not available")
+
+            # 3. Extraire object_key depuis URL B2
+            try:
+                bucket_name = os.getenv('B2_BUCKET_NAME')
+                logger.info(f"[STREAM-DOWNLOAD] Extracting object_key from URL: {main_file_url}, bucket={bucket_name}")
+
+                if f"/{bucket_name}/" in main_file_url:
+                    object_key = main_file_url.split(f"/{bucket_name}/")[1]
+                else:
+                    # Fallback: assumer que c'est juste le path
+                    object_key = main_file_url.split('.com/')[-1]
+
+                logger.info(f"[STREAM-DOWNLOAD] Extracted object_key: {object_key}")
+            except Exception as e:
+                logger.error(f"[STREAM-DOWNLOAD] Error extracting object_key from {main_file_url}: {e}")
+                raise HTTPException(status_code=500, detail="Invalid file URL format")
+
+            # 4. Generer URL presignee B2 (privee, backend only)
+            b2_service = B2StorageService()
+            logger.info(f"[STREAM-DOWNLOAD] Generating presigned URL for object_key: {object_key}")
+
+            presigned_url = b2_service.get_download_url(object_key, expires_in=300)
+
+            if not presigned_url:
+                logger.error(f"[STREAM-DOWNLOAD] B2 service failed to generate presigned URL")
+                raise HTTPException(status_code=500, detail="Failed to generate download URL")
+
+            logger.info(f"[STREAM-DOWNLOAD] Presigned URL generated: {presigned_url[:100]}...")
+
+            # 5. Incrementer download_count
+            logger.info(f"[STREAM-DOWNLOAD] Incrementing download count for order {request.order_id}")
+            cursor.execute('''
+                UPDATE orders
+                SET download_count = COALESCE(download_count, 0) + 1,
+                    last_download_at = CURRENT_TIMESTAMP
+                WHERE order_id = %s
+            ''', (request.order_id,))
+            conn.commit()
+
+            logger.info(f"[STREAM-DOWNLOAD] Download count updated successfully")
+
+        finally:
+            put_connection(conn)
+
+        # 6. Stream depuis B2 vers frontend
+        import httpx
+
+        async def download_stream():
+            """Generator qui stream les chunks depuis B2"""
+            try:
+                logger.info(f"[STREAM-DOWNLOAD] Starting stream from B2...")
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    async with client.stream('GET', presigned_url) as response:
+                        if response.status_code != 200:
+                            logger.error(f"[STREAM-DOWNLOAD] B2 returned status {response.status_code}")
+                            raise HTTPException(status_code=502, detail=f"B2 download failed: {response.status_code}")
+
+                        logger.info(f"[STREAM-DOWNLOAD] B2 stream started, streaming chunks...")
+                        async for chunk in response.aiter_bytes(chunk_size=65536):
+                            yield chunk
+
+                logger.info(f"[STREAM-DOWNLOAD] Stream completed successfully")
+            except Exception as e:
+                logger.error(f"[STREAM-DOWNLOAD] Stream error: {e}")
+                raise
+
+        # 7. Retourner streaming response
+        filename = object_key.split('/')[-1]
+        content_length = int(file_size_mb * 1024 * 1024) if file_size_mb else None
+
+        headers = {
+            'Content-Disposition': f'attachment; filename="{filename}"'
+        }
+        if content_length:
+            headers['Content-Length'] = str(content_length)
+
+        logger.info(f"[STREAM-DOWNLOAD] Returning StreamingResponse: filename={filename}, size={content_length}")
+
+        return StreamingResponse(
+            download_stream(),
+            media_type='application/octet-stream',
+            headers=headers
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[STREAM-DOWNLOAD] Exception: {e}")
+        import traceback
+        logger.error(f"[STREAM-DOWNLOAD] Traceback:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
