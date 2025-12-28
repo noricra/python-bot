@@ -304,6 +304,7 @@ function setupDownloadButton() {
                 match: blob.size === total
             });
 
+            // Utiliser triggerDownload qui gere toutes les methodes
             triggerDownload(blob, filename);
 
             // Show success
@@ -424,29 +425,101 @@ async function downloadFile(url, filename, fileSizeMb) {
     }
 }
 
-// Trigger browser download
+// Trigger browser download (Telegram Mini App compatible)
 function triggerDownload(blob, filename) {
-    console.log('💾 [TRIGGER] Creating download trigger:', {
+    console.error('[TRIGGER] Starting download process:', {
         blob_size: blob.size,
         blob_type: blob.type,
         filename: filename
     });
 
     const url = window.URL.createObjectURL(blob);
-    console.log('🔗 [TRIGGER] Object URL created:', url.substring(0, 50) + '...');
+    console.error('[TRIGGER] Blob URL created:', url.substring(0, 50) + '...');
 
-    const a = document.createElement('a');
-    a.style.display = 'none';
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
+    // Option 1: Essayer API Telegram WebApp
+    if (typeof tg !== 'undefined') {
+        // Methode 1: tg.downloadFile (si disponible)
+        if (tg.downloadFile && typeof tg.downloadFile === 'function') {
+            console.error('[TRIGGER] Trying Telegram downloadFile API...');
+            try {
+                tg.downloadFile({ url: url, file_name: filename });
+                console.error('[TRIGGER] Telegram downloadFile called successfully');
 
-    console.log('🖱️ [TRIGGER] Clicking download link...');
-    a.click();
+                setTimeout(() => {
+                    window.URL.revokeObjectURL(url);
+                    console.error('[TRIGGER] Blob URL cleaned up');
+                }, 5000);
+                return;
+            } catch (e) {
+                console.error('[TRIGGER] Telegram downloadFile failed:', e);
+            }
+        }
 
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-    console.log('✅ [TRIGGER] File download triggered successfully');
+        // Methode 2: tg.openLink (fallback)
+        if (tg.openLink && typeof tg.openLink === 'function') {
+            console.error('[TRIGGER] Trying Telegram openLink API...');
+            try {
+                tg.openLink(url);
+                console.error('[TRIGGER] Telegram openLink called successfully');
+
+                setTimeout(() => {
+                    window.URL.revokeObjectURL(url);
+                    console.error('[TRIGGER] Blob URL cleaned up');
+                }, 5000);
+                return;
+            } catch (e) {
+                console.error('[TRIGGER] Telegram openLink failed:', e);
+            }
+        }
+    }
+
+    // Option 2: Fallback - Afficher bouton manuel visible
+    console.error('[TRIGGER] Telegram APIs not available, showing manual download button');
+
+    const downloadBtn = document.createElement('a');
+    downloadBtn.href = url;
+    downloadBtn.download = filename;
+    downloadBtn.textContent = 'Enregistrer sur l\'appareil';
+
+    // Style du bouton
+    downloadBtn.style.position = 'fixed';
+    downloadBtn.style.bottom = '20px';
+    downloadBtn.style.left = '50%';
+    downloadBtn.style.transform = 'translateX(-50%)';
+    downloadBtn.style.zIndex = '10000';
+    downloadBtn.style.padding = '15px 30px';
+    downloadBtn.style.background = '#4CAF50';
+    downloadBtn.style.color = 'white';
+    downloadBtn.style.textDecoration = 'none';
+    downloadBtn.style.borderRadius = '8px';
+    downloadBtn.style.fontSize = '16px';
+    downloadBtn.style.fontWeight = 'bold';
+    downloadBtn.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+    downloadBtn.style.cursor = 'pointer';
+
+    document.body.appendChild(downloadBtn);
+    console.error('[TRIGGER] Manual download button displayed');
+
+    // Nettoyer apres clic
+    downloadBtn.addEventListener('click', () => {
+        console.error('[TRIGGER] Manual download button clicked');
+        setTimeout(() => {
+            window.URL.revokeObjectURL(url);
+            if (downloadBtn.parentNode) {
+                document.body.removeChild(downloadBtn);
+            }
+            console.error('[TRIGGER] Cleaned up after manual download');
+        }, 1000);
+    });
+
+    // Auto-cleanup apres 5 minutes si pas utilise
+    setTimeout(() => {
+        if (downloadBtn.parentNode) {
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(downloadBtn);
+            console.error('[TRIGGER] Cleaned up unused download button');
+        }
+    }, 300000);
 }
 
 // Initialize on page load
