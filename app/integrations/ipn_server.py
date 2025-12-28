@@ -762,6 +762,8 @@ async def stream_download(request: GenerateDownloadURLRequest):
     Proxy download: Backend stream depuis B2 vers frontend
     Evite CORS car tout passe par Railway (meme origine)
     """
+    logger.error(f"========== STREAM-DOWNLOAD ENDPOINT CALLED ==========")
+    logger.error(f"[STREAM-DOWNLOAD] NEW PROXY ENDPOINT ACTIVE")
     logger.info(f"[STREAM-DOWNLOAD] Request received: user_id={request.user_id}, order_id={request.order_id}, product_id={request.product_id}")
 
     # 1. Authentification Telegram
@@ -853,20 +855,27 @@ async def stream_download(request: GenerateDownloadURLRequest):
         async def download_stream():
             """Generator qui stream les chunks depuis B2"""
             try:
-                logger.info(f"[STREAM-DOWNLOAD] Starting stream from B2...")
+                logger.error(f"[STREAM-DOWNLOAD] Starting stream from B2 URL: {presigned_url[:100]}...")
                 async with httpx.AsyncClient(timeout=300.0) as client:
                     async with client.stream('GET', presigned_url) as response:
                         if response.status_code != 200:
                             logger.error(f"[STREAM-DOWNLOAD] B2 returned status {response.status_code}")
+                            logger.error(f"[STREAM-DOWNLOAD] B2 response headers: {dict(response.headers)}")
                             raise HTTPException(status_code=502, detail=f"B2 download failed: {response.status_code}")
 
-                        logger.info(f"[STREAM-DOWNLOAD] B2 stream started, streaming chunks...")
+                        logger.error(f"[STREAM-DOWNLOAD] B2 stream OK, starting chunk transfer...")
+                        chunk_count = 0
                         async for chunk in response.aiter_bytes(chunk_size=65536):
+                            chunk_count += 1
+                            if chunk_count % 10 == 0:
+                                logger.info(f"[STREAM-DOWNLOAD] Streamed {chunk_count} chunks...")
                             yield chunk
 
-                logger.info(f"[STREAM-DOWNLOAD] Stream completed successfully")
+                logger.error(f"[STREAM-DOWNLOAD] Stream completed successfully, total chunks: {chunk_count}")
             except Exception as e:
                 logger.error(f"[STREAM-DOWNLOAD] Stream error: {e}")
+                import traceback
+                logger.error(f"[STREAM-DOWNLOAD] Traceback: {traceback.format_exc()}")
                 raise
 
         # 7. Retourner streaming response
@@ -879,7 +888,8 @@ async def stream_download(request: GenerateDownloadURLRequest):
         if content_length:
             headers['Content-Length'] = str(content_length)
 
-        logger.info(f"[STREAM-DOWNLOAD] Returning StreamingResponse: filename={filename}, size={content_length}")
+        logger.error(f"[STREAM-DOWNLOAD] Returning StreamingResponse: filename={filename}, size={content_length}")
+        logger.error(f"[STREAM-DOWNLOAD] Headers: {headers}")
 
         return StreamingResponse(
             download_stream(),
