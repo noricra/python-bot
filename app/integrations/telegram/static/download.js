@@ -218,6 +218,8 @@ function setupDownloadButton() {
                 user_id: userId,
                 telegram_init_data: tg.initData
             };
+            console.error('========== USING NEW PROXY ENDPOINT ==========');
+            console.error('[DOWNLOAD] Calling /api/stream-download (NEW PROXY)');
             console.log('[DOWNLOAD] Starting stream download with params:', {
                 product_id: purchaseData.product_id,
                 order_id: purchaseData.order_id,
@@ -230,6 +232,7 @@ function setupDownloadButton() {
             totalSize.textContent = formatFileSize(purchaseData.file_size_mb);
 
             // Appel proxy backend
+            console.error('[DOWNLOAD] Fetching /api/stream-download...');
             const response = await fetch('/api/stream-download', {
                 method: 'POST',
                 headers: {
@@ -238,19 +241,23 @@ function setupDownloadButton() {
                 body: JSON.stringify(requestBody)
             });
 
-            console.log(`[DOWNLOAD] Stream response: ${response.status} ${response.statusText}`);
+            console.error(`[DOWNLOAD] Stream response: ${response.status} ${response.statusText}`);
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 const errorDetail = errorData.detail || `HTTP ${response.status}`;
+                console.error('========== STREAM-DOWNLOAD ERROR ==========');
                 console.error('[DOWNLOAD] Stream error:', {
                     status: response.status,
                     statusText: response.statusText,
-                    detail: errorDetail
+                    detail: errorDetail,
+                    fullResponse: errorData
                 });
                 showError(`Erreur telechargement: ${errorDetail}`);
                 return;
             }
+
+            console.error('[DOWNLOAD] Response OK, starting stream read...');
 
             // Stream avec progress tracking
             const contentLength = response.headers.get('Content-Length');
@@ -291,7 +298,7 @@ function setupDownloadButton() {
             // Trigger download
             const blob = new Blob(chunks);
             const filename = purchaseData.product_title || 'download';
-            console.log('[DOWNLOAD] Creating blob:', {
+            console.error('[DOWNLOAD] Creating blob:', {
                 size: blob.size,
                 expected: total,
                 match: blob.size === total
@@ -302,7 +309,8 @@ function setupDownloadButton() {
             // Show success
             successFileName.textContent = filename;
             showSection('successSection');
-            console.log('[DOWNLOAD] Download completed successfully');
+            console.error('========== DOWNLOAD SUCCESS ==========');
+            console.error('[DOWNLOAD] Download completed successfully');
 
         } catch (error) {
             console.error('[DOWNLOAD] Exception:', {
