@@ -806,15 +806,20 @@ async def stream_download(request: GenerateDownloadURLRequest):
                 logger.error(f"[STREAM-DOWNLOAD] Product file URL is null for order {request.order_id}")
                 raise HTTPException(status_code=404, detail="Product file not available")
 
-            # 3. Utiliser l'URL B2 deja stockee en DB (publiquement accessible)
-            logger.info(f"[STREAM-DOWNLOAD] Using stored B2 URL: {main_file_url}")
+            # 3. Extraire object_key pour telecharger avec boto3 (authentifie)
+            logger.info(f"[STREAM-DOWNLOAD] Extracting object_key from: {main_file_url}")
 
-            # main_file_url contient deja l'URL complete B2
-            # Format: https://s3.eu-central-003.backblazeb2.com/Uzeur-StockFiles/products/...
-            download_url = main_file_url
+            try:
+                bucket_name = os.getenv('B2_BUCKET_NAME')
+                if f"/{bucket_name}/" in main_file_url:
+                    object_key = main_file_url.split(f"/{bucket_name}/")[1]
+                else:
+                    object_key = main_file_url.split('.com/')[-1]
 
-            if not download_url or not download_url.startswith('https://'):
-                logger.error(f"[STREAM-DOWNLOAD] Invalid main_file_url: {main_file_url}")
+                object_key = object_key.split('?')[0]
+                logger.info(f"[STREAM-DOWNLOAD] Object key: {object_key}")
+            except Exception as e:
+                logger.error(f"[STREAM-DOWNLOAD] Failed to extract object_key: {e}")
                 raise HTTPException(status_code=500, detail="Invalid file URL")
 
             # 4. Incrementer download_count
@@ -832,38 +837,53 @@ async def stream_download(request: GenerateDownloadURLRequest):
         finally:
             put_connection(conn)
 
-        # 5. Stream depuis B2 vers frontend
-        import httpx
+        # 5. Telecharger depuis B2 avec boto3 (authentifie avec credentials)
+        logger.error(f"[STREAM-DOWNLOAD] Downloading from B2 with boto3...")
 
-        async def download_stream():
-            """Generator qui stream les chunks depuis B2"""
+        b2_service = B2StorageService()
+
+        # Telecharger le fichier en memoire
+        import io
+        import asyncio
+
+        def download_from_b2_sync():
+            """Download file using boto3 with credentials"""
             try:
-                logger.error(f"[STREAM-DOWNLOAD] Starting stream from B2 URL: {download_url[:100]}...")
-                async with httpx.AsyncClient(timeout=300.0) as client:
-                    async with client.stream('GET', download_url) as response:
-                        if response.status_code != 200:
-                            logger.error(f"[STREAM-DOWNLOAD] B2 returned status {response.status_code}")
-                            logger.error(f"[STREAM-DOWNLOAD] B2 response headers: {dict(response.headers)}")
-                            raise HTTPException(status_code=502, detail=f"B2 download failed: {response.status_code}")
-
-                        logger.error(f"[STREAM-DOWNLOAD] B2 stream OK, starting chunk transfer...")
-                        chunk_count = 0
-                        async for chunk in response.aiter_bytes(chunk_size=65536):
-                            chunk_count += 1
-                            if chunk_count % 10 == 0:
-                                logger.info(f"[STREAM-DOWNLOAD] Streamed {chunk_count} chunks...")
-                            yield chunk
-
-                logger.error(f"[STREAM-DOWNLOAD] Stream completed successfully, total chunks: {chunk_count}")
+                response = b2_service.client.get_object(
+                    Bucket=bucket_name,
+                    Key=object_key
+                )
+                # Lire tout le contenu
+                return response['Body'].read()
             except Exception as e:
-                logger.error(f"[STREAM-DOWNLOAD] Stream error: {e}")
-                import traceback
-                logger.error(f"[STREAM-DOWNLOAD] Traceback: {traceback.format_exc()}")
+                logger.error(f"[STREAM-DOWNLOAD] boto3 download failed: {e}")
                 raise
 
+        # Execute download dans thread pool (boto3 est synchrone)
+        try:
+            file_content = await asyncio.to_thread(download_from_b2_sync)
+            logger.error(f"[STREAM-DOWNLOAD] Downloaded {len(file_content)} bytes from B2")
+        except Exception as e:
+            logger.error(f"[STREAM-DOWNLOAD] Download error: {e}")
+            raise HTTPException(status_code=502, detail=f"B2 download failed: {str(e)}")
+
+        # Stream le contenu vers le frontend
+        async def download_stream():
+            """Stream le contenu telecharge"""
+            chunk_size = 65536
+            total_chunks = (len(file_content) + chunk_size - 1) // chunk_size
+
+            for i in range(0, len(file_content), chunk_size):
+                chunk = file_content[i:i + chunk_size]
+                yield chunk
+
+                if (i // chunk_size) % 10 == 0:
+                    logger.info(f"[STREAM-DOWNLOAD] Streamed chunk {i//chunk_size}/{total_chunks}")
+
+            logger.error(f"[STREAM-DOWNLOAD] Stream completed, {total_chunks} chunks sent")
+
         # 6. Retourner streaming response
-        # Extraire filename depuis l'URL
-        filename = main_file_url.split('/')[-1].split('?')[0]  # Enlever query params si presents
+        filename = object_key.split('/')[-1]
         content_length = int(file_size_mb * 1024 * 1024) if file_size_mb else None
 
         headers = {
