@@ -884,13 +884,13 @@ async def stream_download(request: GenerateDownloadURLRequest):
 
         # 6. Retourner streaming response
         filename = object_key.split('/')[-1]
-        content_length = int(file_size_mb * 1024 * 1024) if file_size_mb else None
+        # Utiliser taille reelle du fichier telecharge, pas file_size_mb de la DB
+        content_length = len(file_content)
 
         headers = {
-            'Content-Disposition': f'attachment; filename="{filename}"'
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'Content-Length': str(content_length)
         }
-        if content_length:
-            headers['Content-Length'] = str(content_length)
 
         logger.error(f"[STREAM-DOWNLOAD] Returning StreamingResponse: filename={filename}, size={content_length}")
         logger.error(f"[STREAM-DOWNLOAD] Headers: {headers}")
