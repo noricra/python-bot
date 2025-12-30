@@ -436,90 +436,25 @@ function triggerDownload(blob, filename) {
     const url = window.URL.createObjectURL(blob);
     console.error('[TRIGGER] Blob URL created:', url.substring(0, 50) + '...');
 
-    // Option 1: Essayer API Telegram WebApp
-    if (typeof tg !== 'undefined') {
-        // Methode 1: tg.downloadFile (si disponible)
-        if (tg.downloadFile && typeof tg.downloadFile === 'function') {
-            console.error('[TRIGGER] Trying Telegram downloadFile API...');
-            try {
-                tg.downloadFile({ url: url, file_name: filename });
-                console.error('[TRIGGER] Telegram downloadFile called successfully');
+    // Methode standard: creer un lien et declencher automatiquement le clic
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
 
-                setTimeout(() => {
-                    window.URL.revokeObjectURL(url);
-                    console.error('[TRIGGER] Blob URL cleaned up');
-                }, 5000);
-                return;
-            } catch (e) {
-                console.error('[TRIGGER] Telegram downloadFile failed:', e);
-            }
-        }
+    document.body.appendChild(link);
+    console.error('[TRIGGER] Download link created, triggering click...');
 
-        // Methode 2: tg.openLink (fallback)
-        if (tg.openLink && typeof tg.openLink === 'function') {
-            console.error('[TRIGGER] Trying Telegram openLink API...');
-            try {
-                tg.openLink(url);
-                console.error('[TRIGGER] Telegram openLink called successfully');
+    // Declencher automatiquement le telechargement
+    link.click();
+    console.error('[TRIGGER] Download triggered successfully');
 
-                setTimeout(() => {
-                    window.URL.revokeObjectURL(url);
-                    console.error('[TRIGGER] Blob URL cleaned up');
-                }, 5000);
-                return;
-            } catch (e) {
-                console.error('[TRIGGER] Telegram openLink failed:', e);
-            }
-        }
-    }
-
-    // Option 2: Fallback - Afficher bouton manuel visible
-    console.error('[TRIGGER] Telegram APIs not available, showing manual download button');
-
-    const downloadBtn = document.createElement('a');
-    downloadBtn.href = url;
-    downloadBtn.download = filename;
-    downloadBtn.textContent = 'Enregistrer sur l\'appareil';
-
-    // Style du bouton
-    downloadBtn.style.position = 'fixed';
-    downloadBtn.style.bottom = '20px';
-    downloadBtn.style.left = '50%';
-    downloadBtn.style.transform = 'translateX(-50%)';
-    downloadBtn.style.zIndex = '10000';
-    downloadBtn.style.padding = '15px 30px';
-    downloadBtn.style.background = '#4CAF50';
-    downloadBtn.style.color = 'white';
-    downloadBtn.style.textDecoration = 'none';
-    downloadBtn.style.borderRadius = '8px';
-    downloadBtn.style.fontSize = '16px';
-    downloadBtn.style.fontWeight = 'bold';
-    downloadBtn.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
-    downloadBtn.style.cursor = 'pointer';
-
-    document.body.appendChild(downloadBtn);
-    console.error('[TRIGGER] Manual download button displayed');
-
-    // Nettoyer apres clic
-    downloadBtn.addEventListener('click', () => {
-        console.error('[TRIGGER] Manual download button clicked');
-        setTimeout(() => {
-            window.URL.revokeObjectURL(url);
-            if (downloadBtn.parentNode) {
-                document.body.removeChild(downloadBtn);
-            }
-            console.error('[TRIGGER] Cleaned up after manual download');
-        }, 1000);
-    });
-
-    // Auto-cleanup apres 5 minutes si pas utilise
+    // Nettoyer apres un court delai
     setTimeout(() => {
-        if (downloadBtn.parentNode) {
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(downloadBtn);
-            console.error('[TRIGGER] Cleaned up unused download button');
-        }
-    }, 300000);
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        console.error('[TRIGGER] Cleaned up download link and blob URL');
+    }, 1000);
 }
 
 // Initialize on page load
