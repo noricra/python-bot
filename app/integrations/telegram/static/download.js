@@ -304,8 +304,8 @@ function setupDownloadButton() {
                 match: blob.size === total
             });
 
-            // Utiliser triggerDownload qui gere toutes les methodes
-            triggerDownload(blob, filename);
+            // Utiliser Web Share API (symetrique avec file input de l'upload)
+            await triggerDownloadWithShare(blob, filename);
 
             // Show success
             successFileName.textContent = filename;
@@ -408,8 +408,8 @@ async function downloadFile(url, filename, fileSizeMb) {
             match: blob.size === total
         });
 
-        // Trigger browser download
-        triggerDownload(blob, filename);
+        // Trigger browser download with Web Share API
+        await triggerDownloadWithShare(blob, filename);
 
         // Show success
         successFileName.textContent = filename;
@@ -425,36 +425,92 @@ async function downloadFile(url, filename, fileSizeMb) {
     }
 }
 
-// Trigger browser download (Telegram Mini App compatible)
-function triggerDownload(blob, filename) {
-    console.error('[TRIGGER] Starting download process:', {
+// Trigger download using Web Share API (symetrique avec file input de l'upload)
+async function triggerDownloadWithShare(blob, filename) {
+    console.error('[TRIGGER] Starting download with Web Share API:', {
         blob_size: blob.size,
         blob_type: blob.type,
         filename: filename
     });
 
-    const url = window.URL.createObjectURL(blob);
-    console.error('[TRIGGER] Blob URL created:', url.substring(0, 50) + '...');
+    // Creer un File object depuis le blob
+    const file = new File([blob], filename, {
+        type: blob.type || 'application/octet-stream'
+    });
 
-    // Methode standard: creer un lien et declencher automatiquement le clic
+    console.error('[TRIGGER] File object created:', {
+        name: file.name,
+        size: file.size,
+        type: file.type
+    });
+
+    // Methode 1: Web Share API (symetrique avec <input type="file">)
+    if (navigator.share && navigator.canShare) {
+        try {
+            // Verifier si on peut partager des fichiers
+            const canShareFiles = navigator.canShare({ files: [file] });
+            console.error('[TRIGGER] Web Share API available, canShare files:', canShareFiles);
+
+            if (canShareFiles) {
+                console.error('[TRIGGER] Calling navigator.share()...');
+
+                await navigator.share({
+                    files: [file],
+                    title: filename,
+                    text: 'Telecharger le fichier'
+                });
+
+                console.error('[TRIGGER] Web Share completed successfully');
+                return;
+            } else {
+                console.error('[TRIGGER] Web Share API exists but cannot share files');
+            }
+        } catch (error) {
+            // User cancelled or error
+            if (error.name === 'AbortError') {
+                console.error('[TRIGGER] User cancelled share');
+                throw new Error('Telechargement annule par utilisateur');
+            }
+            console.error('[TRIGGER] Web Share API failed:', error);
+        }
+    } else {
+        console.error('[TRIGGER] Web Share API not available');
+    }
+
+    // Fallback 1: tg.shareFileViaShare (si disponible)
+    if (typeof tg !== 'undefined' && tg.shareFileViaShare) {
+        try {
+            console.error('[TRIGGER] Trying Telegram shareFileViaShare...');
+            const url = window.URL.createObjectURL(blob);
+            await tg.shareFileViaShare(url, filename);
+            window.URL.revokeObjectURL(url);
+            console.error('[TRIGGER] Telegram shareFileViaShare completed');
+            return;
+        } catch (error) {
+            console.error('[TRIGGER] Telegram shareFileViaShare failed:', error);
+        }
+    }
+
+    // Fallback 2: Methode classique avec lien (peut ne pas fonctionner)
+    console.error('[TRIGGER] Using fallback: classic <a> download method');
+    const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
     link.style.display = 'none';
 
     document.body.appendChild(link);
-    console.error('[TRIGGER] Download link created, triggering click...');
+    console.error('[TRIGGER] Fallback download link created, triggering click...');
 
-    // Declencher automatiquement le telechargement
     link.click();
-    console.error('[TRIGGER] Download triggered successfully');
 
-    // Nettoyer apres un court delai
     setTimeout(() => {
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
-        console.error('[TRIGGER] Cleaned up download link and blob URL');
+        console.error('[TRIGGER] Fallback cleanup completed');
     }, 1000);
+
+    console.warn('[TRIGGER] Fallback method used - download may not work in Telegram WebView');
 }
 
 // Initialize on page load
@@ -483,3 +539,6 @@ window.addEventListener('error', (event) => {
         })
     }).catch(err => console.error('Failed to log error:', err));
 });
+
+
+
