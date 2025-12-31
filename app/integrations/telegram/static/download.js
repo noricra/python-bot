@@ -212,112 +212,45 @@ function setupDownloadButton() {
         }
 
         try {
-            const requestBody = {
+            console.error('========== NATIVE BROWSER DOWNLOAD (NO BLOB) ==========');
+            console.log('[DOWNLOAD] Generating download token...', {
                 product_id: purchaseData.product_id,
                 order_id: purchaseData.order_id,
-                user_id: userId,
-                telegram_init_data: tg.initData
-            };
-            console.error('========== USING NEW PROXY ENDPOINT ==========');
-            console.error('[DOWNLOAD] Calling /api/stream-download (NEW PROXY)');
-            console.log('[DOWNLOAD] Starting stream download with params:', {
-                product_id: purchaseData.product_id,
-                order_id: purchaseData.order_id,
-                user_id: userId,
-                initData_length: tg.initData?.length || 0
+                user_id: userId
             });
 
-            showSection('progressSection');
-            fileName.textContent = purchaseData.product_title || 'file';
-            totalSize.textContent = formatFileSize(purchaseData.file_size_mb);
-
-            // Appel proxy backend
-            console.error('[DOWNLOAD] Fetching /api/stream-download...');
-            const response = await fetch('/api/stream-download', {
+            // Step 1: Generate one-time token
+            const tokenResponse = await fetch('/api/generate-download-token', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(requestBody)
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    product_id: purchaseData.product_id,
+                    order_id: purchaseData.order_id,
+                    user_id: userId,
+                    telegram_init_data: tg.initData
+                })
             });
 
-            console.error(`[DOWNLOAD] Stream response: ${response.status} ${response.statusText}`);
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                const errorDetail = errorData.detail || `HTTP ${response.status}`;
-                console.error('========== STREAM-DOWNLOAD ERROR ==========');
-                console.error('[DOWNLOAD] Stream error:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    detail: errorDetail,
-                    fullResponse: errorData
-                });
-                showError(`Erreur telechargement: ${errorDetail}`);
-                return;
+            if (!tokenResponse.ok) {
+                throw new Error('Failed to generate download token');
             }
 
-            console.error('[DOWNLOAD] Response OK, starting stream read...');
+            const { download_token } = await tokenResponse.json();
+            console.error('[DOWNLOAD] Token generated:', download_token);
 
-            // Stream avec progress tracking
-            const contentLength = response.headers.get('Content-Length');
-            const total = parseInt(contentLength, 10);
-            const reader = response.body.getReader();
-            const chunks = [];
-            let receivedLength = 0;
-            const startTime = Date.now();
+            // Step 2: Redirect to GET endpoint (browser handles download natively)
+            const downloadUrl = `/download/${download_token}`;
+            console.error('[DOWNLOAD] Redirecting to:', downloadUrl);
+            console.error('[DOWNLOAD] Browser will handle download automatically');
 
-            console.log('[DOWNLOAD] Starting stream read, content-length:', contentLength);
+            window.location.href = downloadUrl;
 
-            while(true) {
-                const {done, value} = await reader.read();
-                if (done) {
-                    console.log('[DOWNLOAD] Stream read completed');
-                    break;
-                }
-
-                chunks.push(value);
-                receivedLength += value.length;
-
-                // Update progress UI
-                const percent = Math.round((receivedLength / total) * 100);
-                const elapsedSeconds = (Date.now() - startTime) / 1000;
-                const speed = (receivedLength / 1024 / 1024) / elapsedSeconds;
-
-                progressBar.style.width = `${percent}%`;
-                progressPercent.textContent = `${percent}%`;
-                downloadSpeed.textContent = `${speed.toFixed(2)} MB/s`;
-                downloadedSize.textContent = formatFileSize(receivedLength / 1024 / 1024);
-
-                // Log progress every 25%
-                if (percent % 25 === 0 && percent > 0) {
-                    console.log(`[DOWNLOAD] Progress: ${percent}% (${receivedLength}/${total} bytes)`);
-                }
-            }
-
-            // Trigger download
-            const blob = new Blob(chunks);
-            const filename = purchaseData.product_title || 'download';
-            console.error('[DOWNLOAD] Creating blob:', {
-                size: blob.size,
-                expected: total,
-                match: blob.size === total
-            });
-
-            // Utiliser Web Share API (symetrique avec file input de l'upload)
-            await triggerDownloadWithShare(blob, filename);
-
-            // Show success
-            successFileName.textContent = filename;
+            // Show success message
+            successFileName.textContent = purchaseData.product_title;
             showSection('successSection');
-            console.error('========== DOWNLOAD SUCCESS ==========');
-            console.error('[DOWNLOAD] Download completed successfully');
 
         } catch (error) {
-            console.error('[DOWNLOAD] Exception:', {
-                message: error.message,
-                stack: error.stack
-            });
+            console.error('[DOWNLOAD] Error:', error);
             showError(t('downloadError'));
         }
     });
@@ -539,6 +472,3 @@ window.addEventListener('error', (event) => {
         })
     }).catch(err => console.error('Failed to log error:', err));
 });
-
-
-
