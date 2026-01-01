@@ -238,16 +238,24 @@ function setupDownloadButton() {
             const { download_token } = await tokenResponse.json();
             console.error('[DOWNLOAD] Token generated:', download_token);
 
-            // Step 2: Redirect to GET endpoint (browser handles download natively)
-            const downloadUrl = `/download/${download_token}`;
-            console.error('[DOWNLOAD] Redirecting to:', downloadUrl);
-            console.error('[DOWNLOAD] Browser will handle download automatically');
+            // Step 2: Open download URL via Telegram API (works better in WebView)
+            const downloadUrl = `${window.location.origin}/download/${download_token}`;
+            console.error('[DOWNLOAD] Opening download URL:', downloadUrl);
 
-            window.location.href = downloadUrl;
+            // Try Telegram openLink API (better for WebView)
+            if (typeof tg !== 'undefined' && tg.openLink) {
+                console.error('[DOWNLOAD] Using tg.openLink()');
+                tg.openLink(downloadUrl);
+            } else {
+                console.error('[DOWNLOAD] Fallback to window.open()');
+                window.open(downloadUrl, '_blank');
+            }
 
-            // Show success message
-            successFileName.textContent = purchaseData.product_title;
-            showSection('successSection');
+            // Show success message after short delay
+            setTimeout(() => {
+                successFileName.textContent = purchaseData.product_title;
+                showSection('successSection');
+            }, 1000);
 
         } catch (error) {
             console.error('[DOWNLOAD] Error:', error);
