@@ -32,6 +32,7 @@ from app.core.db_pool import put_connection
 from app.core.file_utils import get_b2_presigned_url
 from app.services.b2_storage_service import B2StorageService
 from app.domain.repositories.order_repo import OrderRepository
+from app.domain.repositories.download_repo import DownloadRepository
 from app.services.seller_payout_service import SellerPayoutService
 
 # --- IMPORTS DU BOT ---
@@ -910,170 +911,150 @@ async def stream_download(request: GenerateDownloadURLRequest):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-# Simple token storage (in-memory, expires after 5min)
-download_tokens = {}
-
 @app.post("/api/generate-download-token")
 async def generate_download_token(request: GenerateDownloadURLRequest):
     """
-    Generate a one-time download token
+    Generate a one-time download token (uses DownloadRepository)
     Frontend will redirect to GET /download/{token}
     """
-    logger.error(f"========== GENERATE-DOWNLOAD-TOKEN ENDPOINT CALLED ==========")
     logger.info(f"[TOKEN] Request: user_id={request.user_id}, order_id={request.order_id}, product_id={request.product_id}")
 
     # Verify auth
-    auth_valid = verify_telegram_webapp_data(request.telegram_init_data)
-    logger.info(f"[TOKEN] Auth validation result: {auth_valid}")
-
-    if not auth_valid:
+    if not verify_telegram_webapp_data(request.telegram_init_data):
         logger.error(f"[TOKEN] Auth failed for user {request.user_id}")
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    # Verify ownership
+    # Rate limiting (10 tokens per hour)
+    is_allowed, error_msg = DownloadRepository.check_and_update_rate_limit(request.user_id, max_tokens=10, window_seconds=3600)
+    if not is_allowed:
+        logger.error(f"[TOKEN] {error_msg}")
+        raise HTTPException(status_code=429, detail="Too many download requests. Please try again later.")
+
+    # Verify order ownership
     logger.info(f"[TOKEN] Verifying order ownership...")
-    conn = get_postgresql_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT p.main_file_url, p.title, p.file_size_mb
-            FROM orders o
-            JOIN products p ON o.product_id = p.product_id
-            WHERE o.order_id = %s
-              AND o.buyer_user_id = %s
-              AND o.payment_status = 'completed'
-            LIMIT 1
-        ''', (request.order_id, request.user_id))
+    order_info = DownloadRepository.verify_order_ownership(request.order_id, request.user_id)
 
-        result = cursor.fetchone()
-        logger.info(f"[TOKEN] DB query result: {result}")
+    if not order_info:
+        logger.error(f"[TOKEN] Order not found: order={request.order_id}, user={request.user_id}")
+        raise HTTPException(status_code=404, detail="Order not found")
 
-        if not result:
-            logger.error(f"[TOKEN] Order not found: order={request.order_id}, user={request.user_id}")
-            raise HTTPException(status_code=404, detail="Order not found")
-
-    finally:
-        put_connection(conn)
-
-    # Generate token
-    token = str(uuid.uuid4())
-    download_tokens[token] = {
-        'user_id': request.user_id,
-        'order_id': request.order_id,
-        'product_id': request.product_id,
-        'created_at': datetime.now().timestamp()
-    }
+    # Create token
+    token = DownloadRepository.create_download_token(
+        user_id=request.user_id,
+        order_id=request.order_id,
+        product_id=request.product_id,
+        expires_minutes=5
+    )
 
     logger.info(f"[TOKEN] Token generated: {token}")
-
     return {'download_token': token}
 
 
 @app.get("/download/{token}")
 async def download_file_with_token(token: str):
     """
-    Download file using one-time token
+    Download file using one-time token (uses DownloadRepository)
     Browser will handle download natively (no blob URL)
     """
     logger.info(f"[DOWNLOAD-GET] Request with token: {token}")
 
-    # Verify token exists and not expired
-    if token not in download_tokens:
-        logger.error(f"[DOWNLOAD-GET] Invalid token: {token}")
+    # Validate and consume token (one-time use)
+    token_data = DownloadRepository.get_and_validate_token(token)
+
+    if not token_data:
+        logger.error(f"[DOWNLOAD-GET] Invalid, expired, or already used token: {token}")
         raise HTTPException(status_code=404, detail="Invalid or expired token")
 
-    token_data = download_tokens[token]
-
-    # Check expiration (5 minutes)
-    if (datetime.now().timestamp() - token_data['created_at']) > 300:
-        del download_tokens[token]
-        logger.error(f"[DOWNLOAD-GET] Expired token: {token}")
-        raise HTTPException(status_code=404, detail="Token expired")
-
-    # Remove token (one-time use)
-    user_id = token_data['user_id']
-    order_id = token_data['order_id']
-    del download_tokens[token]
-
+    user_id, order_id, product_id = token_data
     logger.info(f"[DOWNLOAD-GET] Token valid, downloading for user {user_id}, order {order_id}")
 
-    # Get file info from DB
-    conn = get_postgresql_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT p.main_file_url, p.title, p.file_size_mb
-            FROM orders o
-            JOIN products p ON o.product_id = p.product_id
-            WHERE o.order_id = %s
-              AND o.buyer_user_id = %s
-              AND o.payment_status = 'completed'
-            LIMIT 1
-        ''', (order_id, user_id))
+    # Get file info
+    order_info = DownloadRepository.verify_order_ownership(order_id, user_id)
 
-        result = cursor.fetchone()
-        if not result:
-            raise HTTPException(status_code=404, detail="Order not found")
+    if not order_info:
+        raise HTTPException(status_code=404, detail="Order not found")
 
-        main_file_url, title, file_size_mb = result
+    main_file_url, title, file_size_mb = order_info
 
-        if not main_file_url:
-            raise HTTPException(status_code=404, detail="File not available")
+    if not main_file_url:
+        raise HTTPException(status_code=404, detail="File not available")
 
-        # Extract object_key
-        bucket_name = os.getenv('B2_BUCKET_NAME')
-        if f"/{bucket_name}/" in main_file_url:
-            object_key = main_file_url.split(f"/{bucket_name}/")[1]
-        else:
-            object_key = main_file_url.split('.com/')[-1]
-        object_key = object_key.split('?')[0]
+    # Extract object_key from B2 URL
+    bucket_name = os.getenv('B2_BUCKET_NAME')
+    if f"/{bucket_name}/" in main_file_url:
+        object_key = main_file_url.split(f"/{bucket_name}/")[1]
+    else:
+        object_key = main_file_url.split('.com/')[-1]
+    object_key = object_key.split('?')[0]
 
-        # Increment download count
-        cursor.execute('''
-            UPDATE orders
-            SET download_count = COALESCE(download_count, 0) + 1,
-                last_download_at = CURRENT_TIMESTAMP
-            WHERE order_id = %s
-        ''', (order_id,))
-        conn.commit()
+    # Increment download counter
+    DownloadRepository.increment_download_count(order_id)
 
-    finally:
-        put_connection(conn)
-
-    # Stream from B2
+    # Stream from B2 - TRUE STREAMING (no memory loading)
     logger.info(f"[DOWNLOAD-GET] Streaming from B2: {object_key}")
     b2_service = B2StorageService()
 
-    def download_from_b2_sync():
+    filename = object_key.split('/')[-1]
+
+    # Get file size for Content-Length header
+    try:
+        head_response = b2_service.client.head_object(
+            Bucket=bucket_name,
+            Key=object_key
+        )
+        file_size = head_response['ContentLength']
+        logger.info(f"[DOWNLOAD-GET] File size: {file_size} bytes ({file_size / 1024 / 1024:.2f} MB)")
+    except Exception as e:
+        logger.error(f"[DOWNLOAD-GET] Failed to get file size: {e}")
+        file_size = None
+
+    def stream_from_b2_chunks():
+        """
+        True streaming: read chunks without loading entire file in memory
+        Supports files up to 10GB without RAM issues
+        """
         try:
             response = b2_service.client.get_object(
                 Bucket=bucket_name,
                 Key=object_key
             )
-            return response['Body'].read()
+            body = response['Body']
+
+            chunk_size = 65536  # 64KB chunks
+            total_sent = 0
+
+            while True:
+                chunk = body.read(chunk_size)
+                if not chunk:
+                    break
+
+                total_sent += len(chunk)
+                yield chunk
+
+                # Log progress every 10MB
+                if total_sent % (10 * 1024 * 1024) == 0:
+                    logger.info(f"[DOWNLOAD-GET] Streamed {total_sent / 1024 / 1024:.2f} MB")
+
+            logger.info(f"[DOWNLOAD-GET] Stream completed: {total_sent} bytes sent")
+
         except Exception as e:
-            logger.error(f"[DOWNLOAD-GET] B2 download failed: {e}")
-            raise HTTPException(status_code=500, detail="Download failed")
+            logger.error(f"[DOWNLOAD-GET] Stream error: {e}")
+            raise
 
-    import asyncio
-    file_content = await asyncio.to_thread(download_from_b2_sync)
+    headers = {
+        'Content-Disposition': f'attachment; filename="{filename}"',
+        'Content-Type': 'application/octet-stream',
+        'Cache-Control': 'no-cache'
+    }
 
-    filename = object_key.split('/')[-1]
-
-    def iter_content():
-        chunk_size = 65536
-        for i in range(0, len(file_content), chunk_size):
-            yield file_content[i:i+chunk_size]
+    # Add Content-Length if available (helps browser show progress)
+    if file_size:
+        headers['Content-Length'] = str(file_size)
 
     return StreamingResponse(
-        iter_content(),
+        stream_from_b2_chunks(),
         media_type='application/octet-stream',
-        headers={
-            'Content-Disposition': f'attachment; filename="{filename}"',
-            'Content-Length': str(len(file_content)),
-            'Content-Type': 'application/octet-stream',
-            'Cache-Control': 'no-cache'
-        }
+        headers=headers
     )
 
 
