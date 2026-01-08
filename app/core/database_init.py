@@ -71,6 +71,8 @@ class DatabaseInitService:
             self._create_reviews_table(cursor, conn)
             self._create_seller_payouts_table(cursor, conn)
             self._create_support_tickets_table(cursor, conn)
+            self._create_download_tokens_table(cursor, conn)
+            self._create_download_rate_limits_table(cursor, conn)
 
             # Insert default data
             logger.info("📦 Inserting default data...")
@@ -343,6 +345,63 @@ class DatabaseInitService:
             logger.debug("✅ Support tickets table created/verified (PostgreSQL)")
         except Exception as e:
             logger.error(f"❌ Error creating support_tickets table: {e}")
+            conn.rollback()
+            raise
+
+    def _create_download_tokens_table(self, cursor, conn):
+        """
+        Create download tokens table (PostgreSQL)
+        For one-time download links with expiration
+        """
+        try:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS download_tokens (
+                    token UUID PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    order_id TEXT NOT NULL,
+                    product_id TEXT NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP NOT NULL,
+                    used_at TIMESTAMP,
+                    ip_address TEXT,
+                    user_agent TEXT
+                )
+            ''')
+
+            # Create indexes
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_download_tokens_expires_at ON download_tokens(expires_at)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_download_tokens_user_id ON download_tokens(user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_download_tokens_user_created ON download_tokens(user_id, created_at)')
+
+            conn.commit()
+            logger.debug("✅ Download tokens table created/verified (PostgreSQL)")
+        except Exception as e:
+            logger.error(f"❌ Error creating download_tokens table: {e}")
+            conn.rollback()
+            raise
+
+    def _create_download_rate_limits_table(self, cursor, conn):
+        """
+        Create download rate limits table (PostgreSQL)
+        For limiting download token generation per user
+        """
+        try:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS download_rate_limits (
+                    user_id BIGINT PRIMARY KEY,
+                    tokens_generated_count INTEGER NOT NULL DEFAULT 0,
+                    window_start TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    last_token_at TIMESTAMP
+                )
+            ''')
+
+            # Create index
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_rate_limits_window_start ON download_rate_limits(window_start)')
+
+            conn.commit()
+            logger.debug("✅ Download rate limits table created/verified (PostgreSQL)")
+        except Exception as e:
+            logger.error(f"❌ Error creating download_rate_limits table: {e}")
             conn.rollback()
             raise
 
