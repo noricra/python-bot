@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -953,8 +954,8 @@ async def generate_download_token(request: GenerateDownloadURLRequest):
 @app.get("/download/{token}")
 async def download_file_with_token(token: str):
     """
-    Download file using one-time token (uses DownloadRepository)
-    Browser will handle download natively (no blob URL)
+    Download file using one-time token - DIRECT B2 redirect (no Railway bandwidth)
+    Generates presigned B2 URL and redirects browser directly to B2
     """
     logger.info(f"[DOWNLOAD-GET] Request with token: {token}")
 
@@ -966,7 +967,7 @@ async def download_file_with_token(token: str):
         raise HTTPException(status_code=404, detail="Invalid or expired token")
 
     user_id, order_id, product_id = token_data
-    logger.info(f"[DOWNLOAD-GET] Token valid, downloading for user {user_id}, order {order_id}")
+    logger.info(f"[DOWNLOAD-GET] Token valid, user {user_id}, order {order_id}")
 
     # Get file info
     order_info = DownloadRepository.verify_order_ownership(order_id, user_id)
@@ -990,72 +991,21 @@ async def download_file_with_token(token: str):
     # Increment download counter
     DownloadRepository.increment_download_count(order_id)
 
-    # Stream from B2 - TRUE STREAMING (no memory loading)
-    logger.info(f"[DOWNLOAD-GET] Streaming from B2: {object_key}")
+    # Generate presigned B2 URL (direct download, no Railway proxy)
+    logger.info(f"[DOWNLOAD-GET] Generating presigned B2 URL for: {object_key}")
     b2_service = B2StorageService()
 
-    filename = object_key.split('/')[-1]
+    # 1 hour expiration for large files
+    presigned_url = b2_service.get_download_url(object_key, expires_in=3600)
 
-    # Get file size for Content-Length header
-    try:
-        head_response = b2_service.client.head_object(
-            Bucket=bucket_name,
-            Key=object_key
-        )
-        file_size = head_response['ContentLength']
-        logger.info(f"[DOWNLOAD-GET] File size: {file_size} bytes ({file_size / 1024 / 1024:.2f} MB)")
-    except Exception as e:
-        logger.error(f"[DOWNLOAD-GET] Failed to get file size: {e}")
-        file_size = None
+    if not presigned_url:
+        logger.error(f"[DOWNLOAD-GET] Failed to generate presigned URL")
+        raise HTTPException(status_code=500, detail="Failed to generate download URL")
 
-    def stream_from_b2_chunks():
-        """
-        True streaming: read chunks without loading entire file in memory
-        Supports files up to 10GB without RAM issues
-        """
-        try:
-            response = b2_service.client.get_object(
-                Bucket=bucket_name,
-                Key=object_key
-            )
-            body = response['Body']
+    logger.info(f"[DOWNLOAD-GET] Redirecting to B2 direct download (no Railway bandwidth)")
 
-            chunk_size = 65536  # 64KB chunks
-            total_sent = 0
-
-            while True:
-                chunk = body.read(chunk_size)
-                if not chunk:
-                    break
-
-                total_sent += len(chunk)
-                yield chunk
-
-                # Log progress every 10MB
-                if total_sent % (10 * 1024 * 1024) == 0:
-                    logger.info(f"[DOWNLOAD-GET] Streamed {total_sent / 1024 / 1024:.2f} MB")
-
-            logger.info(f"[DOWNLOAD-GET] Stream completed: {total_sent} bytes sent")
-
-        except Exception as e:
-            logger.error(f"[DOWNLOAD-GET] Stream error: {e}")
-            raise
-
-    headers = {
-        'Content-Disposition': f'attachment; filename="{filename}"',
-        'Content-Type': 'application/octet-stream',
-        'Cache-Control': 'no-cache'
-    }
-
-    # Add Content-Length if available (helps browser show progress)
-    if file_size:
-        headers['Content-Length'] = str(file_size)
-
-    return StreamingResponse(
-        stream_from_b2_chunks(),
-        media_type='application/octet-stream',
-        headers=headers
-    )
+    # Redirect directly to B2 (browser downloads from B2, not Railway)
+    return RedirectResponse(url=presigned_url, status_code=302)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
