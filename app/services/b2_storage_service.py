@@ -1,6 +1,7 @@
 """
-Backblaze B2 Object Storage Service
-Handles upload/download/delete of product files to B2
+Cloud Object Storage Service
+Supports Cloudflare R2 (priority) and Backblaze B2 (fallback)
+Handles upload/download/delete of product files
 """
 import boto3
 import logging
@@ -10,48 +11,84 @@ import base64
 import requests
 from typing import Optional, BinaryIO, Dict
 from botocore.exceptions import ClientError
+from botocore.config import Config
 from app.core import settings
 
 logger = logging.getLogger(__name__)
 
 class B2StorageService:
-    """Service for managing files on Backblaze B2 (Singleton Pattern)"""
-    
-    _client_instance = None # Stocke la connexion pour la réutiliser pour tout le monde
+    """
+    Service for managing files on Cloud Object Storage (Singleton Pattern)
+    Priority: Cloudflare R2 (if configured) -> Backblaze B2 (fallback)
+    """
+
+    _client_instance = None
+    _storage_type = None  # 'r2' or 'b2'
 
     def __init__(self):
-        """Initialize B2 client using S3-compatible API (Only once)"""
-        self.bucket_name = settings.B2_BUCKET_NAME
+        """Initialize storage client using S3-compatible API (R2 priority, B2 fallback)"""
 
-        if not settings.B2_KEY_ID or not settings.B2_APPLICATION_KEY:
-            logger.warning("⚠️ B2 credentials not configured - file uploads will fail")
-            self.client = None
-            return
+        # Check if R2 is configured (priority)
+        r2_endpoint = os.getenv('R2_ENDPOINT')
+        r2_application_key = os.getenv('R2_APPLICATION_KEY')
+        r2_secret_key = os.getenv('R2_SECRET_KEY')
+        r2_bucket = os.getenv('R2_BUCKET_NAME')
 
-        # Singleton: Si le client existe déjà, on ne le recrée pas
-        # Cela gagne 1 à 2 secondes par upload/téléchargement
-        if B2StorageService._client_instance is None:
-            try:
-                B2StorageService._client_instance = boto3.client(
-                    's3',
-                    endpoint_url=settings.B2_ENDPOINT,
-                    aws_access_key_id=settings.B2_KEY_ID,
-                    aws_secret_access_key=settings.B2_APPLICATION_KEY
-                )
-                logger.info("✅ B2 Storage Client initialized (New Connection)")
-            except Exception as e:
-                logger.error(f"❌ Failed to initialize B2 client: {e}")
-                B2StorageService._client_instance = None
-        
-        # On utilise l'instance partagée
+        use_r2 = all([r2_endpoint, r2_application_key, r2_secret_key, r2_bucket])
+
+        if use_r2:
+            # Use Cloudflare R2
+            self.bucket_name = r2_bucket
+
+            if B2StorageService._client_instance is None or B2StorageService._storage_type != 'r2':
+                try:
+                    B2StorageService._client_instance = boto3.client(
+                        's3',
+                        endpoint_url=r2_endpoint,
+                        aws_access_key_id=r2_application_key,
+                        aws_secret_access_key=r2_secret_key,
+                        region_name='auto',
+                        config=Config(s3={'addressing_style': 'path'})
+                    )
+                    B2StorageService._storage_type = 'r2'
+                    logger.info("✅ Cloudflare R2 Storage Client initialized (New Connection)")
+                except Exception as e:
+                    logger.error(f"❌ Failed to initialize R2 client: {e}")
+                    B2StorageService._client_instance = None
+                    B2StorageService._storage_type = None
+        else:
+            # Fallback to Backblaze B2
+            self.bucket_name = settings.B2_BUCKET_NAME
+
+            if not settings.B2_KEY_ID or not settings.B2_APPLICATION_KEY:
+                logger.warning("⚠️ Neither R2 nor B2 credentials configured - file uploads will fail")
+                self.client = None
+                return
+
+            if B2StorageService._client_instance is None or B2StorageService._storage_type != 'b2':
+                try:
+                    B2StorageService._client_instance = boto3.client(
+                        's3',
+                        endpoint_url=settings.B2_ENDPOINT,
+                        aws_access_key_id=settings.B2_KEY_ID,
+                        aws_secret_access_key=settings.B2_APPLICATION_KEY
+                    )
+                    B2StorageService._storage_type = 'b2'
+                    logger.info("✅ Backblaze B2 Storage Client initialized (New Connection)")
+                except Exception as e:
+                    logger.error(f"❌ Failed to initialize B2 client: {e}")
+                    B2StorageService._client_instance = None
+                    B2StorageService._storage_type = None
+
         self.client = B2StorageService._client_instance
+        self.storage_type = B2StorageService._storage_type
 
     def _upload_file_blocking(self, file_path: str, object_key: str) -> Optional[str]:
         """
-        Blocking file upload to B2 (to be called via asyncio.to_thread)
+        Blocking file upload to cloud storage (to be called via asyncio.to_thread)
         """
         if not self.client:
-            logger.error("❌ B2 client not initialized")
+            logger.error(f"❌ [{self.storage_type.upper() if self.storage_type else 'STORAGE'}] Client not initialized")
             return None
 
         try:
@@ -63,16 +100,22 @@ class B2StorageService:
                     object_key
                 )
 
-            # Generate URL
-            url = f"{settings.B2_ENDPOINT}/{self.bucket_name}/{object_key}"
-            logger.info(f"✅ File uploaded to B2: {object_key}")
+            # Generate URL based on storage type
+            if self.storage_type == 'r2':
+                endpoint = os.getenv('R2_ENDPOINT')
+                url = f"{endpoint}/{self.bucket_name}/{object_key}"
+                logger.info(f"✅ File uploaded to R2: {object_key}")
+            else:
+                url = f"{settings.B2_ENDPOINT}/{self.bucket_name}/{object_key}"
+                logger.info(f"✅ File uploaded to B2: {object_key}")
+
             return url
 
         except FileNotFoundError:
             logger.error(f"❌ File not found: {file_path}")
             return None
         except ClientError as e:
-            logger.error(f"❌ B2 upload failed: {e}")
+            logger.error(f"❌ [{self.storage_type.upper()}] Upload failed: {e}")
             return None
         except Exception as e:
             logger.error(f"❌ Unexpected error during upload: {e}")
@@ -86,9 +129,9 @@ class B2StorageService:
         return await asyncio.to_thread(self._upload_file_blocking, file_path, object_key)
 
     def _upload_fileobj_blocking(self, file_obj: BinaryIO, object_key: str) -> Optional[str]:
-        """Blocking file object upload to B2"""
+        """Blocking file object upload to cloud storage"""
         if not self.client:
-            logger.error("❌ B2 client not initialized")
+            logger.error(f"❌ [{self.storage_type.upper() if self.storage_type else 'STORAGE'}] Client not initialized")
             return None
 
         try:
@@ -98,12 +141,19 @@ class B2StorageService:
                 object_key
             )
 
-            url = f"{settings.B2_ENDPOINT}/{self.bucket_name}/{object_key}"
-            logger.info(f"✅ File object uploaded to B2: {object_key}")
+            # Generate URL based on storage type
+            if self.storage_type == 'r2':
+                endpoint = os.getenv('R2_ENDPOINT')
+                url = f"{endpoint}/{self.bucket_name}/{object_key}"
+                logger.info(f"✅ File object uploaded to R2: {object_key}")
+            else:
+                url = f"{settings.B2_ENDPOINT}/{self.bucket_name}/{object_key}"
+                logger.info(f"✅ File object uploaded to B2: {object_key}")
+
             return url
 
         except ClientError as e:
-            logger.error(f"❌ B2 upload failed: {e}")
+            logger.error(f"❌ [{self.storage_type.upper()}] Upload failed: {e}")
             return None
         except Exception as e:
             logger.error(f"❌ Unexpected error during upload: {e}")
@@ -142,44 +192,60 @@ class B2StorageService:
         return await asyncio.to_thread(self._download_file_blocking, object_key, destination_path)
 
     def get_download_url(self, object_key: str, expires_in: int = 3600) -> Optional[str]:
-        """Generate a presigned URL for downloading a file"""
-        logger.info(f"🔗 [B2-DOWNLOAD] get_download_url called with object_key={object_key}, expires_in={expires_in}")
+        """
+        Generate a presigned URL for downloading a file
+
+        R2: Supports ResponseContentDisposition - forces download
+        B2: Does not support ResponseContentDisposition - files open in browser
+        """
+        logger.info(f"🔗 [{self.storage_type.upper() if self.storage_type else 'STORAGE'}-DOWNLOAD] get_download_url called with object_key={object_key}, expires_in={expires_in}")
 
         if not self.client:
-            logger.error("❌ [B2-DOWNLOAD] B2 client not initialized")
+            logger.error(f"❌ [{self.storage_type.upper() if self.storage_type else 'STORAGE'}-DOWNLOAD] Client not initialized")
             return None
 
         try:
-            # Extract filename from object_key
+            # Extract filename for Content-Disposition header
             filename = object_key.split('/')[-1]
-            logger.info(f"📄 [B2-DOWNLOAD] Extracted filename: {filename}")
 
-            logger.info(f"🔧 [B2-DOWNLOAD] Calling boto3 generate_presigned_url with bucket={self.bucket_name}, key={object_key}")
+            # Encode filename for RFC 5987 (handles spaces, accents, special chars)
+            from urllib.parse import quote
+            encoded_filename = quote(filename)
+
+            # Build params based on storage type
+            params = {
+                'Bucket': self.bucket_name,
+                'Key': object_key
+            }
+
+            # R2 supports ResponseContentDisposition - force download
+            if self.storage_type == 'r2':
+                # RFC 5987 format: attachment; filename*=UTF-8''encoded_name
+                params['ResponseContentDisposition'] = f"attachment; filename*=UTF-8''{encoded_filename}"
+                logger.info(f"🔧 [R2-DOWNLOAD] Using ResponseContentDisposition for forced download (RFC 5987)")
+            else:
+                logger.info(f"🔧 [B2-DOWNLOAD] ResponseContentDisposition not supported - files may open in browser")
 
             url = self.client.generate_presigned_url(
                 'get_object',
-                Params={
-                    'Bucket': self.bucket_name,
-                    'Key': object_key,
-                    'ResponseContentDisposition': f'attachment; filename="{filename}"'
-                },
+                Params=params,
                 ExpiresIn=expires_in
             )
 
-            logger.info(f"✅ [B2-DOWNLOAD] Presigned URL generated successfully: {url[:100]}...")
-            logger.info(f"🔍 [B2-DOWNLOAD] URL length: {len(url)}, contains bucket: {self.bucket_name in url}")
+            logger.info(f"✅ [{self.storage_type.upper()}-DOWNLOAD] Presigned URL generated successfully: {url[:100]}...")
+            logger.info(f"🔍 [{self.storage_type.upper()}-DOWNLOAD] URL length: {len(url)}, contains bucket: {self.bucket_name in url}")
 
             return url
 
         except ClientError as e:
-            logger.error(f"❌ [B2-DOWNLOAD] ClientError generating presigned URL: {e}")
-            logger.error(f"❌ [B2-DOWNLOAD] Error code: {e.response.get('Error', {}).get('Code', 'Unknown')}")
-            logger.error(f"❌ [B2-DOWNLOAD] Error message: {e.response.get('Error', {}).get('Message', 'Unknown')}")
+            logger.error(f"❌ [{self.storage_type.upper()}-DOWNLOAD] ClientError generating presigned URL: {e}")
+            logger.error(f"❌ [{self.storage_type.upper()}-DOWNLOAD] Error code: {e.response.get('Error', {}).get('Code', 'Unknown')}")
+            logger.error(f"❌ [{self.storage_type.upper()}-DOWNLOAD] Error message: {e.response.get('Error', {}).get('Message', 'Unknown')}")
             return None
         except Exception as e:
-            logger.error(f"❌ [B2-DOWNLOAD] Unexpected error generating URL: {e}")
+            logger.error(f"❌ [{self.storage_type.upper()}-DOWNLOAD] Unexpected error generating URL: {e}")
             import traceback
-            logger.error(f"❌ [B2-DOWNLOAD] Traceback:\n{traceback.format_exc()}")
+            logger.error(f"❌ [{self.storage_type.upper()}-DOWNLOAD] Traceback:\n{traceback.format_exc()}")
             return None
 
     def generate_presigned_upload_url(self, object_key: str, content_type: str = 'application/octet-stream', expires_in: int = 3600) -> Optional[str]:
@@ -349,11 +415,31 @@ class B2StorageService:
 
     def get_native_upload_url(self, object_key: str, content_type: str = 'application/octet-stream') -> Optional[Dict]:
         """
-        Get B2 Native API upload URL (CORS-compatible for direct browser uploads)
+        Get upload URL for direct browser uploads (CORS-compatible)
+
+        R2: Uses S3 presigned URLs (standard)
+        B2: Uses B2 Native API (for CORS compatibility)
 
         Returns:
-            dict with 'upload_url', 'authorization_token', 'object_key'
+            dict with 'upload_url', 'authorization_token', 'object_key', 'content_type'
         """
+        # R2: Use S3-compatible presigned URL
+        if self.storage_type == 'r2':
+            presigned_url = self.generate_presigned_upload_url(object_key, content_type, expires_in=3600)
+            if not presigned_url:
+                logger.error("❌ Failed to generate R2 presigned upload URL")
+                return None
+
+            logger.info(f"✅ R2 presigned upload URL generated for: {object_key}")
+
+            return {
+                'upload_url': presigned_url,
+                'authorization_token': None,  # Not needed for S3 presigned URLs
+                'object_key': object_key,
+                'content_type': content_type
+            }
+
+        # B2: Use Native API
         # Step 1: Authenticate
         auth_result = self._get_b2_auth_token()
         if not auth_result:
@@ -397,11 +483,17 @@ class B2StorageService:
 
     def get_native_download_url(self, object_key: str, expires_in: int = 3600) -> Optional[str]:
         """
-        Get B2 Native API download URL with authorization token (CORS-compatible)
+        Get download URL (R2: uses S3 presigned, B2: uses Native API)
 
         Returns:
-            URL with embedded authorization token or None if failed
+            Presigned download URL or None if failed
         """
+        # R2: Use S3 presigned URL (same as get_download_url)
+        if self.storage_type == 'r2':
+            logger.info(f"🔗 [R2-NATIVE-DOWNLOAD] Using S3 presigned URL for R2")
+            return self.get_download_url(object_key, expires_in)
+
+        # B2: Use B2 Native API
         logger.info(f"🔗 [B2-NATIVE-DOWNLOAD] Getting native download URL for: {object_key}")
 
         # Step 1: Authenticate
