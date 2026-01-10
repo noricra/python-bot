@@ -2,36 +2,34 @@
 const tg = window.Telegram.WebApp;
 tg.expand();
 
-// Configure PDF.js worker
-if (typeof pdfjsLib !== 'undefined') {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-}
-
-// Get language from URL parameter
+// Get parameters from URL
 const urlParams = new URLSearchParams(window.location.search);
+const productId = urlParams.get('product_id');
 const userLang = urlParams.get('lang') || 'fr';
 
 // Translations
 const translations = {
     fr: {
         notInTelegram: 'Cette application doit être ouverte depuis Telegram.',
-        useButton: 'Utilisez le bouton "📤 Upload via Mini App" dans le bot.',
+        useButton: 'Utilisez le bouton "📥 Télécharger" dans le bot.',
         error: 'Erreur',
-        fileTooLarge: 'Fichier trop volumineux (max 10 GB)',
-        preparing: 'Préparation...',
-        generatingPreview: 'Génération aperçu...',
-        uploadingPreview: 'Upload aperçu...',
-        uploadError: "Erreur lors de l'upload"
+        verifying: 'Vérification de votre achat...',
+        notPurchased: 'Vous n\'avez pas acheté ce produit.',
+        fileNotAvailable: 'Fichier non disponible.',
+        downloadError: 'Erreur lors du téléchargement',
+        networkError: 'Erreur réseau. Vérifiez votre connexion.',
+        unknownError: 'Une erreur inconnue est survenue.'
     },
     en: {
         notInTelegram: 'This application must be opened from Telegram.',
-        useButton: 'Use the "📤 Upload via Mini App" button in the bot.',
+        useButton: 'Use the "📥 Download" button in the bot.',
         error: 'Error',
-        fileTooLarge: 'File too large (max 10 GB)',
-        preparing: 'Preparing...',
-        generatingPreview: 'Generating preview...',
-        uploadingPreview: 'Uploading preview...',
-        uploadError: 'Upload error'
+        verifying: 'Verifying your purchase...',
+        notPurchased: 'You have not purchased this product.',
+        fileNotAvailable: 'File not available.',
+        downloadError: 'Download error',
+        networkError: 'Network error. Check your connection.',
+        unknownError: 'An unknown error occurred.'
     }
 };
 
@@ -40,10 +38,10 @@ const t = (key) => translations[userLang][key] || translations['fr'][key];
 
 // Vérifier que l'app est bien dans Telegram
 if (!tg.initData || tg.initData.length === 0) {
-    console.error('❌ Not running in Telegram WebApp or initData is empty');
+    console.error('Not running in Telegram WebApp or initData is empty');
     document.body.innerHTML = `
         <div style="padding: 20px; text-align: center;">
-            <h2>⚠️ ${t('error')}</h2>
+            <h2>${t('error')}</h2>
             <p>${t('notInTelegram')}</p>
             <p>${t('useButton')}</p>
         </div>
@@ -56,382 +54,429 @@ const userId = tg.initDataUnsafe?.user?.id;
 const username = tg.initDataUnsafe?.user?.username;
 
 // Log for debugging
-console.log('✅ Telegram WebApp initialized');
+console.log('Telegram WebApp initialized');
 console.log('User ID:', userId);
-console.log('Init data length:', tg.initData.length);
+console.log('Product ID:', productId);
 
-// DOM Elements
-const uploadArea = document.getElementById('uploadArea');
-const fileInput = document.getElementById('fileInput');
-const progressSection = document.getElementById('progressSection');
-const successSection = document.getElementById('successSection');
-const errorSection = document.getElementById('errorSection');
-const progressBar = document.getElementById('progressBar');
-const progressPercent = document.getElementById('progressPercent');
-const uploadSpeed = document.getElementById('uploadSpeed');
-const fileName = document.getElementById('fileName');
-const fileSize = document.getElementById('fileSize');
-const errorMessage = document.getElementById('errorMessage');
+// Global variables
+let purchaseData = null;
 
-// Drag & Drop
-uploadArea.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    uploadArea.classList.add('dragover');
-});
+// DOM Elements (will be set after DOM loads)
+let loadingSection, productSection, progressSection, successSection, errorSection;
+let productTitle, productSize, downloadCount, downloadBtn;
+let progressBar, progressPercent, downloadSpeed, fileName, downloadedSize, totalSize;
+let successFileName, errorMessage;
 
-uploadArea.addEventListener('dragleave', () => {
-    uploadArea.classList.remove('dragover');
-});
+// Initialize DOM elements
+function initDOMElements() {
+    loadingSection = document.getElementById('loadingSection');
+    productSection = document.getElementById('productSection');
+    progressSection = document.getElementById('progressSection');
+    successSection = document.getElementById('successSection');
+    errorSection = document.getElementById('errorSection');
 
-uploadArea.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadArea.classList.remove('dragover');
+    productTitle = document.getElementById('productTitle');
+    productSize = document.getElementById('productSize');
+    downloadCount = document.getElementById('downloadCount');
+    downloadBtn = document.getElementById('downloadBtn');
 
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-        handleFileSelection(files[0]);
-    }
-});
+    progressBar = document.getElementById('progressBar');
+    progressPercent = document.getElementById('progressPercent');
+    downloadSpeed = document.getElementById('downloadSpeed');
+    fileName = document.getElementById('fileName');
+    downloadedSize = document.getElementById('downloadedSize');
+    totalSize = document.getElementById('totalSize');
 
-// File Input
-fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-        handleFileSelection(e.target.files[0]);
-    }
-});
+    successFileName = document.getElementById('successFileName');
+    errorMessage = document.getElementById('errorMessage');
+}
 
-// Generate PDF Preview (first page as PNG)
-async function generatePDFPreview(file) {
-    try {
-        console.log('📄 Generating PDF preview...');
+// Show/hide sections helper
+function showSection(sectionId) {
+    const sections = ['loadingSection', 'productSection', 'progressSection', 'successSection', 'errorSection'];
+    sections.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            if (id === sectionId) {
+                element.classList.remove('hidden');
+            } else {
+                element.classList.add('hidden');
+            }
+        }
+    });
+}
 
-        // Read file as ArrayBuffer
-        const arrayBuffer = await file.arrayBuffer();
+// Show error
+function showError(message) {
+    errorMessage.textContent = message;
+    showSection('errorSection');
+}
 
-        // Load PDF document
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        console.log(`📄 PDF loaded: ${pdf.numPages} pages`);
-
-        // Render first page
-        const page = await pdf.getPage(1);
-        const viewport = page.getViewport({ scale: 2.0 });
-
-        // Create canvas
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-
-        // Render PDF page to canvas
-        await page.render({
-            canvasContext: context,
-            viewport: viewport
-        }).promise;
-
-        console.log('✅ PDF preview rendered to canvas');
-
-        // Convert canvas to PNG blob
-        return new Promise((resolve) => {
-            canvas.toBlob((blob) => {
-                console.log(`✅ Preview PNG generated: ${formatBytes(blob.size)}`);
-                resolve(blob);
-            }, 'image/png', 0.9);
-        });
-    } catch (error) {
-        console.error('❌ PDF preview generation failed:', error);
-        return null;
+// Format file size
+function formatFileSize(mb) {
+    if (mb < 1) {
+        return `${(mb * 1024).toFixed(2)} KB`;
+    } else if (mb < 1024) {
+        return `${mb.toFixed(2)} MB`;
+    } else {
+        return `${(mb / 1024).toFixed(2)} GB`;
     }
 }
 
-// Handle File Selection
-async function handleFileSelection(file) {
-    console.log('File selected:', file.name, formatBytes(file.size));
-
-    // Validation
-    const maxSize = 10 * 1024 * 1024 * 1024; // 10 GB
-    if (file.size > maxSize) {
-        showError(t('fileTooLarge'));
+// Verify purchase on page load
+async function verifyPurchase() {
+    if (!productId) {
+        console.error('❌ [VERIFY] Product ID manquant dans l\'URL');
+        showError('Product ID manquant dans l\'URL');
         return;
     }
 
-    // Update UI
-    fileName.textContent = file.name;
-    fileSize.textContent = formatBytes(file.size);
-
-    uploadArea.classList.add('hidden');
-    progressSection.classList.remove('hidden');
-
-    // ✅ NOUVEAU FLUX: Générer product_id AVANT tout upload
     try {
-        // 1️⃣ Request main file upload URL (génère product_id)
-        progressPercent.textContent = t('preparing');
-        const uploadData = await requestPresignedUploadURL(file.name, file.type, userId);
-
-        if (!uploadData || !uploadData.upload_url || !uploadData.product_id) {
-            throw new Error('Failed to get upload URL or product_id');
-        }
-
-        const productId = uploadData.product_id;
-        console.log('🆔 Product ID received:', productId);
-
-        // 2️⃣ Si PDF, générer et uploader preview (utilise product_id)
-        let previewUrl = null;
-        const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-
-        if (isPDF) {
-            try {
-                console.log('📄 PDF detected, generating preview...');
-                progressPercent.textContent = t('generatingPreview');
-
-                const previewBlob = await generatePDFPreview(file);
-
-                if (previewBlob) {
-                    console.log('📤 Uploading preview to B2...');
-                    progressPercent.textContent = t('uploadingPreview');
-
-                    // ✅ Construire URL preview avec MÊME product_id
-                    const previewObjectKey = `products/${userId}/${productId}/preview.png`;
-                    console.log('📸 Preview path:', previewObjectKey);
-
-                    // Get upload URL for preview (sans générer nouveau product_id)
-                    const b2 = await getB2UploadUrlForPath(previewObjectKey, 'image/png');
-
-                    if (b2) {
-                        await uploadFileToB2(previewBlob, b2);
-                        previewUrl = `https://s3.us-west-004.backblazeb2.com/${previewObjectKey}`;
-                        console.log('✅ Preview uploaded:', previewUrl);
-                    }
-                }
-            } catch (error) {
-                console.warn('⚠️ Preview generation failed, continuing without preview:', error);
-            }
-        }
-
-        // 3️⃣ Upload main file
-        progressPercent.textContent = '0%';
-        console.log('📤 Uploading main file to:', uploadData.object_key);
-        await uploadFileToB2(file, uploadData);
-
-        // 4️⃣ Notify backend
-        await notifyUploadComplete(uploadData.object_key, file.name, file.size, previewUrl);
-
-        // 5️⃣ Success
-        showSuccess();
-
-    } catch (error) {
-        console.error('Upload error:', error);
-        showError(error.message || t('uploadError'));
-    }
-}
-
-// Request Presigned Upload URL from Backend
-async function requestPresignedUploadURL(fileName, fileType, userId) {
-    console.log('📤 Requesting presigned URL...');
-
-    const response = await fetch('/api/generate-upload-url', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            file_name: fileName,
-            file_type: fileType,
-            user_id: userId,
-            telegram_init_data: tg.initData  // For auth verification
-        })
-    });
-
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMsg = errorData.detail || `HTTP ${response.status}`;
-        console.error('❌ Failed to get upload URL:', errorMsg);
-        throw new Error(`Erreur serveur: ${errorMsg}`);
-    }
-
-    const data = await response.json();
-    console.log('✅ Presigned URL received');
-    return data;
-}
-
-// Get B2 upload URL for a specific path (for preview)
-async function getB2UploadUrlForPath(objectKey, contentType) {
-    console.log('📤 Requesting B2 URL for path:', objectKey);
-
-    const response = await fetch('/api/get-b2-upload-url', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            object_key: objectKey,
-            content_type: contentType,
+        const requestBody = {
+            product_id: productId,
             user_id: userId,
             telegram_init_data: tg.initData
-        })
-    });
+        };
+        console.log('🔍 [VERIFY] Starting verification with params:', {
+            product_id: productId,
+            user_id: userId,
+            initData_length: tg.initData?.length || 0
+        });
 
-    if (!response.ok) {
-        console.error('❌ Failed to get B2 upload URL for path');
-        return null;
+        const response = await fetch('/api/verify-purchase', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        console.log(`📡 [VERIFY] Response status: ${response.status} ${response.statusText}`);
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorDetail = errorData.detail || `HTTP ${response.status}`;
+            console.error('❌ [VERIFY] API Error:', {
+                status: response.status,
+                statusText: response.statusText,
+                detail: errorDetail,
+                fullError: errorData
+            });
+
+            if (response.status === 404) {
+                showError(t('notPurchased'));
+                return;
+            } else if (response.status === 401) {
+                showError('Authentification échouée: ' + errorDetail);
+                return;
+            }
+            showError(`Erreur ${response.status}: ${errorDetail}`);
+            return;
+        }
+
+        const data = await response.json();
+        console.log('✅ [VERIFY] Purchase verified successfully:', data);
+        purchaseData = data;
+
+        // Display product info
+        productTitle.textContent = data.product_title;
+        productSize.textContent = `Taille: ${formatFileSize(data.file_size_mb)}`;
+
+        const downloadCountText = userLang === 'fr'
+            ? `Téléchargé ${data.download_count} fois`
+            : `Downloaded ${data.download_count} times`;
+        downloadCount.textContent = downloadCountText;
+
+        // Check if file is available
+        if (!data.has_file) {
+            showError(t('fileNotAvailable'));
+            return;
+        }
+
+        // Show product section
+        showSection('productSection');
+
+    } catch (error) {
+        console.error('Error verifying purchase:', error);
+        showError(t('networkError'));
     }
-
-    const data = await response.json();
-    console.log('✅ B2 upload URL received for path');
-    return data;
 }
 
-// Upload File to B2 via Native API (CORS-compatible)
-async function uploadFileToB2(file, uploadData) {
-    return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
+// Handle download button click
+function setupDownloadButton() {
+    downloadBtn.addEventListener('click', async () => {
+        if (!purchaseData) {
+            console.error('[DOWNLOAD] Purchase data not available');
+            showError('Purchase data not available');
+            return;
+        }
 
-        // Track upload progress
-        let startTime = Date.now();
-        let lastLoaded = 0;
+        try {
+            console.error('========== NATIVE BROWSER DOWNLOAD (NO BLOB) ==========');
+            console.log('[DOWNLOAD] Generating download token...', {
+                product_id: purchaseData.product_id,
+                order_id: purchaseData.order_id,
+                user_id: userId
+            });
 
-        xhr.upload.addEventListener('progress', (e) => {
-            if (e.lengthComputable) {
-                const percent = (e.loaded / e.total) * 100;
-                progressBar.style.width = percent + '%';
-                progressPercent.textContent = Math.round(percent) + '%';
-
-                // Calculate upload speed
-                const elapsed = (Date.now() - startTime) / 1000; // seconds
-                const speed = (e.loaded - lastLoaded) / elapsed / (1024 * 1024); // MB/s
-                uploadSpeed.textContent = speed.toFixed(2) + ' MB/s';
-
-                lastLoaded = e.loaded;
-                startTime = Date.now();
-            }
-        });
-
-        xhr.addEventListener('load', () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-                console.log('✅ Upload successful:', xhr.responseText);
-                resolve();
-            } else {
-                // Log HTTP error details
-                const errorDetails = {
-                    status: xhr.status,
-                    statusText: xhr.statusText,
-                    responseText: xhr.responseText || 'No response'
-                };
-                console.error('❌ Upload HTTP Error:', errorDetails);
-
-                // Send to backend for logging
-                fetch('/api/log-client-error', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        error_type: 'xhr_http_error',
-                        details: errorDetails,
-                        user_id: userId
-                    })
-                }).catch(() => {});
-
-                reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
-            }
-        });
-
-        xhr.addEventListener('error', () => {
-            // Capture detailed error information
-            const errorDetails = {
-                status: xhr.status,
-                statusText: xhr.statusText,
-                readyState: xhr.readyState,
-                responseText: xhr.responseText || 'No response'
-            };
-            console.error('❌ XHR Network Error:', errorDetails);
-
-            // Send to backend for logging
-            fetch('/api/log-client-error', {
+            // Step 1: Generate one-time token
+            const tokenResponse = await fetch('/api/generate-download-token', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
-                    error_type: 'xhr_network_error',
-                    details: errorDetails,
-                    user_id: userId
+                    product_id: purchaseData.product_id,
+                    order_id: purchaseData.order_id,
+                    user_id: userId,
+                    telegram_init_data: tg.initData
                 })
-            }).catch(() => {});
+            });
 
-            reject(new Error(`Network error: ${xhr.status} ${xhr.statusText}`));
-        });
+            if (!tokenResponse.ok) {
+                throw new Error('Failed to generate download token');
+            }
 
-        // B2 Native API requires specific headers
-        xhr.open('POST', uploadData.upload_url);
-        xhr.setRequestHeader('Authorization', uploadData.authorization_token);
-        xhr.setRequestHeader('X-Bz-File-Name', encodeURIComponent(uploadData.object_key));
-        xhr.setRequestHeader('Content-Type', uploadData.content_type);
-        xhr.setRequestHeader('X-Bz-Content-Sha1', 'do_not_verify'); // Skip SHA1 verification for speed
+            const { download_token } = await tokenResponse.json();
+            console.error('[DOWNLOAD] Token generated:', download_token);
 
-        console.log('📤 Uploading to B2 Native API:', {
-            url: uploadData.upload_url,
-            fileName: uploadData.object_key,
-            contentType: uploadData.content_type
-        });
+            // Step 2: Open download URL via Telegram API (works better in WebView)
+            const downloadUrl = `${window.location.origin}/download/${download_token}`;
+            console.error('[DOWNLOAD] Opening download URL:', downloadUrl);
 
-        xhr.send(file);
+            // Try Telegram openLink API (better for WebView)
+            if (typeof tg !== 'undefined' && tg.openLink) {
+                console.error('[DOWNLOAD] Using tg.openLink()');
+                tg.openLink(downloadUrl);
+            } else {
+                console.error('[DOWNLOAD] Fallback to window.open()');
+                window.open(downloadUrl, '_blank');
+            }
+
+            // Show success message after short delay
+            setTimeout(() => {
+                successFileName.textContent = purchaseData.product_title;
+                showSection('successSection');
+            }, 1000);
+
+        } catch (error) {
+            console.error('[DOWNLOAD] Error:', error);
+            showError(t('downloadError'));
+        }
     });
 }
 
-// Notify Backend Upload Complete
-async function notifyUploadComplete(objectKey, fileName, fileSize, previewUrl = null) {
-    console.log('📢 Notifying server...');
+// Download file with progress tracking
+async function downloadFile(url, filename, fileSizeMb) {
+    try {
+        console.log('📦 [FILE] Starting file download:', {
+            filename: filename,
+            expected_size_mb: fileSizeMb,
+            url_length: url?.length || 0,
+            url_preview: url?.substring(0, 100) + '...'
+        });
 
-    const payload = {
-        object_key: objectKey,
-        file_name: fileName,
-        file_size: fileSize,
-        user_id: userId,
-        telegram_init_data: tg.initData
-    };
+        const response = await fetch(url);
 
-    // Add preview URL if generated (PDF only)
-    if (previewUrl) {
-        payload.preview_url = previewUrl;
-        console.log('📸 Sending preview URL:', previewUrl);
+        console.log(`📡 [FILE] B2 Response:`, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries([...response.headers.entries()]),
+            ok: response.ok
+        });
+
+        if (!response.ok) {
+            console.error('❌ [FILE] Download failed:', {
+                status: response.status,
+                statusText: response.statusText
+            });
+            throw new Error(`Téléchargement échoué: ${response.status} ${response.statusText}`);
+        }
+
+        const contentLength = response.headers.get('Content-Length');
+        const total = parseInt(contentLength, 10);
+
+        console.log(`📊 [FILE] Content-Length: ${contentLength} (${total} bytes)`);
+
+        if (!total || isNaN(total)) {
+            // Fallback: no progress tracking
+            console.warn('⚠️ [FILE] Content-Length not available, downloading without progress');
+            const blob = await response.blob();
+            console.log(`✅ [FILE] Blob created: ${blob.size} bytes, type: ${blob.type}`);
+            triggerDownload(blob, filename);
+            return;
+        }
+
+        // Download with progress tracking
+        console.log('📥 [FILE] Starting streaming download with progress tracking');
+        const reader = response.body.getReader();
+        const chunks = [];
+        let receivedLength = 0;
+        const startTime = Date.now();
+
+        while(true) {
+            const {done, value} = await reader.read();
+
+            if (done) {
+                console.log('✅ [FILE] Stream complete');
+                break;
+            }
+
+            chunks.push(value);
+            receivedLength += value.length;
+
+            // Update progress
+            const percent = Math.round((receivedLength / total) * 100);
+            const elapsedSeconds = (Date.now() - startTime) / 1000;
+            const speed = (receivedLength / 1024 / 1024) / elapsedSeconds;
+
+            progressBar.style.width = `${percent}%`;
+            progressPercent.textContent = `${percent}%`;
+            downloadSpeed.textContent = `${speed.toFixed(2)} MB/s`;
+            downloadedSize.textContent = formatFileSize(receivedLength / 1024 / 1024);
+
+            // Log progress every 25%
+            if (percent % 25 === 0 && percent > 0) {
+                console.log(`📊 [FILE] Progress: ${percent}% (${receivedLength}/${total} bytes, ${speed.toFixed(2)} MB/s)`);
+            }
+        }
+
+        // Combine chunks into blob
+        const blob = new Blob(chunks);
+        console.log('✅ [FILE] Download complete:', {
+            total_chunks: chunks.length,
+            blob_size: blob.size,
+            blob_type: blob.type,
+            expected_size: total,
+            match: blob.size === total
+        });
+
+        // Trigger browser download with Web Share API
+        await triggerDownloadWithShare(blob, filename);
+
+        // Show success
+        successFileName.textContent = filename;
+        showSection('successSection');
+
+    } catch (error) {
+        console.error('❌ [FILE] Download error:', {
+            message: error.message,
+            stack: error.stack,
+            error: error
+        });
+        showError(t('downloadError'));
+    }
+}
+
+// Trigger download using Web Share API (symetrique avec file input de l'upload)
+async function triggerDownloadWithShare(blob, filename) {
+    console.error('[TRIGGER] Starting download with Web Share API:', {
+        blob_size: blob.size,
+        blob_type: blob.type,
+        filename: filename
+    });
+
+    // Creer un File object depuis le blob
+    const file = new File([blob], filename, {
+        type: blob.type || 'application/octet-stream'
+    });
+
+    console.error('[TRIGGER] File object created:', {
+        name: file.name,
+        size: file.size,
+        type: file.type
+    });
+
+    // Methode 1: Web Share API (symetrique avec <input type="file">)
+    if (navigator.share && navigator.canShare) {
+        try {
+            // Verifier si on peut partager des fichiers
+            const canShareFiles = navigator.canShare({ files: [file] });
+            console.error('[TRIGGER] Web Share API available, canShare files:', canShareFiles);
+
+            if (canShareFiles) {
+                console.error('[TRIGGER] Calling navigator.share()...');
+
+                await navigator.share({
+                    files: [file],
+                    title: filename,
+                    text: 'Telecharger le fichier'
+                });
+
+                console.error('[TRIGGER] Web Share completed successfully');
+                return;
+            } else {
+                console.error('[TRIGGER] Web Share API exists but cannot share files');
+            }
+        } catch (error) {
+            // User cancelled or error
+            if (error.name === 'AbortError') {
+                console.error('[TRIGGER] User cancelled share');
+                throw new Error('Telechargement annule par utilisateur');
+            }
+            console.error('[TRIGGER] Web Share API failed:', error);
+        }
+    } else {
+        console.error('[TRIGGER] Web Share API not available');
     }
 
-    const response = await fetch('/api/upload-complete', {
+    // Fallback 1: tg.shareFileViaShare (si disponible)
+    if (typeof tg !== 'undefined' && tg.shareFileViaShare) {
+        try {
+            console.error('[TRIGGER] Trying Telegram shareFileViaShare...');
+            const url = window.URL.createObjectURL(blob);
+            await tg.shareFileViaShare(url, filename);
+            window.URL.revokeObjectURL(url);
+            console.error('[TRIGGER] Telegram shareFileViaShare completed');
+            return;
+        } catch (error) {
+            console.error('[TRIGGER] Telegram shareFileViaShare failed:', error);
+        }
+    }
+
+    // Fallback 2: Methode classique avec lien (peut ne pas fonctionner)
+    console.error('[TRIGGER] Using fallback: classic <a> download method');
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+
+    document.body.appendChild(link);
+    console.error('[TRIGGER] Fallback download link created, triggering click...');
+
+    link.click();
+
+    setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        console.error('[TRIGGER] Fallback cleanup completed');
+    }, 1000);
+
+    console.warn('[TRIGGER] Fallback method used - download may not work in Telegram WebView');
+}
+
+// Initialize on page load
+window.addEventListener('DOMContentLoaded', () => {
+    initDOMElements();
+    setupDownloadButton();
+    verifyPurchase();
+});
+
+// Handle errors globally
+window.addEventListener('error', (event) => {
+    console.error('Global error:', event.error);
+    // Send error to backend for logging
+    fetch('/api/log-client-error', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMsg = errorData.detail || `HTTP ${response.status}`;
-        console.error('❌ Failed to notify completion:', errorMsg);
-        throw new Error(`Erreur notification: ${errorMsg}`);
-    }
-
-    console.log('✅ Server notified');
-}
-
-// UI State Management
-function showSuccess() {
-    progressSection.classList.add('hidden');
-    successSection.classList.remove('hidden');
-}
-
-function showError(message) {
-    uploadArea.classList.add('hidden');
-    progressSection.classList.add('hidden');
-    errorSection.classList.remove('hidden');
-    errorMessage.textContent = message;
-}
-
-// Helper: Format bytes to human readable
-function formatBytes(bytes, decimals = 2) {
-    if (bytes === 0) return '0 Bytes';
-
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-}
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            error_type: 'download_error',
+            details: {
+                message: event.error?.message || 'Unknown error',
+                stack: event.error?.stack,
+                product_id: productId,
+                user_id: userId
+            },
+            user_id: userId
+        })
+    }).catch(err => console.error('Failed to log error:', err));
+});
