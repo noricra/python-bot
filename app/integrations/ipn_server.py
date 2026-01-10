@@ -400,11 +400,15 @@ async def upload_complete(request: UploadCompleteRequest):
             logger.error(f"❌ File not found on B2: {request.object_key}")
             raise HTTPException(status_code=404, detail="File not found on B2 after upload")
 
-        logger.info(f"✅ B2 file exists: {request.object_key}")
+        logger.info(f"✅ Storage file exists: {request.object_key}")
 
-        # URL du fichier sur B2
-        b2_url = f"{core_settings.B2_ENDPOINT}/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
-        logger.info(f"📦 B2 URL constructed: {b2_url}")
+        # URL du fichier (R2 ou B2 selon configuration)
+        if b2.storage_type == 'r2':
+            file_url = f"{os.getenv('R2_ENDPOINT')}/{os.getenv('R2_BUCKET_NAME')}/{request.object_key}"
+            logger.info(f"📦 R2 URL constructed: {file_url}")
+        else:
+            file_url = f"{core_settings.B2_ENDPOINT}/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
+            logger.info(f"📦 B2 URL constructed: {file_url}")
 
         global telegram_application
         logger.info(f"🤖 telegram_application exists: {telegram_application is not None}")
@@ -435,7 +439,7 @@ async def upload_complete(request: UploadCompleteRequest):
                 # Ajouter les infos du fichier uploadé
                 product_data['file_name'] = request.file_name
                 product_data['file_size'] = request.file_size
-                product_data['main_file_url'] = b2_url
+                product_data['main_file_url'] = file_url
                 product_data['seller_id'] = request.user_id
 
                 logger.info(f"📝 Updated product_data with file info: file_name={request.file_name}, file_size={request.file_size}")
@@ -679,20 +683,31 @@ async def generate_download_url(request: GenerateDownloadURLRequest):
                 logger.error(f"❌ [GEN-URL-API] Product file URL is null for order {request.order_id}")
                 raise HTTPException(status_code=404, detail="Product file not available")
 
-            # 3. Extraire object_key depuis l'URL B2
-            # Format: https://s3.us-west-004.backblazeb2.com/bucket-name/products/USER/PRODUCT/main_file.pdf
-            # On veut: products/USER/PRODUCT/main_file.pdf
+            # 3. Extraire object_key depuis l'URL (R2 ou B2)
+            # R2: https://xxx.r2.cloudflarestorage.com/uzeur/products/...
+            # B2: https://s3.backblazeb2.com/Uzeur-StockFiles/products/...
             try:
-                bucket_name = os.getenv('B2_BUCKET_NAME')
-                logger.info(f"🔧 [GEN-URL-API] Extracting object_key from URL: {main_file_url}, bucket={bucket_name}")
+                logger.info(f"🔧 [GEN-URL-API] Extracting object_key from URL: {main_file_url}")
 
-                if f"/{bucket_name}/" in main_file_url:
-                    object_key = main_file_url.split(f"/{bucket_name}/")[1]
+                # Detect storage provider from URL
+                if "r2.cloudflarestorage.com" in main_file_url:
+                    r2_bucket = os.getenv('R2_BUCKET_NAME', 'uzeur')
+                    if f"/{r2_bucket}/" in main_file_url:
+                        object_key = main_file_url.split(f"/{r2_bucket}/")[1]
+                    else:
+                        object_key = main_file_url.split(f"{r2_bucket}/")[-1]
+                    logger.info(f"✅ [GEN-URL-API] Extracted R2 object_key: {object_key}")
+                elif "backblazeb2.com" in main_file_url:
+                    b2_bucket = os.getenv('B2_BUCKET_NAME')
+                    if f"/{b2_bucket}/" in main_file_url:
+                        object_key = main_file_url.split(f"/{b2_bucket}/")[1]
+                    else:
+                        object_key = main_file_url.split('.com/')[-1]
+                    logger.info(f"✅ [GEN-URL-API] Extracted B2 object_key: {object_key}")
                 else:
-                    # Fallback: assumer que c'est juste le path
+                    # Generic fallback
                     object_key = main_file_url.split('.com/')[-1]
-
-                logger.info(f"✅ [GEN-URL-API] Extracted object_key: {object_key}")
+                    logger.warning(f"⚠️ [GEN-URL-API] Unknown storage provider, using fallback: {object_key}")
             except Exception as e:
                 logger.error(f"❌ [GEN-URL-API] Error extracting object_key from {main_file_url}: {e}")
                 raise HTTPException(status_code=500, detail="Invalid file URL format")
@@ -808,17 +823,27 @@ async def stream_download(request: GenerateDownloadURLRequest):
                 logger.error(f"[STREAM-DOWNLOAD] Product file URL is null for order {request.order_id}")
                 raise HTTPException(status_code=404, detail="Product file not available")
 
-            # 3. Extraire object_key pour telecharger avec boto3 (authentifie)
+            # 3. Extraire object_key pour telecharger (R2 ou B2)
             logger.info(f"[STREAM-DOWNLOAD] Extracting object_key from: {main_file_url}")
 
             try:
-                bucket_name = os.getenv('B2_BUCKET_NAME')
-                if f"/{bucket_name}/" in main_file_url:
-                    object_key = main_file_url.split(f"/{bucket_name}/")[1]
+                # Detect storage provider from URL
+                if "r2.cloudflarestorage.com" in main_file_url:
+                    r2_bucket = os.getenv('R2_BUCKET_NAME', 'uzeur')
+                    if f"/{r2_bucket}/" in main_file_url:
+                        object_key = main_file_url.split(f"/{r2_bucket}/")[1]
+                    else:
+                        object_key = main_file_url.split(f"{r2_bucket}/")[-1]
+                elif "backblazeb2.com" in main_file_url:
+                    b2_bucket = os.getenv('B2_BUCKET_NAME')
+                    if f"/{b2_bucket}/" in main_file_url:
+                        object_key = main_file_url.split(f"/{b2_bucket}/")[1]
+                    else:
+                        object_key = main_file_url.split('.com/')[-1]
                 else:
                     object_key = main_file_url.split('.com/')[-1]
 
-                object_key = object_key.split('?')[0]
+                object_key = object_key.split('?')[0]  # Remove query params
                 logger.info(f"[STREAM-DOWNLOAD] Object key: {object_key}")
             except Exception as e:
                 logger.error(f"[STREAM-DOWNLOAD] Failed to extract object_key: {e}")
@@ -980,23 +1005,33 @@ async def download_file_with_token(token: str):
     if not main_file_url:
         raise HTTPException(status_code=404, detail="File not available")
 
-    # Extract object_key from B2 URL
-    bucket_name = os.getenv('B2_BUCKET_NAME')
-    if f"/{bucket_name}/" in main_file_url:
-        object_key = main_file_url.split(f"/{bucket_name}/")[1]
+    # Extract object_key from storage URL (R2 or B2)
+    if "r2.cloudflarestorage.com" in main_file_url:
+        r2_bucket = os.getenv('R2_BUCKET_NAME', 'uzeur')
+        if f"/{r2_bucket}/" in main_file_url:
+            object_key = main_file_url.split(f"/{r2_bucket}/")[1]
+        else:
+            object_key = main_file_url.split(f"{r2_bucket}/")[-1]
+    elif "backblazeb2.com" in main_file_url:
+        b2_bucket = os.getenv('B2_BUCKET_NAME')
+        if f"/{b2_bucket}/" in main_file_url:
+            object_key = main_file_url.split(f"/{b2_bucket}/")[1]
+        else:
+            object_key = main_file_url.split('.com/')[-1]
     else:
         object_key = main_file_url.split('.com/')[-1]
-    object_key = object_key.split('?')[0]
+
+    object_key = object_key.split('?')[0]  # Remove query params
 
     # Increment download counter
     DownloadRepository.increment_download_count(order_id)
 
-    # Generate presigned B2 URL (direct download, no Railway proxy)
-    logger.info(f"[DOWNLOAD-GET] Generating presigned B2 URL for: {object_key}")
+    # Generate presigned URL (direct download, no Railway proxy)
+    logger.info(f"[DOWNLOAD-GET] Generating presigned URL for: {object_key}")
     b2_service = B2StorageService()
 
-    # 1 hour expiration for large files
-    presigned_url = b2_service.get_download_url(object_key, expires_in=3600)
+    # 2 hour expiration for large files (10GB with slow connection)
+    presigned_url = b2_service.get_download_url(object_key, expires_in=7200)
 
     if not presigned_url:
         logger.error(f"[DOWNLOAD-GET] Failed to generate presigned URL")
