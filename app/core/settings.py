@@ -65,7 +65,6 @@ class Settings:
         self.WEBHOOK_URL: Optional[str] = os.getenv("WEBHOOK_URL", "http://localhost:8000")
         self.WEBAPP_URL: Optional[str] = os.getenv("WEBAPP_URL") or self.WEBHOOK_URL
 
-
         # Platform commission (3.14% - π number)
         self.PLATFORM_COMMISSION_PERCENT: float = float(os.getenv("PLATFORM_COMMISSION_PERCENT", "3.14"))
 
@@ -78,11 +77,17 @@ class Settings:
         # Railway uses PORT, but allow IPN_PORT for local dev
         self.IPN_PORT: int = int(os.getenv("PORT") or os.getenv("IPN_PORT", "8000"))
 
-        # Backblaze B2 Object Storage
+        # Backblaze B2 Object Storage (Fallback)
         self.B2_KEY_ID: Optional[str] = os.getenv("B2_KEY_ID")
         self.B2_APPLICATION_KEY: Optional[str] = os.getenv("B2_APPLICATION_KEY")
         self.B2_BUCKET_NAME: str = os.getenv("B2_BUCKET_NAME", "uzeur-marketplace")
         self.B2_ENDPOINT: str = os.getenv("B2_ENDPOINT", "https://s3.us-west-004.backblazeb2.com")
+
+        # Cloudflare R2 Object Storage (Priority - zero egress fees)
+        self.R2_ENDPOINT: Optional[str] = os.getenv("R2_ENDPOINT")
+        self.R2_APPLICATION_KEY: Optional[str] = os.getenv("R2_APPLICATION_KEY")
+        self.R2_SECRET_KEY: Optional[str] = os.getenv("R2_SECRET_KEY")
+        self.R2_BUCKET_NAME: Optional[str] = os.getenv("R2_BUCKET_NAME")
 
         # Storage and paths
         self.UPLOADS_DIR: str = os.getenv("UPLOADS_DIR", "uploads")  # Local temp storage for images
