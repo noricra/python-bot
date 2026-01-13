@@ -88,6 +88,7 @@ class Settings:
         self.R2_APPLICATION_KEY: Optional[str] = os.getenv("R2_APPLICATION_KEY")
         self.R2_SECRET_KEY: Optional[str] = os.getenv("R2_SECRET_KEY")
         self.R2_BUCKET_NAME: Optional[str] = os.getenv("R2_BUCKET_NAME")
+        self.R2_CUSTOM_DOMAIN: Optional[str] = os.getenv("R2_CUSTOM_DOMAIN", "https://media.uzeur.com")
 
         # Storage and paths
         self.UPLOADS_DIR: str = os.getenv("UPLOADS_DIR", "uploads")  # Local temp storage for images
