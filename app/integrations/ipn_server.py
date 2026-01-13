@@ -298,8 +298,8 @@ async def generate_upload_url(request: GenerateUploadURLRequest):
             if bot_instance:
                 user_state = bot_instance.get_user_state(request.user_id)
                 product_data = user_state.get('product_data', {})
-                product_data['product_id'] = product_id  # ✅ Stocké pour plus tard
-                user_state['product_data'] = product_data
+                product_data['product_id'] = product_id
+                bot_instance.update_user_state(request.user_id, product_data=product_data)
                 logger.info(f"✅ product_id stored in user_state: {product_id}")
 
         # Nettoyage du filename (garder l'extension)
@@ -404,7 +404,8 @@ async def upload_complete(request: UploadCompleteRequest):
 
         # URL du fichier (R2 ou B2 selon configuration)
         if b2.storage_type == 'r2':
-            file_url = f"{os.getenv('R2_ENDPOINT')}/{os.getenv('R2_BUCKET_NAME')}/{request.object_key}"
+            custom_domain = os.getenv('R2_CUSTOM_DOMAIN', 'https://media.uzeur.com')
+            file_url = f"{custom_domain}/{request.object_key}"
             logger.info(f"📦 R2 URL constructed: {file_url}")
         else:
             file_url = f"{core_settings.B2_ENDPOINT}/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
