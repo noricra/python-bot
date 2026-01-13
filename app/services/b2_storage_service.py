@@ -102,8 +102,8 @@ class B2StorageService:
 
             # Generate URL based on storage type
             if self.storage_type == 'r2':
-                endpoint = os.getenv('R2_ENDPOINT')
-                url = f"{endpoint}/{self.bucket_name}/{object_key}"
+                custom_domain = os.getenv('R2_CUSTOM_DOMAIN', 'https://media.uzeur.com')
+                url = f"{custom_domain}/{object_key}"
                 logger.info(f"✅ File uploaded to R2: {object_key}")
             else:
                 url = f"{settings.B2_ENDPOINT}/{self.bucket_name}/{object_key}"
@@ -143,8 +143,8 @@ class B2StorageService:
 
             # Generate URL based on storage type
             if self.storage_type == 'r2':
-                endpoint = os.getenv('R2_ENDPOINT')
-                url = f"{endpoint}/{self.bucket_name}/{object_key}"
+                custom_domain = os.getenv('R2_CUSTOM_DOMAIN', 'https://media.uzeur.com')
+                url = f"{custom_domain}/{object_key}"
                 logger.info(f"✅ File object uploaded to R2: {object_key}")
             else:
                 url = f"{settings.B2_ENDPOINT}/{self.bucket_name}/{object_key}"
