@@ -32,4 +32,6 @@ email-validator==2.1.0
 # Web Scraping
 beautifulsoup4==4.12.2
 lxml==4.9.3
+brotli>=1.0.9
+
 
