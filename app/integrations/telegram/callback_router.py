@@ -427,32 +427,50 @@ class CallbackRouter:
 
                     keyboard_markup = InlineKeyboardMarkup(keyboard)
 
-                    # Get image
-                    thumbnail_url = self.bot.buy_handlers._get_product_image_or_placeholder(product)
+                    # Use same image logic as CarouselHelper (like category navigation)
+                    from app.integrations.telegram.utils.carousel_helper import CarouselHelper
+                    image_source, is_file_id = CarouselHelper._get_image_path(product)
 
-                    # Update message
-                    if thumbnail_url and os.path.exists(thumbnail_url):
-                        try:
+                    # Display using same logic as category navigation
+                    telegram_bot = self.bot.application.bot if hasattr(self.bot, 'application') else self.bot
+
+                    if image_source:
+                        if is_file_id:
+                            # Use cached file_id (instant, like category nav)
                             await query.edit_message_media(
                                 media=InputMediaPhoto(
-                                    media=open(thumbnail_url, 'rb'),
+                                    media=image_source,
                                     caption=caption_with_header,
                                     parse_mode='HTML'
                                 ),
                                 reply_markup=keyboard_markup
                             )
+                        elif os.path.exists(image_source):
+                            # Send from local file
+                            with open(image_source, 'rb') as photo_file:
+                                await query.edit_message_media(
+                                    media=InputMediaPhoto(
+                                        media=photo_file,
+                                        caption=caption_with_header,
+                                        parse_mode='HTML'
+                                    ),
+                                    reply_markup=keyboard_markup
+                                )
+                    else:
+                        # No image - try text, fallback to caption if message has photo
+                        try:
+                            await query.edit_message_text(
+                                text=caption_with_header,
+                                reply_markup=keyboard_markup,
+                                parse_mode='HTML'
+                            )
                         except:
+                            # Message has photo, edit caption instead
                             await query.edit_message_caption(
                                 caption=caption_with_header,
                                 reply_markup=keyboard_markup,
                                 parse_mode='HTML'
                             )
-                    else:
-                        await query.edit_message_text(
-                            text=caption_with_header,
-                            reply_markup=keyboard_markup,
-                            parse_mode='HTML'
-                        )
 
                 return True
             except Exception as e:
