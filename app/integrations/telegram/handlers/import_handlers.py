@@ -8,7 +8,7 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ContextTypes
 
-from app.services.gumroad_scraper import scrape_gumroad_profile, download_cover_image
+from app.services.gumroad_scraper import scrape_gumroad_profile, download_cover_image, GumroadScraperException
 from app.core.i18n import t as i18n
 from app.integrations.telegram.utils import safe_transition_to_text
 
@@ -127,12 +127,39 @@ class ImportHandlers:
             # Afficher carrousel
             await self.show_import_carousel(bot, status_msg, products, 0, lang, is_new_message=True)
 
-        except Exception as e:
+        except GumroadScraperException as e:
+            # Exception personnalisee avec message specifique utilisateur
             progress_task.cancel()
-            logger.error(f"Import scraping error: {e}")
+            logger.warning(f"[IMPORT] Gumroad scraping failed: {e}")
+
+            # Determiner emoji selon type erreur
+            error_msg = str(e)
+            if "n'existe pas" in error_msg:
+                emoji = "❌"
+            elif "refuse" in error_msg or "Bot" in error_msg:
+                emoji = "🛡️"
+            elif "surcharge" in error_msg or "5 minutes" in error_msg:
+                emoji = "⚠️"
+            elif "serveur" in error_msg:
+                emoji = "🔥"
+            else:
+                emoji = "⚠️"
+
             await status_msg.edit_text(
-                f"❌ **Erreur lors du scraping:**\n{str(e)}\n\n"
-                "Vérifiez l'URL et réessayez.\n"
+                f"{emoji} **Erreur Gumroad**\n\n"
+                f"{error_msg}\n\n"
+                "Utilisez /import pour réessayer.",
+                parse_mode='Markdown'
+            )
+            bot.state_manager.update_state(user_id, importing_shop=False, step=None)
+
+        except Exception as e:
+            # Erreurs inattendues (bugs code, etc.)
+            progress_task.cancel()
+            logger.error(f"[IMPORT] Unexpected error during scraping: {e}")
+            await status_msg.edit_text(
+                f"❌ **Erreur inattendue:**\n{str(e)}\n\n"
+                "Si le problème persiste, contactez le support.\n"
                 "Utilisez /import pour recommencer.",
                 parse_mode='Markdown'
             )
