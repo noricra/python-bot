@@ -190,6 +190,25 @@ class DatabaseInitService:
                 )
             ''')
 
+            # Add import columns if they don't exist (for existing tables)
+            cursor.execute('''
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name='products' AND column_name='imported_from') THEN
+                        ALTER TABLE products ADD COLUMN imported_from VARCHAR(50);
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name='products' AND column_name='imported_url') THEN
+                        ALTER TABLE products ADD COLUMN imported_url TEXT;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name='products' AND column_name='source_profile') THEN
+                        ALTER TABLE products ADD COLUMN source_profile TEXT;
+                    END IF;
+                END $$;
+            ''')
+
             # Create indexes for performance
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller_user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)')
