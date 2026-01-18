@@ -26,6 +26,31 @@ class SellHandlers:
 
     # ==================== HELPER FUNCTIONS ====================
 
+    @staticmethod
+    def _escape_markdown(text: str) -> str:
+        """
+        Echapper caracteres speciaux Markdown pour Telegram
+
+        Telegram Markdown necessite echapper: _ * [ ] ( ) ~ ` > # + - = | { } . !
+
+        Args:
+            text: Texte a echapper
+
+        Returns:
+            Texte avec caracteres speciaux echappes
+        """
+        if not text:
+            return ""
+
+        # Caracteres a echapper pour Telegram Markdown
+        escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+
+        escaped_text = text
+        for char in escape_chars:
+            escaped_text = escaped_text.replace(char, f'\\{char}')
+
+        return escaped_text
+
     async def _verify_product_ownership(self, bot, query, product_id: str):
         """
         Verify product ownership and return product if owned by current seller
@@ -870,11 +895,14 @@ class SellHandlers:
             status_icon = "✅" if product['status'] == 'active' else "❌"
             status_text = "**ACTIF**" if product['status'] == 'active' else "_Inactif_"
 
+            # Echapper titre et description pour eviter parsing errors Telegram
+            title_escaped = SellHandlers._escape_markdown(product['title'])
+            category_escaped = SellHandlers._escape_markdown(product.get('category', ''))
+
             caption = ""
-            category = product.get('category', '')
-            breadcrumb = f"📂 _Mes Produits" + (f" › {category}_" if category else "_")
+            breadcrumb = f"📂 _Mes Produits" + (f" › {category_escaped}_" if category_escaped else "_")
             caption += f"{breadcrumb}\n\n"
-            caption += f"{status_icon} **{product['title']}**\n\n"
+            caption += f"{status_icon} **{title_escaped}**\n\n"
             caption += f" **${product['price_usd']:.2f}** •  {status_text}\n"
             caption += "────────────────\n\n"
             caption += "📊 **PERFORMANCE**\n"
@@ -898,9 +926,11 @@ class SellHandlers:
                 desc = product['description']
                 if len(desc) > 160:
                     desc = desc[:160].rsplit(' ', 1)[0] + "..."
-                caption += f"{desc}\n\n"
+                # Echapper description
+                desc_escaped = SellHandlers._escape_markdown(desc)
+                caption += f"{desc_escaped}\n\n"
 
-            caption += f"📂 _{product.get('category', 'N/A')}_  •  📁 {product.get('file_size_mb', 0):.1f} MB"
+            caption += f"📂 _{category_escaped if category_escaped else 'N/A'}_  •  📁 {product.get('file_size_mb', 0):.1f} MB"
             return caption
 
         # Keyboard builder for seller carousel
