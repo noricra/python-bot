@@ -183,6 +183,9 @@ class DatabaseInitService:
                     admin_deactivation_reason TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    imported_from VARCHAR(50),
+                    imported_url TEXT,
+                    source_profile TEXT,
                     FOREIGN KEY (seller_user_id) REFERENCES users (user_id) ON DELETE CASCADE
                 )
             ''')
@@ -194,6 +197,25 @@ class DatabaseInitService:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_telegram_thumb ON products(telegram_thumb_file_id) WHERE telegram_thumb_file_id IS NOT NULL")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_telegram_cover ON products(telegram_cover_file_id) WHERE telegram_cover_file_id IS NOT NULL")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_preview_url ON products(preview_url) WHERE preview_url IS NOT NULL")
+
+            # Import-specific indexes
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_products_imported_from
+                ON products(imported_from)
+                WHERE imported_from IS NOT NULL
+            ''')
+
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_products_seller_imported
+                ON products(seller_user_id, imported_from)
+                WHERE imported_from IS NOT NULL
+            ''')
+
+            cursor.execute('''
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_products_imported_url_unique
+                ON products(seller_user_id, imported_url)
+                WHERE imported_url IS NOT NULL
+            ''')
 
             conn.commit()
             logger.debug("✅ Products table created/verified (PostgreSQL)")
