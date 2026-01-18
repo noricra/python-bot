@@ -29,3 +29,7 @@ starlette==0.38.2
 # Validation
 pydantic==2.9.0
 email-validator==2.1.0
+# Web Scraping
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
