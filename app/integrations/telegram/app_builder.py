@@ -190,11 +190,27 @@ def build_application(bot_instance) -> Application:
 
         await bot_instance.buy_handlers.show_seller_shop(bot_instance, mock_query, seller['user_id'], lang)
 
+    async def import_shop_command_wrapper(update, context):
+        """Quick access to import shop"""
+        class MockQuery:
+            def __init__(self, user, update_obj):
+                self.from_user = user
+                self.message = update_obj.message
+                self.effective_chat = update_obj.effective_chat
+            async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
+                await self.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+            async def answer(self):
+                pass
+
+        mock_query = MockQuery(update.effective_user, update)
+        await bot_instance.import_handlers.import_shop_start(bot_instance, mock_query)
+
     application.add_handler(CommandHandler("achat", achat_command_wrapper))
     application.add_handler(CommandHandler("vendre", vendre_command_wrapper))
     application.add_handler(CommandHandler("library", library_command_wrapper))
     application.add_handler(CommandHandler("stats", stats_command_wrapper))
     application.add_handler(CommandHandler("shop", shop_command_wrapper))
+    application.add_handler(CommandHandler("import", import_shop_command_wrapper))
     
     # Use callback router for button handling
     async def callback_handler_wrapper(update, context):
