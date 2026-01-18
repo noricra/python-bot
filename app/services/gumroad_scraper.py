@@ -38,15 +38,25 @@ async def scrape_gumroad_profile(profile_url: str) -> List[Dict]:
     """
     products = []
 
-    # Headers anti-detection (moderne, simule Chrome 120)
+    # Headers anti-detection (moderne, simule Chrome 120 - ULTRA COMPLET)
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-US,en;q=0.9,fr-FR;q=0.8,fr;q=0.7',
         'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://www.google.com/',
+        'Alt-Used': 'gumroad.com',
         'DNT': '1',
         'Connection': 'keep-alive',
         'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
+        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
     }
 
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers=headers) as client:
@@ -75,8 +85,11 @@ async def scrape_gumroad_profile(profile_url: str) -> List[Dict]:
             soup = BeautifulSoup(html_content, 'lxml')
 
             # DEBUG: Logger preview HTML et chercher __NEXT_DATA__
-            logger.debug(f"[GUMROAD] HTML length: {len(html_content)} chars")
-            logger.debug(f"[GUMROAD] HTML preview (first 500 chars): {html_content[:500]}")
+            logger.info(f"[GUMROAD] HTML length: {len(html_content)} chars")
+            logger.info(f"[GUMROAD] HTML preview (first 1000 chars): {html_content[:1000]}")
+
+            # Logger aussi les headers de reponse pour detecter redirections
+            logger.info(f"[GUMROAD] Response headers: {dict(resp.headers)}")
 
             # Chercher si __NEXT_DATA__ existe QUELQUE PART dans le HTML
             if '__NEXT_DATA__' in html_content:
