@@ -74,9 +74,33 @@ async def scrape_gumroad_profile(profile_url: str) -> List[Dict]:
             html_content = resp.text
             soup = BeautifulSoup(html_content, 'lxml')
 
+            # DEBUG: Logger preview HTML et chercher __NEXT_DATA__
+            logger.debug(f"[GUMROAD] HTML length: {len(html_content)} chars")
+            logger.debug(f"[GUMROAD] HTML preview (first 500 chars): {html_content[:500]}")
+
+            # Chercher si __NEXT_DATA__ existe QUELQUE PART dans le HTML
+            if '__NEXT_DATA__' in html_content:
+                logger.info("[GUMROAD] __NEXT_DATA__ found in HTML content")
+            else:
+                logger.warning("[GUMROAD] __NEXT_DATA__ NOT found in HTML content at all")
+
+            # Lister tous les script tags pour debug
+            all_scripts = soup.find_all('script')
+            logger.info(f"[GUMROAD] Found {len(all_scripts)} total script tags")
+            for idx, script in enumerate(all_scripts[:10]):  # Limit to 10 pour pas spammer
+                script_id = script.get('id', 'no-id')
+                script_type = script.get('type', 'no-type')
+                script_len = len(script.string) if script.string else 0
+                logger.debug(f"[GUMROAD] Script {idx}: id='{script_id}', type='{script_type}', length={script_len}")
+
             # Strategie 1: __NEXT_DATA__ (Next.js) - LA MINE D'OR
             logger.info("[GUMROAD] Attempting __NEXT_DATA__ extraction (Next.js)")
             script_tag = soup.find('script', id='__NEXT_DATA__', type='application/json')
+
+            # Essayer aussi SANS le type attribute (parfois Gumroad ne l'inclut pas)
+            if not script_tag:
+                logger.info("[GUMROAD] Trying without type='application/json' attribute...")
+                script_tag = soup.find('script', id='__NEXT_DATA__')
 
             if script_tag:
                 try:
@@ -108,15 +132,32 @@ async def scrape_gumroad_profile(profile_url: str) -> List[Dict]:
                 except json.JSONDecodeError as e:
                     logger.error(f"[GUMROAD] Failed to parse __NEXT_DATA__ JSON: {e}")
 
-            # Strategie 2: Fallback OpenGraph (page produit unique)
-            logger.warning("[GUMROAD] __NEXT_DATA__ not found, trying OpenGraph fallback...")
+            # Strategie 2: Fallback - Chercher JSON dans TOUS les scripts
+            logger.warning("[GUMROAD] __NEXT_DATA__ not found, trying JSON extraction from all scripts...")
+            products = extract_products_from_scripts(soup, profile_url)
+            if products:
+                logger.info(f"[GUMROAD] Found {len(products)} products via script JSON extraction")
+                return products
+
+            # Strategie 3: Fallback OpenGraph (page produit unique)
+            logger.warning("[GUMROAD] Script JSON extraction failed, trying OpenGraph fallback...")
             og_product = extract_opengraph_product(soup, profile_url)
             if og_product:
                 logger.info("[GUMROAD] Found product via OpenGraph meta tags")
                 return [og_product]
 
-            # Echec complet
+            # Echec complet - Sauvegarder HTML pour debug
             logger.error("[GUMROAD] No products found via any extraction method")
+
+            # Sauvegarder HTML pour inspection manuelle (debug)
+            try:
+                debug_file = f"/tmp/gumroad_debug_{profile_url.split('/')[-1]}.html"
+                with open(debug_file, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                logger.info(f"[GUMROAD] HTML saved to {debug_file} for manual inspection")
+            except Exception as e:
+                logger.debug(f"[GUMROAD] Could not save debug HTML: {e}")
+
             raise GumroadScraperException("Aucun produit trouve. Verifiez que le profil est public et contient des produits.")
 
         except httpx.TimeoutException:
@@ -297,6 +338,102 @@ async def fetch_full_description(client: httpx.AsyncClient, product_url: str, he
     except Exception as e:
         logger.error(f"[GUMROAD] Error fetching product description: {e}")
         return ""
+
+
+def extract_products_from_scripts(soup: BeautifulSoup, profile_url: str) -> List[Dict]:
+    """
+    Fallback: Chercher produits dans TOUS les script tags via patterns JSON
+
+    Strategie aggressive: cherche "products", "items", "permalink" dans tous les scripts
+
+    Args:
+        soup: BeautifulSoup object
+        profile_url: URL du profil
+
+    Returns:
+        Liste produits trouves
+    """
+    products = []
+
+    try:
+        all_scripts = soup.find_all('script')
+        logger.info(f"[GUMROAD] Scanning {len(all_scripts)} scripts for product data...")
+
+        for idx, script in enumerate(all_scripts):
+            if not script.string:
+                continue
+
+            script_content = script.string.strip()
+
+            # Skip scripts trop petits ou trop gros
+            if len(script_content) < 100 or len(script_content) > 5000000:
+                continue
+
+            # Chercher mots-cles produits
+            has_products = 'products' in script_content or 'permalink' in script_content
+            if not has_products:
+                continue
+
+            logger.info(f"[GUMROAD] Script {idx} contains product keywords, attempting extraction...")
+
+            # Patterns JSON a chercher
+            patterns = [
+                # Pattern 1: Variable assignment avec products
+                r'(?:var|let|const)\s+\w+\s*=\s*(\{[^}]*"products"\s*:\s*\[.*?\].*?\})',
+                # Pattern 2: Object literal avec products
+                r'(\{"props":\{[^}]*"products"\s*:\s*\[.*?\]\})',
+                # Pattern 3: Juste un array de produits
+                r'"products"\s*:\s*(\[.*?\])',
+                # Pattern 4: window.* assignment
+                r'window\.\w+\s*=\s*(\{.*?"products".*?\})',
+            ]
+
+            for pattern in patterns:
+                try:
+                    matches = re.finditer(pattern, script_content, re.DOTALL)
+                    for match in matches:
+                        json_str = match.group(1)
+
+                        # Limiter taille
+                        if len(json_str) > 1000000:
+                            continue
+
+                        try:
+                            data = json.loads(json_str)
+
+                            # Extraire produits selon structure
+                            products_raw = None
+                            if isinstance(data, list):
+                                products_raw = data
+                            elif isinstance(data, dict):
+                                if 'products' in data:
+                                    products_raw = data['products']
+                                elif 'props' in data:
+                                    products_raw = data.get('props', {}).get('pageProps', {}).get('products', [])
+
+                            if products_raw and isinstance(products_raw, list):
+                                logger.info(f"[GUMROAD] Found {len(products_raw)} products in script {idx}")
+                                for p in products_raw:
+                                    product = parse_nextjs_product(p, profile_url)
+                                    if product:
+                                        products.append(product)
+
+                                if products:
+                                    return products  # Retourne des que produits trouves
+
+                        except json.JSONDecodeError:
+                            continue
+
+                except Exception as e:
+                    logger.debug(f"[GUMROAD] Pattern matching error: {e}")
+                    continue
+
+        logger.warning(f"[GUMROAD] No products found in {len(all_scripts)} scripts")
+        return products
+
+    except Exception as e:
+        logger.error(f"[GUMROAD] Script extraction error: {e}")
+        return []
 
 
 def extract_opengraph_product(soup: BeautifulSoup, url: str) -> Optional[Dict]:
