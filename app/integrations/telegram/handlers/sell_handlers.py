@@ -97,7 +97,7 @@ class SellHandlers:
             await self.seller_dashboard(bot, query, lang)
             return
 
-        # Sinon → Proposer création compte
+        # Sinon → Proposer création compte ou import
         await query.edit_message_text(
             (
                 "🏪 **DEVENIR VENDEUR**\n\n"
@@ -112,6 +112,11 @@ class SellHandlers:
                 InlineKeyboardButton(
                     "🚀 Créer mon compte vendeur" if lang == 'fr' else "🚀 Create seller account",
                     callback_data='create_seller'
+                )
+            ], [
+                InlineKeyboardButton(
+                    "📦 Importer une boutique" if lang == 'fr' else "📦 Import shop",
+                    callback_data='import_shop_start'
                 )
             ], [
                 InlineKeyboardButton(
@@ -255,10 +260,11 @@ class SellHandlers:
             [InlineKeyboardButton(i18n(lang, 'btn_my_products'), callback_data='my_products'),
              InlineKeyboardButton("📊 Analytics", callback_data='seller_analytics_enhanced')],
             [InlineKeyboardButton(i18n(lang, 'btn_add_product'), callback_data='add_product'),
-             InlineKeyboardButton("🔗 Lien Boutique" if lang == 'fr' else "🔗 Shop Link", callback_data='generate_shop_link')],
-            [InlineKeyboardButton(i18n(lang, 'btn_logout'), callback_data='seller_logout'),
+             InlineKeyboardButton("📦 Importer une boutique" if lang == 'fr' else "📦 Import shop", callback_data='import_shop_start')],
+            [InlineKeyboardButton("🔗 Lien Boutique" if lang == 'fr' else "🔗 Shop Link", callback_data='generate_shop_link'),
              InlineKeyboardButton(i18n(lang, 'btn_seller_settings'), callback_data='seller_settings')],
-            [InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')]
+            [InlineKeyboardButton(i18n(lang, 'btn_logout'), callback_data='seller_logout'),
+             InlineKeyboardButton(i18n(lang, 'btn_home'), callback_data='back_main')]
         ]
 
         try:
