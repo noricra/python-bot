@@ -159,6 +159,10 @@ class MarketplaceBot:
         from app.integrations.telegram.handlers.library_handlers import LibraryHandlers
         self.library_handlers = LibraryHandlers(self.product_repo, self.order_repo, self.user_repo)
 
+        # Import and initialize import handlers
+        from app.integrations.telegram.handlers.import_handlers import ImportHandlers
+        self.import_handlers = ImportHandlers(self.user_repo, self.product_repo)
+
         # Initialize analytics handlers (AI-powered) - DISABLED (analytics_engine removed)
         # from app.integrations.telegram.handlers.analytics_handlers import AnalyticsHandlers
         # self.analytics_handlers = AnalyticsHandlers()
@@ -415,6 +419,27 @@ class MarketplaceBot:
         # === PARAMÈTRES VENDEUR ===
         elif user_state.get('editing_settings'):
             await self.sell_handlers.process_seller_settings(self, update, message_text)
+
+        # === IMPORT GUMROAD ===
+        # === IMPORT BOUTIQUE ===
+        elif user_state.get('importing_shop'):
+            step = user_state.get('step')
+
+            if step == 'waiting_shop_url':
+                await self.import_handlers.handle_shop_url(self, update, context)
+
+            elif step == 'awaiting_seller_email':
+                await self.import_handlers.process_seller_email_for_import(self, update)
+
+            elif step == 'awaiting_seller_solana':
+                await self.import_handlers.process_seller_solana_for_import(self, update)
+
+            elif step == 'uploading_files':
+                # Handle file upload
+                if update.message.document:
+                    await self.import_handlers.handle_import_file_upload(self, update)
+                else:
+                    await update.message.reply_text("Envoyez un fichier (document)")
 
         # === ÉCRITURE D'AVIS ===
         elif user_state.get('waiting_for_review'):
@@ -742,3 +767,4 @@ class MarketplaceBot:
             import traceback
             logger.error(traceback.format_exc())
             await update.message.reply_text("Erreur lors du traitement de l'image.")
+
