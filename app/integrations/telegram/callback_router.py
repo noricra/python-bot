@@ -130,6 +130,15 @@ class CallbackRouter:
         }
         self.routes.update(lang_routes)
 
+        # Routes import
+        import_routes = {
+            'import_shop_start': lambda query, lang: self.bot.import_handlers.import_shop_start(self.bot, query),
+            'import_product': lambda query, lang: self.bot.import_handlers.start_import_process(self.bot, query, lang),
+            'skip_import_file': lambda query, lang: self.bot.import_handlers.skip_import_file(self.bot, query, lang),
+            'cancel_import': lambda query, lang: self.bot.import_handlers.cancel_import(self.bot, query, lang),
+        }
+        self.routes.update(import_routes)
+
     async def route(self, query: CallbackQuery) -> bool:
         """
         Route un callback vers le handler approprié
@@ -316,6 +325,28 @@ class CallbackRouter:
                 return True
             except Exception as e:
                 logger.error(f"Error in seller carousel navigation: {e}")
+                await query.answer("Error" if lang == 'en' else "Erreur", show_alert=True)
+                return True
+
+        # Import carousel navigation (import_nav_{index})
+        if callback_data.startswith('import_nav_'):
+            try:
+                index = int(callback_data.replace('import_nav_', ''))
+                await self.bot.import_handlers.navigate_import_carousel(self.bot, query, index)
+                return True
+            except Exception as e:
+                logger.error(f"Error in import carousel navigation: {e}")
+                await query.answer("Error" if lang == 'en' else "Erreur", show_alert=True)
+                return True
+
+        # Import product details (import_details_{index})
+        if callback_data.startswith('import_details_'):
+            try:
+                index = int(callback_data.replace('import_details_', ''))
+                await self.bot.import_handlers.show_product_details(self.bot, query, lang, index)
+                return True
+            except Exception as e:
+                logger.error(f"Error showing import details: {e}")
                 await query.answer("Error" if lang == 'en' else "Erreur", show_alert=True)
                 return True
 
