@@ -224,14 +224,14 @@ class ImportHandlers:
                     photo=image_url,
                     caption=caption,
                     reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
+                    parse_mode='HTML'
                 )
             else:
                 await telegram_bot.send_message(
                     chat_id=query_or_message.chat.id,
                     text=caption,
                     reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
+                    parse_mode='HTML'
                 )
         else:
             # Update message existant (navigation)
@@ -241,7 +241,7 @@ class ImportHandlers:
                         media=InputMediaPhoto(
                             media=image_url,
                             caption=caption,
-                            parse_mode='Markdown'
+                            parse_mode='HTML'
                         ),
                         reply_markup=InlineKeyboardMarkup(keyboard)
                     )
@@ -250,41 +250,93 @@ class ImportHandlers:
                     await query_or_message.edit_message_text(
                         text=caption,
                         reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode='Markdown'
+                        parse_mode='HTML'
                     )
             else:
                 await query_or_message.edit_message_text(
                     text=caption,
                     reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
+                    parse_mode='HTML'
                 )
 
     def _build_import_caption(self, product, index, total, lang):
-        """Build caption carrousel import (Image AVANT, titre APRÈS)"""
+        """
+        Build caption carrousel import en HTML (format Card Design)
 
-        # Format: [Image affichée par Telegram]
-        #         📦 Titre
-        #         Description courte
+        Format:
+        [IMAGE_PRODUIT]
+        📦 [NOM DU PRODUIT]
+        Par Gumroad
+
+        ⭐ [Note]/5 • 💰 [PRIX]
+        ────────────────
+        📝 Description :
+        [Description courte de 200 caractères max...]
+
+        📂 [Catégorie]
+        """
 
         title = product['title']
+        price = product.get('price', 0.0)
         description = product.get('description', '')
+        category = product.get('category', 'Autre')
+        rating = product.get('rating', 0)
 
-        # Truncate description
-        if len(description) > 150:
-            description = description[:147] + '...'
+        # Truncate description (200 chars max)
+        if len(description) > 200:
+            description = description[:197] + '...'
 
-        # Echapper pour eviter parsing errors Telegram Markdown
-        title_escaped = self._escape_markdown(title)
-        description_escaped = self._escape_markdown(description)
+        # Echapper HTML entities
+        title_html = self._escape_html(title)
+        description_html = self._escape_html(description)
+        category_html = self._escape_html(category)
 
-        caption = f"📦 **{title_escaped}**\n\n"
+        # Format prix
+        price_display = f"${price:.2f}" if price > 0 else "Gratuit"
 
-        if description_escaped:
-            caption += f"{description_escaped}\n\n"
+        # Build caption HTML
+        caption = f"📦 <b>{title_html}</b>\n"
+        caption += f"Par <i>Gumroad</i>\n\n"
 
-        caption += f"Produit {index + 1}/{total}"
+        # Note et prix
+        if rating > 0:
+            caption += f"⭐ <b>{rating:.1f}</b>/5 • "
+        caption += f"💰 <b>{price_display}</b>\n"
+
+        caption += "────────────────\n"
+
+        # Description
+        if description_html:
+            caption += f"📝 <i>Description :</i>\n"
+            caption += f"{description_html}\n\n"
+
+        # Categorie et footer
+        caption += f"📂 {category_html}\n"
+        caption += f"\n<i>Produit {index + 1}/{total}</i>"
 
         return caption
+
+    @staticmethod
+    def _escape_html(text: str) -> str:
+        """
+        Echapper HTML entities pour Telegram HTML mode
+
+        Args:
+            text: Texte a echapper
+
+        Returns:
+            Texte avec HTML entities echappes
+        """
+        if not text:
+            return ""
+
+        # Echapper les caracteres HTML de base
+        text = text.replace('&', '&amp;')
+        text = text.replace('<', '&lt;')
+        text = text.replace('>', '&gt;')
+        text = text.replace('"', '&quot;')
+
+        return text
 
     def _build_import_keyboard(self, product, index, total, lang):
         """Build keyboard carrousel import (4 lignes exactes) - MATCHING buy/sell handlers"""
@@ -377,24 +429,31 @@ class ImportHandlers:
         product = products[index]
 
         title = product['title']
-        price = product['price']
+        price = product.get('price', 0.0)
         description = product.get('description', 'Pas de description')
         gumroad_url = product.get('gumroad_url', '')
+        category = product.get('category', 'Autre')
 
-        # Echapper caracteres speciaux Markdown pour eviter parsing errors
-        title_escaped = self._escape_markdown(title)
-        description_escaped = self._escape_markdown(description)
+        # Echapper HTML entities
+        title_html = self._escape_html(title)
+        description_html = self._escape_html(description)
+        category_html = self._escape_html(category)
 
-        text = (
-            f"📦 **{title_escaped}**\n\n"
-            f"**Prix:** ${price:.2f}\n\n"
-            f"**Description:**\n{description_escaped}\n\n"
-        )
+        # Format prix
+        price_display = f"${price:.2f}" if price > 0 else "Gratuit"
+
+        # Build text HTML (format détaillé)
+        text = f"📦 <b>{title_html}</b>\n"
+        text += f"Par <i>Gumroad</i>\n\n"
+        text += f"💰 <b>Prix:</b> {price_display}\n"
+        text += f"📂 <b>Catégorie:</b> {category_html}\n\n"
+        text += "────────────────\n\n"
+        text += f"📝 <b>Description complète:</b>\n{description_html}\n\n"
 
         if gumroad_url:
-            text += f"**Lien Gumroad:** {gumroad_url}\n\n"
+            text += f"🔗 <a href='{gumroad_url}'>Voir sur Gumroad</a>\n\n"
 
-        text += f"Produit {index + 1}/{len(products)}"
+        text += f"<i>Produit {index + 1}/{len(products)}</i>"
 
         keyboard = [
             [InlineKeyboardButton("⬅️ Retour au carrousel", callback_data=f'import_nav_{index}')]
@@ -405,12 +464,15 @@ class ImportHandlers:
             # Supprimer message photo
             await query.message.delete()
 
+            # Extraire instance Telegram bot
+            telegram_bot = bot.application.bot if hasattr(bot, 'application') else bot
+
             # Envoyer nouveau message texte
-            await bot.send_message(
+            await telegram_bot.send_message(
                 chat_id=query.message.chat_id,
                 text=text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown',
+                parse_mode='HTML',
                 disable_web_page_preview=True
             )
         except Exception as e:
