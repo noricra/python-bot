@@ -22,6 +22,31 @@ class ImportHandlers:
         self.user_repo = user_repo
         self.product_repo = product_repo
 
+    @staticmethod
+    def _escape_markdown(text: str) -> str:
+        """
+        Echapper caracteres speciaux Markdown pour Telegram
+
+        Telegram Markdown necessite echapper: _ * [ ] ( ) ~ ` > # + - = | { } . !
+
+        Args:
+            text: Texte a echapper
+
+        Returns:
+            Texte avec caracteres speciaux echappes
+        """
+        if not text:
+            return ""
+
+        # Caracteres a echapper pour Telegram Markdown
+        escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+
+        escaped_text = text
+        for char in escape_chars:
+            escaped_text = escaped_text.replace(char, f'\\{char}')
+
+        return escaped_text
+
     async def import_shop_start(self, bot, query):
         """Entry point unifié pour import boutique"""
         await query.answer()
@@ -248,10 +273,14 @@ class ImportHandlers:
         if len(description) > 150:
             description = description[:147] + '...'
 
-        caption = f"📦 **{title}**\n\n"
+        # Echapper pour eviter parsing errors Telegram Markdown
+        title_escaped = self._escape_markdown(title)
+        description_escaped = self._escape_markdown(description)
 
-        if description:
-            caption += f"{description}\n\n"
+        caption = f"📦 **{title_escaped}**\n\n"
+
+        if description_escaped:
+            caption += f"{description_escaped}\n\n"
 
         caption += f"Produit {index + 1}/{total}"
 
@@ -352,10 +381,14 @@ class ImportHandlers:
         description = product.get('description', 'Pas de description')
         gumroad_url = product.get('gumroad_url', '')
 
+        # Echapper caracteres speciaux Markdown pour eviter parsing errors
+        title_escaped = self._escape_markdown(title)
+        description_escaped = self._escape_markdown(description)
+
         text = (
-            f"📦 **{title}**\n\n"
+            f"📦 **{title_escaped}**\n\n"
             f"**Prix:** ${price:.2f}\n\n"
-            f"**Description:**\n{description}\n\n"
+            f"**Description:**\n{description_escaped}\n\n"
         )
 
         if gumroad_url:
@@ -367,12 +400,21 @@ class ImportHandlers:
             [InlineKeyboardButton("⬅️ Retour au carrousel", callback_data=f'import_nav_{index}')]
         ]
 
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
+        # Le message est une photo (carousel), on doit supprimer et envoyer nouveau message texte
+        try:
+            # Supprimer message photo
+            await query.message.delete()
+
+            # Envoyer nouveau message texte
+            await bot.send_message(
+                chat_id=query.message.chat_id,
+                text=text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown',
+                disable_web_page_preview=True
+            )
+        except Exception as e:
+            logger.error(f"[IMPORT] Error showing product details: {e}")
 
     async def start_import_process(self, bot, query, lang):
         """Démarrer processus import - Créer compte si nécessaire"""
