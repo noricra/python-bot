@@ -5,12 +5,13 @@ import logging
 import asyncio
 import tempfile
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, WebAppInfo
 from telegram.ext import ContextTypes
 
 from app.services.gumroad_scraper import scrape_gumroad_profile, download_cover_image, GumroadScraperException
 from app.core.i18n import t as i18n
 from app.integrations.telegram.utils import safe_transition_to_text
+from app.core.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,28 @@ class ImportHandlers:
                 bot.state_manager.update_state(user_id, importing_shop=False, step=None)
                 return
 
+            # Télécharger toutes les cover images Gumroad vers B2
+            await status_msg.edit_text(
+                f"📸 **Téléchargement des images...**\n\n"
+                f"{len(products)} produits trouvés\n"
+                f"Upload des images vers votre stockage...",
+                parse_mode='Markdown'
+            )
+
+            from app.core.utils import generate_product_id
+            for idx, product in enumerate(products):
+                if product.get('image_url'):
+                    try:
+                        # Générer un product_id temporaire pour le path B2
+                        temp_id = generate_product_id()
+                        logger.info(f"[IMPORT] Downloading cover {idx+1}/{len(products)}: {product['title']}")
+                        cover_url = await download_cover_image(product['image_url'], temp_id)
+                        product['cover_image_url'] = cover_url  # Remplacer image_url par B2 URL
+                        logger.info(f"[IMPORT] Cover uploaded: {cover_url}")
+                    except Exception as e:
+                        logger.warning(f"[IMPORT] Failed to download cover for {product['title']}: {e}")
+                        product['cover_image_url'] = None
+
             # Stocker produits dans state
             bot.state_manager.update_state(
                 user_id,
@@ -268,12 +291,15 @@ class ImportHandlers:
         📦 [NOM DU PRODUIT]
         Par Gumroad
 
-        ⭐ [Note]/5 • 💰 [PRIX]
+        ⭐ [Note]/5 ([Nb avis]) • 💰 [PRIX]
+        📊 [Ventes] ventes • [Vues] vues
         ────────────────
         📝 Description :
         [Description courte de 200 caractères max...]
 
         📂 [Catégorie]
+
+        Produit X/Y
         """
 
         title = product['title']
@@ -281,6 +307,9 @@ class ImportHandlers:
         description = product.get('description', '')
         category = product.get('category', 'Autre')
         rating = product.get('rating', 0)
+        reviews_count = product.get('reviews_count', 0)
+        sales_count = product.get('sales_count', 0)
+        views_count = product.get('views_count', 0)
 
         # Truncate description (200 chars max)
         if len(description) > 200:
@@ -298,10 +327,26 @@ class ImportHandlers:
         caption = f"📦 <b>{title_html}</b>\n"
         caption += f"Par <i>Gumroad</i>\n\n"
 
-        # Note et prix
+        # Ligne stats: Note + Prix
+        stats_line = ""
         if rating > 0:
-            caption += f"⭐ <b>{rating:.1f}</b>/5 • "
-        caption += f"💰 <b>{price_display}</b>\n"
+            stats_line += f"⭐ <b>{rating:.1f}</b>/5"
+            if reviews_count > 0:
+                stats_line += f" ({reviews_count} avis)"
+            stats_line += " • "
+        stats_line += f"💰 <b>{price_display}</b>"
+        caption += f"{stats_line}\n"
+
+        # Ligne performance: Ventes + Vues
+        if sales_count > 0 or views_count > 0:
+            perf_line = "📊 "
+            if sales_count > 0:
+                perf_line += f"<b>{sales_count}</b> ventes"
+            if views_count > 0:
+                if sales_count > 0:
+                    perf_line += " • "
+                perf_line += f"<b>{views_count}</b> vues"
+            caption += f"{perf_line}\n"
 
         caption += "────────────────\n"
 
@@ -433,6 +478,10 @@ class ImportHandlers:
         description = product.get('description', 'Pas de description')
         gumroad_url = product.get('gumroad_url', '')
         category = product.get('category', 'Autre')
+        rating = product.get('rating', 0)
+        reviews_count = product.get('reviews_count', 0)
+        sales_count = product.get('sales_count', 0)
+        views_count = product.get('views_count', 0)
 
         # Echapper HTML entities
         title_html = self._escape_html(title)
@@ -445,9 +494,25 @@ class ImportHandlers:
         # Build text HTML (format détaillé)
         text = f"📦 <b>{title_html}</b>\n"
         text += f"Par <i>Gumroad</i>\n\n"
+
+        # Informations produit
         text += f"💰 <b>Prix:</b> {price_display}\n"
-        text += f"📂 <b>Catégorie:</b> {category_html}\n\n"
-        text += "────────────────\n\n"
+        text += f"📂 <b>Catégorie:</b> {category_html}\n"
+
+        # Stats
+        if rating > 0:
+            text += f"⭐ <b>Note:</b> {rating:.1f}/5"
+            if reviews_count > 0:
+                text += f" ({reviews_count} avis)"
+            text += "\n"
+
+        if sales_count > 0:
+            text += f"📊 <b>Ventes:</b> {sales_count}\n"
+
+        if views_count > 0:
+            text += f"👁️ <b>Vues:</b> {views_count}\n"
+
+        text += "\n────────────────\n\n"
         text += f"📝 <b>Description complète:</b>\n{description_html}\n\n"
 
         if gumroad_url:
@@ -479,7 +544,7 @@ class ImportHandlers:
             logger.error(f"[IMPORT] Error showing product details: {e}")
 
     async def start_import_process(self, bot, query, lang):
-        """Démarrer processus import - Créer compte si nécessaire"""
+        """Démarrer processus import - Ouvrir mini-app import.html avec tous les produits"""
         await query.answer()
 
         user_id = query.from_user.id
@@ -501,8 +566,56 @@ class ImportHandlers:
             )
             return
 
-        # Si DÉJÀ vendeur → Skip création, start upload
-        await self.start_file_upload_sequence(bot, query, lang)
+        # Si DÉJÀ vendeur → Ouvrir mini-app import
+        user_state = bot.state_manager.get_state(user_id)
+        products = user_state.get('import_products', [])
+
+        if not products:
+            await query.edit_message_text(
+                "❌ Aucun produit à importer",
+                parse_mode='Markdown'
+            )
+            return
+
+        logger.info(f"[IMPORT] Opening import mini-app for user {user_id} with {len(products)} products")
+
+        # Construire URL mini-app
+        settings = Settings()
+        webapp_url = settings.WEBAPP_URL
+
+        if not webapp_url or not webapp_url.startswith('https://'):
+            await query.edit_message_text(
+                "❌ Mini-app non configurée\n\nContactez l'administrateur.",
+                parse_mode='Markdown'
+            )
+            return
+
+        miniapp_url = f"{webapp_url}/static/import.html?lang={lang}"
+
+        # Message avec bouton WebApp pour ouvrir mini-app
+        text = (
+            f"📦 **Import Gumroad - {len(products)} produits**\n\n"
+            f"Cliquez sur le bouton ci-dessous pour démarrer l'import.\n\n"
+            f"**Dans la mini-app:**\n"
+            f"• Carousel avec tous vos produits\n"
+            f"• Upload fichiers ou Skip\n"
+            f"• Navigation Previous/Next\n"
+            f"• Résumé final automatique\n\n"
+            f"_Métadonnées déjà pré-remplies depuis Gumroad_"
+        )
+
+        keyboard = [[
+            InlineKeyboardButton(
+                f"📦 Importer {len(products)} Produits",
+                web_app=WebAppInfo(url=miniapp_url)
+            )
+        ]]
+
+        await query.edit_message_text(
+            text,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     async def process_seller_email_for_import(self, bot, update):
         """Recevoir email vendeur (création compte pour import)"""
