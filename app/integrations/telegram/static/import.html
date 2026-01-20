@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Import Gumroad</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .product-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .product-image {
+            width: 100%;
+            max-height: 200px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .product-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .product-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .product-price {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0088cc;
+            margin-bottom: 15px;
+        }
+
+        .product-description {
+            color: #555;
+            line-height: 1.5;
+            margin-bottom: 15px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .progress-counter {
+            text-align: center;
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .btn-upload {
+            flex: 1;
+            background: #0088cc;
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .btn-skip {
+            flex: 1;
+            background: #f0f0f0;
+            color: #666;
+            border: none;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .nav-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+        }
+
+        .btn-nav {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .btn-nav:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .upload-status {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-skipped {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .summary {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .summary-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        .summary-stats {
+            margin: 20px 0;
+            font-size: 18px;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Loading -->
+        <div id="loadingSection">
+            <div class="header">
+                <h1 class="title">📦 Import Gumroad</h1>
+                <p class="subtitle">Chargement des produits...</p>
+            </div>
+        </div>
+
+        <!-- Product Carousel -->
+        <div id="carouselSection" class="hidden">
+            <div class="header">
+                <h1 class="title">📦 Import Gumroad</h1>
+                <div class="progress-counter">
+                    Produit <span id="currentIndex">1</span>/<span id="totalProducts">0</span>
+                </div>
+            </div>
+
+            <div class="product-card">
+                <img id="productImage" class="product-image" src="" alt="Product">
+                <div class="product-title" id="productTitle"></div>
+
+                <div class="product-meta">
+                    <span id="productCategory"></span>
+                    <span id="productRating"></span>
+                </div>
+
+                <div class="product-price" id="productPrice"></div>
+
+                <div class="product-description" id="productDescription"></div>
+
+                <div id="uploadStatus" class="upload-status hidden"></div>
+
+                <div class="action-buttons">
+                    <button class="btn-skip" id="btnSkip">⏭️ Passer</button>
+                    <button class="btn-upload" id="btnUpload">📤 Upload Fichier</button>
+                </div>
+
+                <div class="nav-buttons">
+                    <button class="btn-nav" id="btnPrev" disabled>⬅️ Précédent</button>
+                    <button class="btn-nav" id="btnNext">Suivant ➡️</button>
+                </div>
+            </div>
+
+            <!-- Hidden file input -->
+            <input type="file" id="fileInput" class="file-input" style="display: none;">
+
+            <!-- Progress Section (hidden initially) -->
+            <div id="progressSection" class="progress-section hidden">
+                <h3 class="progress-title">Upload en cours...</h3>
+                <div class="progress-bar-container">
+                    <div id="progressBar" class="progress-bar"></div>
+                </div>
+                <div class="progress-stats">
+                    <span id="progressPercent">0%</span>
+                    <span id="uploadSpeed">0 MB/s</span>
+                </div>
+                <p id="fileName" class="file-name"></p>
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div id="summarySection" class="hidden">
+            <div class="summary">
+                <div class="summary-title">✅ Import Terminé!</div>
+                <div class="summary-stats">
+                    <div>📦 Importés: <strong id="importedCount">0</strong></div>
+                    <div>⏭️ Passés: <strong id="skippedCount">0</strong></div>
+                    <div>❌ Erreurs: <strong id="errorCount">0</strong></div>
+                </div>
+                <button class="btn-primary" onclick="window.Telegram.WebApp.close()">
+                    Fermer
+                </button>
+            </div>
+        </div>
+
+        <!-- Error Section -->
+        <div id="errorSection" class="error-section hidden">
+            <div class="error-icon">❌</div>
+            <h2 class="error-title">Erreur</h2>
+            <p id="errorMessage" class="error-description"></p>
+            <button class="btn-primary" onclick="window.Telegram.WebApp.close()">
+                Fermer
+            </button>
+        </div>
+    </div>
+
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- PDF.js for client-side preview generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="/static/import.js"></script>
+</body>
+</html>
