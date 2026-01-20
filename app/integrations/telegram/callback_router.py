@@ -133,7 +133,7 @@ class CallbackRouter:
         # Routes import
         import_routes = {
             'import_shop_start': lambda query, lang: self.bot.import_handlers.import_shop_start(self.bot, query),
-            'import_product': lambda query, lang: self.bot.import_handlers.start_import_process(self.bot, query, lang),
+            # 'import_product' removed - WebApp button opens mini-app directly (like upload.html)
             'skip_import_file': lambda query, lang: self.bot.import_handlers.skip_import_file(self.bot, query, lang),
             'cancel_import': lambda query, lang: self.bot.import_handlers.cancel_import(self.bot, query, lang),
         }
