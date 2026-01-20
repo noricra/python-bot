@@ -38,7 +38,7 @@ class SellerNotifications:
             notification_text = f"""
 🎉 **NOUVELLE VENTE !**
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+────────────────
 
  **Produit:** {product_title}
  **ID:** `{product_id}`
@@ -49,7 +49,7 @@ class SellerNotifications:
  **Acheteur:** {buyer_name}
  **Date:** {datetime.now().strftime('%d/%m/%Y %H:%M')}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+────────────────
 
 💡 **Le paiement est en cours de vérification**
 Vous serez notifié dès confirmation blockchain.
