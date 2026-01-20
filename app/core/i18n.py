@@ -92,6 +92,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'err_title_update_error': "❌ Titre invalide (minimum 3 caractères) ou erreur mise à jour.",
         'err_description_update_error': "❌ Description invalide ou erreur mise à jour.",
         'err_payment_creation': "💳 **Erreur de paiement**\n\n⚠️ Impossible de créer votre transaction crypto.\n\n🔧 **Solutions possibles :**\n• Vérifiez votre connexion internet\n• Réessayez avec une autre crypto\n• Contactez le support si le problème persiste\n\n💬 **Support disponible 24/7**",
+        'err_not_seller': "❌ Vous devez être vendeur pour utiliser cette fonctionnalité.",
 
         # Succès
         'success_price_updated': "✅ Prix mis à jour avec succès !",
@@ -205,6 +206,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         'err_title_update_error': "❌ Invalid title (minimum 3 characters) or update error.",
         'err_description_update_error': "❌ Invalid description or update error.",
         'err_payment_creation': "❌ Error creating payment.",
+        'err_not_seller': "❌ You must be a seller to use this feature.",
 
         # Success
         'success_price_updated': "✅ Price updated successfully!",
