@@ -196,15 +196,81 @@ def parse_nextjs_product(product_data: dict, profile_url: str) -> Optional[Dict]
         Dict normalise ou None si invalide
     """
     try:
+        # DEBUG: Logger le JSON COMPLET du produit pour debug (identifier champs prix/description)
+        logger.info(f"[GUMROAD] ===== PRODUCT JSON COMPLET =====")
+        logger.info(f"[GUMROAD] {json.dumps(product_data, indent=2)}")
+        logger.info(f"[GUMROAD] ===== FIN PRODUCT JSON =====")
+
         # Extraire champs Next.js structure
         title = product_data.get('name') or product_data.get('title', 'Sans titre')
 
-        # Prix
-        price_display = product_data.get('price_display', '$0')  # Ex: "$29"
-        price = parse_price(price_display)
+        # Prix - Essayer TOUS les champs possibles dans l'ordre de priorité
+        price = 0.0
 
-        # Description courte (sera enrichie par deep scraping)
-        description = product_data.get('description', '')
+        # Essayer 10+ champs différents
+        price_fields = [
+            ('price_display', product_data.get('price_display')),           # Ex: "$29"
+            ('formatted_price', product_data.get('formatted_price')),       # Ex: "$29.00"
+            ('price', product_data.get('price')),                           # Ex: 29.0 ou "$29"
+            ('price_cents', product_data.get('price_cents')),               # Ex: 2900
+            ('amount', product_data.get('amount')),                         # Alternative
+            ('cost', product_data.get('cost')),                             # Alternative
+            ('suggested_price', product_data.get('suggested_price')),       # Prix suggéré
+            ('minimum_price', product_data.get('minimum_price')),           # Prix minimum
+            ('base_price', product_data.get('base_price')),                 # Prix de base
+            ('price_in_cents', product_data.get('price_in_cents')),         # En centimes
+        ]
+
+        logger.info(f"[GUMROAD] Prix - Recherche dans {len(price_fields)} champs possibles...")
+
+        for field_name, field_value in price_fields:
+            if field_value is not None:
+                logger.info(f"[GUMROAD] Prix - Champ '{field_name}' trouvé: {field_value} (type: {type(field_value).__name__})")
+
+                # Si c'est un nombre entier (centimes)
+                if isinstance(field_value, int) and field_value > 100:
+                    price = float(field_value) / 100.0
+                    logger.info(f"[GUMROAD] Prix - Converti depuis centimes: ${price:.2f}")
+                    break
+
+                # Si c'est un float
+                elif isinstance(field_value, (float, int)):
+                    price = float(field_value)
+                    logger.info(f"[GUMROAD] Prix - Valeur numérique directe: ${price:.2f}")
+                    break
+
+                # Si c'est une string, parser
+                elif isinstance(field_value, str):
+                    price = parse_price(field_value)
+                    if price > 0:
+                        logger.info(f"[GUMROAD] Prix - Parsé depuis string: ${price:.2f}")
+                        break
+
+        if price == 0.0:
+            logger.warning(f"[GUMROAD] AUCUN PRIX TROUVÉ - Tous les champs sont None ou invalides")
+        else:
+            logger.info(f"[GUMROAD] ✅ Prix final extrait: ${price:.2f}")
+
+        # Description - Essayer plusieurs champs possibles
+        description_fields = [
+            ('description', product_data.get('description')),
+            ('short_description', product_data.get('short_description')),
+            ('summary', product_data.get('summary')),
+            ('description_html', product_data.get('description_html')),
+            ('content', product_data.get('content')),
+            ('preview_text', product_data.get('preview_text')),
+        ]
+
+        description = ''
+        for field_name, field_value in description_fields:
+            if field_value and isinstance(field_value, str) and len(field_value.strip()) > 0:
+                description = field_value
+                logger.info(f"[GUMROAD] Description trouvée dans champ '{field_name}': {len(description)} caractères")
+                logger.debug(f"[GUMROAD] Description preview: {description[:200]}...")
+                break
+
+        if not description:
+            logger.warning(f"[GUMROAD] AUCUNE DESCRIPTION TROUVÉE - Tous les champs description vides")
 
         # Image
         image_url = (
@@ -229,7 +295,26 @@ def parse_nextjs_product(product_data: dict, profile_url: str) -> Optional[Dict]
 
         # Metadonnees additionnelles
         product_id = product_data.get('id')
-        rating = product_data.get('average_rating', 0)
+
+        # Rating et avis
+        rating = product_data.get('average_rating', 0) or product_data.get('rating', 0)
+        reviews_count = product_data.get('reviews_count', 0) or product_data.get('ratings_count', 0)
+
+        # Ventes - Essayer plusieurs champs possibles
+        sales_count = (
+            product_data.get('sales_count') or
+            product_data.get('sales') or
+            product_data.get('purchases_count') or
+            0
+        )
+
+        # Vues (si disponible)
+        views_count = product_data.get('views_count', 0) or product_data.get('views', 0)
+
+        logger.debug(f"[GUMROAD] Extracted stats: sales={sales_count}, rating={rating}, reviews={reviews_count}, views={views_count}")
+
+        # Categorisation automatique par mots-cles
+        category = auto_categorize(title, description)
 
         return {
             'title': title,
@@ -238,12 +323,50 @@ def parse_nextjs_product(product_data: dict, profile_url: str) -> Optional[Dict]
             'image_url': image_url,
             'gumroad_url': product_url,
             'product_id': product_id,
-            'rating': rating
+            'rating': rating,
+            'reviews_count': reviews_count,
+            'sales_count': sales_count,
+            'views_count': views_count,
+            'category': category
         }
 
     except Exception as e:
         logger.warning(f"[GUMROAD] Failed to parse product: {e}")
         return None
+
+
+def auto_categorize(title: str, description: str) -> str:
+    """
+    Categorisation automatique basee sur mots-cles
+
+    Args:
+        title: Titre du produit
+        description: Description du produit
+
+    Returns:
+        Categorie detectee
+    """
+    # Combiner titre et description en minuscules
+    text = f"{title} {description}".lower()
+
+    # Categories avec mots-cles
+    categories = {
+        'Outils & Tech': ['bot', 'python', 'script', 'code', 'api', 'tool', 'automation', 'software', 'app', 'plugin', 'extension', 'telegram', 'discord'],
+        'Finance & Crypto': ['invest', 'trading', 'crypto', 'bitcoin', 'ethereum', 'solana', 'nft', 'defi', 'forex', 'stock', 'finance'],
+        'Formation': ['course', 'training', 'tutorial', 'guide', 'learn', 'formation', 'masterclass', 'ebook', 'pdf', 'video'],
+        'Design & Graphisme': ['design', 'template', 'graphic', 'logo', 'ui', 'ux', 'figma', 'photoshop', 'illustrator', 'mockup'],
+        'Marketing': ['marketing', 'seo', 'ads', 'social media', 'growth', 'email', 'funnel', 'landing page'],
+    }
+
+    # Chercher correspondances
+    for category, keywords in categories.items():
+        for keyword in keywords:
+            if keyword in text:
+                logger.debug(f"[GUMROAD] Auto-categorized as '{category}' (keyword: '{keyword}')")
+                return category
+
+    # Categorie par defaut
+    return 'Autre'
 
 
 async def enrich_products_parallel(client: httpx.AsyncClient, products: List[Dict], headers: dict) -> List[Dict]:
