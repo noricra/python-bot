@@ -66,10 +66,10 @@ class ImportHandlers:
             "`https://username.gumroad.com`"
         )
 
-        await query.edit_message_text(
+        await safe_transition_to_text(
+            query,
             text,
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardMarkup([[
                 InlineKeyboardButton("Annuler" if lang == 'fr' else "Cancel", callback_data='cancel_import')
             ]])
         )
@@ -391,13 +391,20 @@ class ImportHandlers:
 
         keyboard = []
 
-        # Ligne 1: Bouton Importer avec prix (format similaire à buy_handlers)
-        keyboard.append([
-            InlineKeyboardButton(
-                f"📥 Importer - {price_display}",
-                callback_data='import_product'
-            )
-        ])
+        # Ligne 1: Bouton WebApp Importer (comme upload.html dans sell_handlers)
+        from telegram import WebAppInfo
+
+        settings = Settings()
+        webapp_url = settings.WEBAPP_URL
+
+        if webapp_url and webapp_url.startswith('https://'):
+            miniapp_url = f"{webapp_url}/static/import.html?lang={lang}"
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"📥 Importer {total} Produits",
+                    web_app=WebAppInfo(url=miniapp_url)
+                )
+            ])
 
         # Ligne 2: Navigation carrousel (EXACTEMENT comme buy/sell handlers)
         # Build navigation manually like buy_handlers (asymmetric - no empty buttons)
@@ -558,11 +565,11 @@ class ImportHandlers:
                 step='awaiting_seller_email'
             )
 
-            await query.edit_message_text(
+            await safe_transition_to_text(
+                query,
                 "📧 **Création de votre compte vendeur**\n\n"
                 "Pour importer vos produits, créez votre compte vendeur.\n\n"
-                "**Étape 1/2:** Envoyez votre email:",
-                parse_mode='Markdown'
+                "**Étape 1/2:** Envoyez votre email:"
             )
             return
 
@@ -571,9 +578,9 @@ class ImportHandlers:
         products = user_state.get('import_products', [])
 
         if not products:
-            await query.edit_message_text(
-                "❌ Aucun produit à importer",
-                parse_mode='Markdown'
+            await safe_transition_to_text(
+                query,
+                "❌ Aucun produit à importer"
             )
             return
 
@@ -584,9 +591,9 @@ class ImportHandlers:
         webapp_url = settings.WEBAPP_URL
 
         if not webapp_url or not webapp_url.startswith('https://'):
-            await query.edit_message_text(
-                "❌ Mini-app non configurée\n\nContactez l'administrateur.",
-                parse_mode='Markdown'
+            await safe_transition_to_text(
+                query,
+                "❌ Mini-app non configurée\n\nContactez l'administrateur."
             )
             return
 
@@ -611,10 +618,10 @@ class ImportHandlers:
             )
         ]]
 
-        await query.edit_message_text(
+        await safe_transition_to_text(
+            query,
             text,
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            InlineKeyboardMarkup(keyboard)
         )
 
     async def process_seller_email_for_import(self, bot, update):
@@ -717,9 +724,9 @@ class ImportHandlers:
         source_url = user_state.get('import_source_url', '')
 
         if not products:
-            await query.edit_message_text(
-                "❌ Aucun produit à importer",
-                parse_mode='Markdown'
+            await safe_transition_to_text(
+                query,
+                "❌ Aucun produit à importer"
             )
             return
 
@@ -877,9 +884,9 @@ class ImportHandlers:
             'status': 'skipped'
         })
 
-        await query.edit_message_text(
-            f"⏭️ Produit skippé: **{product['title']}**",
-            parse_mode='Markdown'
+        await safe_transition_to_text(
+            query,
+            f"⏭️ Produit skippé: **{product['title']}**"
         )
 
         # Passer au suivant
