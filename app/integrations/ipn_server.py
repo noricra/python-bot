@@ -1045,6 +1045,143 @@ async def download_file_with_token(token: str):
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 5.5 IMPORT API (GUMROAD IMPORT MINI-APP)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@app.get("/api/import-products")
+async def get_import_products(user_id: int, request: Request):
+    """Récupérer les produits scrapés pour l'import depuis user_state"""
+    logger.info(f"[IMPORT-API] Fetching products for user {user_id}")
+
+    # Verify Telegram WebApp auth
+    init_data = request.headers.get('X-Telegram-Init-Data', '')
+    if not verify_telegram_webapp_data(init_data):
+        logger.error(f"[IMPORT-API] Auth failed for user {user_id}")
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    global telegram_application
+    if not telegram_application:
+        raise HTTPException(status_code=500, detail="Bot not initialized")
+
+    bot_instance = telegram_application.bot_data.get('bot_instance')
+    if not bot_instance:
+        raise HTTPException(status_code=500, detail="Bot instance not found")
+
+    # Get user state
+    user_state = bot_instance.get_user_state(user_id)
+    products = user_state.get('import_products', [])
+
+    if not products:
+        logger.warning(f"[IMPORT-API] No products found for user {user_id}")
+        return {"products": []}
+
+    logger.info(f"[IMPORT-API] Returning {len(products)} products for user {user_id}")
+    return {"products": products}
+
+
+class ImportCompleteRequest(BaseModel):
+    object_key: str
+    file_name: str
+    file_size: int
+    user_id: int
+    telegram_init_data: str
+    product_metadata: dict  # {title, description, price, category, imported_from, imported_url, cover_image_url}
+
+
+@app.post("/api/import-complete")
+async def import_complete(request: ImportCompleteRequest):
+    """
+    Finaliser l'import d'un produit Gumroad
+    Similaire à upload-complete mais avec métadonnées pré-remplies
+    """
+    logger.info(f"[IMPORT-COMPLETE] User: {request.user_id}, File: {request.file_name}")
+
+    if not verify_telegram_webapp_data(request.telegram_init_data):
+        logger.error(f"[IMPORT-COMPLETE] Auth failed for user {request.user_id}")
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        # Verify file exists on B2
+        logger.info(f"[IMPORT-COMPLETE] Checking B2 file: {request.object_key}")
+        b2 = B2StorageService()
+        if not b2.file_exists(request.object_key):
+            logger.error(f"[IMPORT-COMPLETE] File not found: {request.object_key}")
+            raise HTTPException(status_code=404, detail="File not found on B2")
+
+        # Construct file URL
+        if b2.storage_type == 'r2':
+            custom_domain = os.getenv('R2_CUSTOM_DOMAIN', 'https://media.uzeur.com')
+            file_url = f"{custom_domain}/{request.object_key}"
+        else:
+            file_url = f"{core_settings.B2_ENDPOINT}/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
+
+        logger.info(f"[IMPORT-COMPLETE] File URL: {file_url}")
+
+        global telegram_application
+        if not telegram_application:
+            raise HTTPException(status_code=500, detail="Bot not initialized")
+
+        bot_instance = telegram_application.bot_data.get('bot_instance')
+        if not bot_instance:
+            raise HTTPException(status_code=500, detail="Bot instance not found")
+
+        # Get user state for source_profile
+        user_state = bot_instance.get_user_state(request.user_id)
+        source_profile = user_state.get('import_source_url', '')
+
+        # Generate product_id
+        from app.core.utils import generate_product_id
+        product_id = generate_product_id()
+
+        # Prepare product data from metadata
+        metadata = request.product_metadata
+        product_data = {
+            'product_id': product_id,
+            'seller_id': request.user_id,
+            'title': metadata.get('title', 'Sans titre'),
+            'description': metadata.get('description', ''),
+            'price_usd': metadata.get('price', 0.0),
+            'category': metadata.get('category', 'Autre'),
+            'main_file_url': file_url,
+            'file_size': request.file_size,
+            'file_name': request.file_name,
+            'cover_image_url': metadata.get('cover_image_url'),
+            'imported_from': metadata.get('imported_from', 'gumroad'),
+            'imported_url': metadata.get('imported_url'),
+            'source_profile': source_profile,
+        }
+
+        logger.info(f"[IMPORT-COMPLETE] Creating product: {product_data['title']}")
+
+        # Create product
+        returned_product_id = bot_instance.create_product(product_data)
+
+        if returned_product_id:
+            logger.info(f"[IMPORT-COMPLETE] ✅ Product created: {returned_product_id}")
+
+            # Send notification to user
+            try:
+                await telegram_application.bot.send_message(
+                    chat_id=request.user_id,
+                    text=f"✅ **Produit importé!**\n\n📦 {product_data['title']}\n💰 ${product_data['price_usd']:.2f}",
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.warning(f"[IMPORT-COMPLETE] Failed to send notification: {e}")
+
+            return {"status": "success", "product_id": returned_product_id}
+        else:
+            logger.error(f"[IMPORT-COMPLETE] Failed to create product")
+            raise HTTPException(status_code=500, detail="Failed to create product")
+
+    except Exception as e:
+        logger.error(f"[IMPORT-COMPLETE] Error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 6. IPN NOWPAYMENTS (PAIEMENTS)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
