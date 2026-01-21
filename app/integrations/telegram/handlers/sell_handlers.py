@@ -1478,11 +1478,7 @@ class SellHandlers:
                 )
             except (ValueError, TypeError):
                 await update.message.reply_text(
-                    "Prix minimum: 9.99$ pour les produits payants.\n\n"
-                    "Choisissez:\n"
-                    "- 0 (gratuit)\n"
-                    "- 9.99 ou plus (max 5000)",
-                    parse_mode='Markdown'
+                    "Prix invalide. Entrez un nombre entre 9.99$ et 5000$ (ou 0 pour gratuit)."
                 )
 
     async def _show_category_selection(self, bot, update, lang):
