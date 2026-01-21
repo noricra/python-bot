@@ -337,35 +337,15 @@ def parse_nextjs_product(product_data: dict, profile_url: str) -> Optional[Dict]
 
 def auto_categorize(title: str, description: str) -> str:
     """
-    Categorisation automatique basee sur mots-cles
+    Retourne categorie par defaut (user choisira manuellement dans mini-app)
 
     Args:
         title: Titre du produit
         description: Description du produit
 
     Returns:
-        Categorie detectee
+        Categorie par defaut 'Autre'
     """
-    # Combiner titre et description en minuscules
-    text = f"{title} {description}".lower()
-
-    # Categories avec mots-cles
-    categories = {
-        'Outils & Tech': ['bot', 'python', 'script', 'code', 'api', 'tool', 'automation', 'software', 'app', 'plugin', 'extension', 'telegram', 'discord'],
-        'Finance & Crypto': ['invest', 'trading', 'crypto', 'bitcoin', 'ethereum', 'solana', 'nft', 'defi', 'forex', 'stock', 'finance'],
-        'Formation': ['course', 'training', 'tutorial', 'guide', 'learn', 'formation', 'masterclass', 'ebook', 'pdf', 'video'],
-        'Design & Graphisme': ['design', 'template', 'graphic', 'logo', 'ui', 'ux', 'figma', 'photoshop', 'illustrator', 'mockup'],
-        'Marketing': ['marketing', 'seo', 'ads', 'social media', 'growth', 'email', 'funnel', 'landing page'],
-    }
-
-    # Chercher correspondances
-    for category, keywords in categories.items():
-        for keyword in keywords:
-            if keyword in text:
-                logger.debug(f"[GUMROAD] Auto-categorized as '{category}' (keyword: '{keyword}')")
-                return category
-
-    # Categorie par defaut
     return 'Autre'
 
 
@@ -401,17 +381,21 @@ async def enrich_products_parallel(client: httpx.AsyncClient, products: List[Dic
     enriched_products = []
     for idx, product in enumerate(products):
         desc = full_descriptions[idx]
+        product_title = product.get('title', 'Unknown')
 
         # Si erreur ou pas de description, garder description courte
         if isinstance(desc, Exception):
-            logger.warning(f"[GUMROAD] Failed to fetch description for {product.get('title')}: {desc}")
+            logger.warning(f"[GUMROAD] Failed to fetch description for '{product_title}': {desc}")
             product['full_description'] = product.get('description', '')
+            logger.info(f"[GUMROAD] Product '{product_title}' - Using short description ({len(product.get('description', ''))} chars)")
         elif desc:
             product['full_description'] = desc
             # Remplacer description courte par complete
             product['description'] = clean_html_for_telegram(desc)
+            logger.info(f"[GUMROAD] Product '{product_title}' - Enriched with full description ({len(desc)} chars)")
         else:
             product['full_description'] = product.get('description', '')
+            logger.warning(f"[GUMROAD] Product '{product_title}' - No full description found, using short ({len(product.get('description', ''))} chars)")
 
         enriched_products.append(product)
 
@@ -435,11 +419,11 @@ async def fetch_full_description(client: httpx.AsyncClient, product_url: str, he
         # Jitter pour eviter detection pattern (delai aleatoire 0.5-2s)
         await asyncio.sleep(random.uniform(0.5, 2.0))
 
-        logger.debug(f"[GUMROAD] Fetching description from: {product_url}")
+        logger.info(f"[GUMROAD] Fetching full description from: {product_url}")
         resp = await client.get(product_url, timeout=15.0)
 
         if resp.status_code != 200:
-            logger.warning(f"[GUMROAD] HTTP {resp.status_code} for product page: {product_url}")
+            logger.error(f"[GUMROAD] HTTP {resp.status_code} for product page: {product_url}")
             return ""
 
         soup = BeautifulSoup(resp.text, 'lxml')
@@ -448,28 +432,37 @@ async def fetch_full_description(client: httpx.AsyncClient, product_url: str, he
         script_tag = soup.find('script', id='__NEXT_DATA__', type='application/json')
 
         if script_tag:
-            data = json.loads(script_tag.string)
+            try:
+                data = json.loads(script_tag.string)
 
-            # Dans page produit, structure est: props.pageProps.product (singulier)
-            product_data = data.get('props', {}).get('pageProps', {}).get('product', {})
+                # Dans page produit, structure est: props.pageProps.product (singulier)
+                product_data = data.get('props', {}).get('pageProps', {}).get('product', {})
 
-            # Description HTML complete
-            description_html = (
-                product_data.get('description_html') or
-                product_data.get('description') or
-                ""
-            )
+                # Description HTML complete
+                description_html = (
+                    product_data.get('description_html') or
+                    product_data.get('description') or
+                    ""
+                )
 
-            if description_html:
-                logger.debug(f"[GUMROAD] Found description ({len(description_html)} chars)")
-                return description_html
+                if description_html:
+                    logger.info(f"[GUMROAD] Found description in __NEXT_DATA__ ({len(description_html)} chars) for {product_url}")
+                    return description_html
+                else:
+                    logger.warning(f"[GUMROAD] __NEXT_DATA__ found but no description_html/description fields for {product_url}")
+            except json.JSONDecodeError as e:
+                logger.error(f"[GUMROAD] Failed to parse __NEXT_DATA__ for {product_url}: {e}")
+        else:
+            logger.warning(f"[GUMROAD] No __NEXT_DATA__ found in product page: {product_url}")
 
         # Fallback: Chercher dans HTML
         desc_elem = soup.find('div', class_=re.compile(r'description|content', re.I))
         if desc_elem:
-            return desc_elem.get_text(separator='\n', strip=True)
+            fallback_desc = desc_elem.get_text(separator='\n', strip=True)
+            logger.info(f"[GUMROAD] Using HTML fallback description ({len(fallback_desc)} chars) for {product_url}")
+            return fallback_desc
 
-        logger.warning(f"[GUMROAD] No description found for {product_url}")
+        logger.error(f"[GUMROAD] No description found via any method for {product_url}")
         return ""
 
     except Exception as e:
