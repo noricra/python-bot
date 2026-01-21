@@ -1207,7 +1207,7 @@ async def import_complete(request: ImportCompleteRequest):
                 product_repo = ProductRepository()
                 user_repo = UserRepository()
 
-                user_data = user_repo.get_user_by_id(request.user_id)
+                user_data = user_repo.get_user(request.user_id)
 
                 if user_data and user_data.get('email'):
                     # Email creation produit
