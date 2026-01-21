@@ -1199,7 +1199,7 @@ async def import_complete(request: ImportCompleteRequest):
 
             # Send email notifications
             try:
-                from app.services.email_service import EmailService
+                from app.core.email_service import EmailService
                 from app.domain.repositories.product_repo import ProductRepository
                 from app.domain.repositories.user_repo import UserRepository
 
