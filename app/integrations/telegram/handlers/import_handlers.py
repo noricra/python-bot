@@ -128,13 +128,13 @@ class ImportHandlers:
             # Annuler progression
             progress_task.cancel()
 
-            # Filtrer produits avec prix invalides (0 < prix < 10)
+            # Filtrer produits avec prix invalides (0 < prix < 9.99)
             valid_products = []
             invalid_products = []
 
             for product in all_products:
                 price = product.get('price', 0.0)
-                if price > 0 and price < 10.0:
+                if price > 0 and price < 9.99:
                     invalid_products.append(product)
                 else:
                     valid_products.append(product)
@@ -149,7 +149,7 @@ class ImportHandlers:
                     invalid_list += f"\n  \\- \\.\\.\\. et {len(invalid_products) - 5} autres"
 
                 await status_msg.edit_text(
-                    f"**{len(invalid_products)} produits ignores** \\(prix \\< 10$\\):\n\n"
+                    f"**{len(invalid_products)} produits ignores** \\(prix \\< 9\\.99$\\):\n\n"
                     f"{invalid_list}\n\n"
                     f"Continuer avec {len(valid_products)} produits valides\\.\\.\\.",
                     parse_mode='MarkdownV2'
