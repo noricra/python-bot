@@ -39,7 +39,9 @@ const translations = {
         importSuccess: 'Importe avec succes',
         importError: 'Erreur lors de l\'import',
         skipped: 'Produit passe',
-        uploadInProgress: 'Upload en cours. Etes-vous sur de vouloir quitter?'
+        uploadInProgress: 'Upload en cours. Etes-vous sur de vouloir quitter?',
+        category: 'Categorie',
+        categoryHint: 'Modifiez si la categorie automatique est incorrecte'
     },
     en: {
         loading: 'Loading products...',
@@ -53,7 +55,9 @@ const translations = {
         importSuccess: 'Imported successfully',
         importError: 'Import error',
         skipped: 'Product skipped',
-        uploadInProgress: 'Upload in progress. Are you sure you want to leave?'
+        uploadInProgress: 'Upload in progress. Are you sure you want to leave?',
+        category: 'Category',
+        categoryHint: 'Change if auto-category is incorrect'
     }
 };
 
@@ -71,6 +75,7 @@ let results = {
     skipped: 0,
     errors: 0
 };
+let availableCategories = [];
 
 // DOM Elements
 const loadingSection = document.getElementById('loadingSection');
@@ -104,6 +109,20 @@ const fileName = document.getElementById('fileName');
 // Initialize
 async function init() {
     try {
+        // Load categories first
+        console.log('[IMPORT] Fetching categories...');
+        try {
+            const catResponse = await fetch('/api/categories');
+            if (catResponse.ok) {
+                const catData = await catResponse.json();
+                availableCategories = catData.categories || [];
+                console.log('[IMPORT] Loaded categories:', availableCategories);
+            }
+        } catch (e) {
+            console.warn('[IMPORT] Failed to load categories:', e);
+            availableCategories = ['Autre'];
+        }
+
         console.log('[IMPORT] Fetching products...');
 
         const response = await fetch(`/api/import-products?user_id=${userId}`, {
@@ -166,7 +185,31 @@ function displayProduct(index) {
     }
 
     productTitle.textContent = product.title;
-    productCategory.textContent = `Categorie: ${product.category || 'Autre'}`;
+
+    // Category dropdown
+    productCategory.innerHTML = '';
+    const categoryLabel = document.createElement('label');
+    categoryLabel.textContent = t('category') + ': ';
+    categoryLabel.style.cssText = 'font-weight: 600; margin-right: 8px;';
+
+    const categorySelect = document.createElement('select');
+    categorySelect.style.cssText = 'padding: 6px 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; background: white;';
+
+    availableCategories.forEach(cat => {
+        const option = document.createElement('option');
+        option.value = cat;
+        option.textContent = cat;
+        option.selected = (cat === product.category);
+        categorySelect.appendChild(option);
+    });
+
+    categorySelect.addEventListener('change', (e) => {
+        product.category = e.target.value;
+        console.log(`[IMPORT] Category changed to: ${product.category}`);
+    });
+
+    productCategory.appendChild(categoryLabel);
+    productCategory.appendChild(categorySelect);
 
     if (product.rating > 0) {
         const stars = Array(Math.round(product.rating)).fill('*').join('');
