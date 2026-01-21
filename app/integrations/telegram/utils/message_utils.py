@@ -1,6 +1,7 @@
 """Message utilities for Telegram bot handlers"""
 
 from app.core.utils import logger
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 async def safe_transition_to_text(query, text: str, keyboard=None, parse_mode='Markdown'):
@@ -53,3 +54,31 @@ async def safe_transition_to_text(query, text: str, keyboard=None, parse_mode='M
             reply_markup=keyboard,
             parse_mode=parse_mode
         )
+
+
+def create_product_success_message(product_id: str, title: str, price: float, lang: str = 'fr'):
+    """
+    Génère le message de succès et le keyboard pour la création d'un produit
+
+    Utilisé par:
+    - upload-complete (ipn_server.py)
+    - import-complete (ipn_server.py)
+    - sell_handlers.py (upload classique)
+
+    Args:
+        product_id: ID du produit créé
+        title: Titre du produit
+        price: Prix en USD
+        lang: Langue ('fr' ou 'en')
+
+    Returns:
+        tuple: (message, keyboard)
+    """
+    message = f"✅ **Produit créé avec succès!**\n\n**ID:** {product_id}\n**Titre:** {title}\n**Prix:** ${price:.2f}"
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🏪 Dashboard" if lang == 'en' else "🏪 Dashboard", callback_data='seller_dashboard'),
+        InlineKeyboardButton("📦 Mes produits" if lang == 'fr' else "📦 My Products", callback_data='my_products')
+    ]])
+
+    return message, keyboard
