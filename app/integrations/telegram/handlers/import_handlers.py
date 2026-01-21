@@ -8,7 +8,7 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, WebAppInfo
 from telegram.ext import ContextTypes
 
-from app.services.gumroad_scraper import scrape_gumroad_profile, download_cover_image, GumroadScraperException
+from app.services.gumroad_scraper import scrape_gumroad_profile, GumroadScraperException
 from app.core.i18n import t as i18n
 from app.integrations.telegram.utils import safe_transition_to_text
 from app.core.settings import Settings
@@ -149,19 +149,8 @@ class ImportHandlers:
                 parse_mode='Markdown'
             )
 
-            from app.core.utils import generate_product_id
-            for idx, product in enumerate(products):
-                if product.get('image_url'):
-                    try:
-                        # Générer un product_id temporaire pour le path B2
-                        temp_id = generate_product_id()
-                        logger.info(f"[IMPORT] Downloading cover {idx+1}/{len(products)}: {product['title']}")
-                        cover_url = await download_cover_image(product['image_url'], temp_id)
-                        product['cover_image_url'] = cover_url  # Remplacer image_url par B2 URL
-                        logger.info(f"[IMPORT] Cover uploaded: {cover_url}")
-                    except Exception as e:
-                        logger.warning(f"[IMPORT] Failed to download cover for {product['title']}: {e}")
-                        product['cover_image_url'] = None
+            # Garder URLs Gumroad pour preview (pas de download)
+            logger.info(f"[IMPORT] Keeping {len(products)} Gumroad image URLs for preview")
 
             # Stocker produits dans state
             bot.state_manager.update_state(
