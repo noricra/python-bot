@@ -151,6 +151,11 @@ async def scrape_gumroad_profile(profile_url: str) -> List[Dict]:
             products = extract_products_from_scripts(soup, profile_url)
             if products:
                 logger.info(f"[GUMROAD] Found {len(products)} products via script JSON extraction")
+
+                # Deep scraping parallele pour descriptions completes
+                logger.info(f"[GUMROAD] Starting parallel deep scraping for {len(products)} products...")
+                products = await enrich_products_parallel(client, products, headers)
+
                 return products
 
             # Strategie 3: Fallback OpenGraph (page produit unique)
@@ -370,13 +375,18 @@ async def enrich_products_parallel(client: httpx.AsyncClient, products: List[Dic
     tasks = []
     for product in products:
         product_url = product.get('gumroad_url')
+        product_title = product.get('title', 'Unknown')
         if product_url:
+            logger.debug(f"[GUMROAD] Queuing deep scrape for '{product_title}': {product_url}")
             tasks.append(fetch_full_description(client, product_url, headers))
         else:
+            logger.warning(f"[GUMROAD] No URL for product '{product_title}', skipping deep scrape")
             tasks.append(asyncio.sleep(0))  # Placeholder pour garder meme index
 
     # Executer TOUTES les requetes en parallele
+    logger.info(f"[GUMROAD] Executing {len(tasks)} parallel requests...")
     full_descriptions = await asyncio.gather(*tasks, return_exceptions=True)
+    logger.info(f"[GUMROAD] Parallel requests completed")
 
     # Fusionner descriptions avec produits
     enriched_products = []
@@ -406,7 +416,7 @@ async def enrich_products_parallel(client: httpx.AsyncClient, products: List[Dic
 
 async def fetch_full_description(client: httpx.AsyncClient, product_url: str, headers: dict) -> str:
     """
-    Fetch description complete depuis page produit individuelle
+    Fetch description complete depuis page produit individuelle avec retry logic
 
     Args:
         client: httpx client
@@ -416,18 +426,49 @@ async def fetch_full_description(client: httpx.AsyncClient, product_url: str, he
     Returns:
         Description HTML complete
     """
-    try:
-        # Jitter pour eviter detection pattern (delai aleatoire 0.5-2s)
-        await asyncio.sleep(random.uniform(0.5, 2.0))
+    # Retry logic pour gerer rate limiting et timeouts
+    max_retries = 3
+    soup = None
 
-        logger.info(f"[GUMROAD] Fetching full description from: {product_url}")
-        resp = await client.get(product_url, timeout=15.0)
+    for attempt in range(max_retries):
+        try:
+            # Jitter pour eviter detection pattern (delai aleatoire 0.5-2s)
+            await asyncio.sleep(random.uniform(0.5, 2.0))
 
-        if resp.status_code != 200:
-            logger.error(f"[GUMROAD] HTTP {resp.status_code} for product page: {product_url}")
-            return ""
+            logger.info(f"[GUMROAD] Fetching full description from: {product_url} (attempt {attempt + 1}/{max_retries})")
+            resp = await client.get(product_url, timeout=20.0)  # Augmente timeout a 20s
 
-        soup = BeautifulSoup(resp.text, 'lxml')
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'lxml')
+                break  # Succes, sortir de la boucle retry
+            elif resp.status_code == 429:
+                # Rate limited - exponential backoff
+                wait_time = 2 ** attempt
+                logger.warning(f"[GUMROAD] Rate limited (429), waiting {wait_time}s before retry")
+                await asyncio.sleep(wait_time)
+            else:
+                logger.error(f"[GUMROAD] HTTP {resp.status_code} for product page: {product_url}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)
+                else:
+                    return ""
+
+        except asyncio.TimeoutError:
+            logger.warning(f"[GUMROAD] Timeout fetching {product_url}, retry {attempt + 1}/{max_retries}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+            else:
+                return ""
+        except Exception as e:
+            logger.error(f"[GUMROAD] Error fetching {product_url}: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+            else:
+                return ""
+
+    if not soup:
+        logger.error(f"[GUMROAD] Failed to fetch page after {max_retries} attempts: {product_url}")
+        return ""
 
         # Chercher __NEXT_DATA__ dans page produit
         script_tag = soup.find('script', id='__NEXT_DATA__', type='application/json')
@@ -456,18 +497,66 @@ async def fetch_full_description(client: httpx.AsyncClient, product_url: str, he
         else:
             logger.warning(f"[GUMROAD] No __NEXT_DATA__ found in product page: {product_url}")
 
-        # Fallback: Chercher dans HTML
+        # Fallback 1: Chercher dans HTML avec regex ameliore
+        desc_elem = None
+
+        # Essai 1: Div avec classes description/content
         desc_elem = soup.find('div', class_=re.compile(r'description|content', re.I))
+
+        # Essai 2: Section/Article avec classes variees
+        if not desc_elem:
+            desc_elem = soup.find(['section', 'article', 'div'],
+                class_=re.compile(r'desc|product.*info|details|text|summary|about', re.I))
+
+        # Essai 3: Main content area
+        if not desc_elem:
+            main = soup.find('main')
+            if main:
+                # Chercher premier paragraphe substantiel
+                paragraphs = main.find_all('p')
+                for p in paragraphs:
+                    text = p.get_text(strip=True)
+                    if len(text) > 50:  # Au moins 50 chars
+                        desc_elem = p
+                        break
+
         if desc_elem:
             fallback_desc = desc_elem.get_text(separator='\n', strip=True)
-            logger.info(f"[GUMROAD] Using HTML fallback description ({len(fallback_desc)} chars) for {product_url}")
-            return fallback_desc
+            if fallback_desc:
+                logger.info(f"[GUMROAD] Using HTML fallback description ({len(fallback_desc)} chars) for {product_url}")
+                return fallback_desc
 
-        logger.error(f"[GUMROAD] No description found via any method for {product_url}")
+        # Fallback 2: OpenGraph meta tags
+        og_desc = soup.find('meta', property='og:description')
+        if og_desc:
+            og_content = og_desc.get('content', '')
+            if og_content:
+                logger.info(f"[GUMROAD] Using OpenGraph description ({len(og_content)} chars) for {product_url}")
+                return og_content
+
+        # Fallback 3: Twitter Card
+        twitter_desc = soup.find('meta', attrs={'name': 'twitter:description'})
+        if twitter_desc:
+            twitter_content = twitter_desc.get('content', '')
+            if twitter_content:
+                logger.info(f"[GUMROAD] Using Twitter Card description ({len(twitter_content)} chars) for {product_url}")
+                return twitter_content
+
+        # Fallback 4: Meta description standard
+        meta_desc = soup.find('meta', attrs={'name': 'description'})
+        if meta_desc:
+            meta_content = meta_desc.get('content', '')
+            if meta_content:
+                logger.info(f"[GUMROAD] Using meta description ({len(meta_content)} chars) for {product_url}")
+                return meta_content
+
+        logger.error(f"[GUMROAD] No description found via any method (JSON, HTML, OG, Twitter, Meta) for {product_url}")
         return ""
 
     except Exception as e:
-        logger.error(f"[GUMROAD] Error fetching product description: {e}")
+        logger.error(f"[GUMROAD] Unexpected error fetching product description: {e}")
+        import traceback
+        logger.error(f"[GUMROAD] Traceback: {traceback.format_exc()}")
         return ""
 
 
