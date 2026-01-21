@@ -1437,7 +1437,8 @@ class SellHandlers:
                 # Remove $ symbol if present, then parse
                 price_text_clean = message_text.replace('$', '').replace(',', '.').strip()
                 price = float(price_text_clean)
-                if price < 10 or price > 5000:
+                # Prix autorisé: 0 (gratuit) ou >= 10 (payant minimum 10$)
+                if (price > 0 and price < 10) or price > 5000:
                     raise ValueError()
 
                 # 🔍 DEBUG: État AVANT modification
@@ -1476,7 +1477,13 @@ class SellHandlers:
                     parse_mode='Markdown'
                 )
             except (ValueError, TypeError):
-                await update.message.reply_text("❌ Prix invalide. Entrez un nombre entre $10 et $5000.")
+                await update.message.reply_text(
+                    "Prix minimum: 10$ pour les produits payants.\n\n"
+                    "Choisissez:\n"
+                    "- 0 (gratuit)\n"
+                    "- 10 ou plus (max 5000)",
+                    parse_mode='Markdown'
+                )
 
     async def _show_category_selection(self, bot, update, lang):
         """Affiche le menu de sélection de catégorie lors de l'ajout de produit"""
@@ -2838,7 +2845,8 @@ class SellHandlers:
             # Parse and validate price (remove $ symbol if present)
             price_text_clean = price_text.replace('$', '').replace(',', '.').strip()
             price_usd = float(price_text_clean)
-            if price_usd < 10 or price_usd > 5000:
+            # Prix autorisé: 0 (gratuit) ou >= 10 (payant minimum 10$)
+            if (price_usd > 0 and price_usd < 10) or price_usd > 5000:
                 raise ValueError("Prix hors limites")
 
             # Update price (price is already in USD, no conversion needed)
