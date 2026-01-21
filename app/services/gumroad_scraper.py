@@ -278,6 +278,7 @@ def parse_nextjs_product(product_data: dict, profile_url: str) -> Optional[Dict]
             product_data.get('cover_image_url') or
             product_data.get('preview_url')
         )
+        logger.info(f"[GUMROAD] Product '{title}' - image_url: {image_url} (from thumbnail_url={product_data.get('thumbnail_url')}, cover_image_url={product_data.get('cover_image_url')}, preview_url={product_data.get('preview_url')})")
 
         # URL produit
         permalink = product_data.get('permalink')
@@ -337,16 +338,16 @@ def parse_nextjs_product(product_data: dict, profile_url: str) -> Optional[Dict]
 
 def auto_categorize(title: str, description: str) -> str:
     """
-    Retourne categorie par defaut (user choisira manuellement dans mini-app)
+    Retourne None pour forcer user a selectionner categorie dans mini-app
 
     Args:
         title: Titre du produit
         description: Description du produit
 
     Returns:
-        Categorie par defaut 'Autre'
+        None (user DOIT choisir dans mini-app)
     """
-    return 'Autre'
+    return None
 
 
 async def enrich_products_parallel(client: httpx.AsyncClient, products: List[Dict], headers: dict) -> List[Dict]:
