@@ -428,6 +428,12 @@ async def upload_complete(request: UploadCompleteRequest):
                 logger.info(f"📦 Retrieved product_data: {product_data}")
                 logger.info(f"🌐 Language: {lang}")
 
+                # Validation prix minimum (0 ou >= 10)
+                price_usd = product_data.get('price_usd', 0.0)
+                if price_usd > 0 and price_usd < 10.0:
+                    logger.error(f"[VALIDATION] Invalid price {price_usd} for product {product_data.get('title', 'N/A')}")
+                    raise HTTPException(status_code=400, detail="Prix minimum: 10$ pour produits payants")
+
                 # ✅ Utiliser product_id PRÉ-GÉNÉRÉ (stocké dans generate-upload-url)
                 product_id = product_data.get('product_id')
 
@@ -1160,9 +1166,35 @@ async def import_complete(request: ImportCompleteRequest):
         # Prepare product data from metadata
         metadata = request.product_metadata
 
+        # Validation prix minimum (0 ou >= 10)
+        price = metadata.get('price', 0.0)
+        if price > 0 and price < 10.0:
+            logger.error(f"[IMPORT-COMPLETE] Invalid price {price} for product {metadata.get('title', 'N/A')}")
+            raise HTTPException(status_code=400, detail="Prix minimum: 10$ pour produits payants")
+
+        # Validation catégorie obligatoire et valide
+        category = metadata.get('category', None)
+        if not category:
+            logger.error(f"[IMPORT-COMPLETE] Category missing for product {metadata.get('title', 'N/A')}")
+            raise HTTPException(status_code=400, detail="Categorie requise")
+
+        # Vérifier que catégorie existe en DB
+        from app.core.db_pool import get_connection, put_connection
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('SELECT name FROM categories WHERE name = %s', (category,))
+            if not cursor.fetchone():
+                logger.error(f"[IMPORT-COMPLETE] Invalid category {category} for product {metadata.get('title', 'N/A')}")
+                raise HTTPException(status_code=400, detail=f"Categorie invalide: {category}")
+        finally:
+            put_connection(conn)
+
         # Download cover image from Gumroad URL to R2 (only when actually importing)
         cover_image_url = None
         gumroad_image_url = metadata.get('cover_image_url') or metadata.get('image_url')
+        logger.info(f"[IMPORT-COMPLETE] Image metadata - cover_image_url: {metadata.get('cover_image_url')}, image_url: {metadata.get('image_url')}")
+
         if gumroad_image_url and gumroad_image_url.startswith('http'):
             try:
                 logger.info(f"[IMPORT-COMPLETE] Downloading cover from Gumroad: {gumroad_image_url}")
@@ -1170,8 +1202,12 @@ async def import_complete(request: ImportCompleteRequest):
                 cover_image_url = await download_cover_image(gumroad_image_url, product_id)
                 logger.info(f"[IMPORT-COMPLETE] Cover uploaded to R2: {cover_image_url}")
             except Exception as e:
-                logger.warning(f"[IMPORT-COMPLETE] Failed to download cover: {e}")
+                logger.error(f"[IMPORT-COMPLETE] Failed to download cover: {e}")
+                import traceback
+                logger.error(f"[IMPORT-COMPLETE] Traceback: {traceback.format_exc()}")
                 cover_image_url = None
+        else:
+            logger.warning(f"[IMPORT-COMPLETE] No valid Gumroad image URL found. gumroad_image_url={gumroad_image_url}")
 
         product_data = {
             'product_id': product_id,
@@ -1179,7 +1215,7 @@ async def import_complete(request: ImportCompleteRequest):
             'title': metadata.get('title', 'Sans titre'),
             'description': metadata.get('description', ''),
             'price_usd': metadata.get('price', 0.0),
-            'category': metadata.get('category', 'Autre'),
+            'category': category,  # Déjà validée ci-dessus
             'main_file_url': file_url,
             'file_size': request.file_size,
             'file_name': request.file_name,
