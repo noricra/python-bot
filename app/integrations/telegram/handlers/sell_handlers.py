@@ -1437,8 +1437,8 @@ class SellHandlers:
                 # Remove $ symbol if present, then parse
                 price_text_clean = message_text.replace('$', '').replace(',', '.').strip()
                 price = float(price_text_clean)
-                # Prix autorisé: 0 (gratuit) ou >= 10 (payant minimum 10$)
-                if (price > 0 and price < 10) or price > 5000:
+                # Prix autorisé: 0 (gratuit) ou >= 9.99 (payant minimum 9.99$)
+                if (price > 0 and price < 9.99) or price > 5000:
                     raise ValueError()
 
                 # 🔍 DEBUG: État AVANT modification
@@ -1478,10 +1478,10 @@ class SellHandlers:
                 )
             except (ValueError, TypeError):
                 await update.message.reply_text(
-                    "Prix minimum: 10$ pour les produits payants.\n\n"
+                    "Prix minimum: 9.99$ pour les produits payants.\n\n"
                     "Choisissez:\n"
                     "- 0 (gratuit)\n"
-                    "- 10 ou plus (max 5000)",
+                    "- 9.99 ou plus (max 5000)",
                     parse_mode='Markdown'
                 )
 
@@ -2845,8 +2845,8 @@ class SellHandlers:
             # Parse and validate price (remove $ symbol if present)
             price_text_clean = price_text.replace('$', '').replace(',', '.').strip()
             price_usd = float(price_text_clean)
-            # Prix autorisé: 0 (gratuit) ou >= 10 (payant minimum 10$)
-            if (price_usd > 0 and price_usd < 10) or price_usd > 5000:
+            # Prix autorisé: 0 (gratuit) ou >= 9.99 (payant minimum 9.99$)
+            if (price_usd > 0 and price_usd < 9.99) or price_usd > 5000:
                 raise ValueError("Prix hors limites")
 
             # Update price (price is already in USD, no conversion needed)
