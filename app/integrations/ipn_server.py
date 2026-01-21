@@ -428,11 +428,11 @@ async def upload_complete(request: UploadCompleteRequest):
                 logger.info(f"📦 Retrieved product_data: {product_data}")
                 logger.info(f"🌐 Language: {lang}")
 
-                # Validation prix minimum (0 ou >= 10)
+                # Validation prix minimum (0 ou >= 9.99)
                 price_usd = product_data.get('price_usd', 0.0)
-                if price_usd > 0 and price_usd < 10.0:
+                if price_usd > 0 and price_usd < 9.99:
                     logger.error(f"[VALIDATION] Invalid price {price_usd} for product {product_data.get('title', 'N/A')}")
-                    raise HTTPException(status_code=400, detail="Prix minimum: 10$ pour produits payants")
+                    raise HTTPException(status_code=400, detail="Prix minimum: 9.99$ pour produits payants")
 
                 # ✅ Utiliser product_id PRÉ-GÉNÉRÉ (stocké dans generate-upload-url)
                 product_id = product_data.get('product_id')
@@ -1166,11 +1166,11 @@ async def import_complete(request: ImportCompleteRequest):
         # Prepare product data from metadata
         metadata = request.product_metadata
 
-        # Validation prix minimum (0 ou >= 10)
+        # Validation prix minimum (0 ou >= 9.99)
         price = metadata.get('price', 0.0)
-        if price > 0 and price < 10.0:
+        if price > 0 and price < 9.99:
             logger.error(f"[IMPORT-COMPLETE] Invalid price {price} for product {metadata.get('title', 'N/A')}")
-            raise HTTPException(status_code=400, detail="Prix minimum: 10$ pour produits payants")
+            raise HTTPException(status_code=400, detail="Prix minimum: 9.99$ pour produits payants")
 
         # Validation catégorie obligatoire et valide
         category = metadata.get('category', None)
