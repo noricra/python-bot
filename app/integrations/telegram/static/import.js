@@ -120,7 +120,7 @@ async function init() {
             }
         } catch (e) {
             console.warn('[IMPORT] Failed to load categories:', e);
-            availableCategories = ['Autre'];
+            availableCategories = [];  // Pas de fallback 'Autre'
         }
 
         console.log('[IMPORT] Fetching products...');
@@ -198,25 +198,33 @@ function displayProduct(index) {
 
     // DEBUG: Vérifier si categories chargées
     if (availableCategories.length === 0) {
-        console.error('[IMPORT] No categories available! Using fallback.');
-        availableCategories = ['Autre'];
+        console.error('[IMPORT] No categories available! Cannot proceed.');
+        showError('Impossible de charger les categories');
+        return;
     }
 
     console.log(`[IMPORT] Building dropdown with ${availableCategories.length} categories`);
+
+    // Ajouter option "Selectionner..." par défaut
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'Selectionner...';
+    defaultOption.disabled = true;
+    defaultOption.selected = true;
+    categorySelect.appendChild(defaultOption);
 
     availableCategories.forEach(cat => {
         const option = document.createElement('option');
         option.value = cat;
         option.textContent = cat;
-        option.selected = (cat === product.category);
+        option.selected = (cat === product.category && product.category !== '');
         categorySelect.appendChild(option);
     });
 
-    // Si product.category n'est pas dans la liste, sélectionner la première
+    // Si product.category n'est pas dans la liste, forcer sélection
     if (!product.category || !availableCategories.includes(product.category)) {
-        product.category = availableCategories[0];
-        categorySelect.value = availableCategories[0];
-        console.log(`[IMPORT] No valid category, defaulting to: ${product.category}`);
+        product.category = '';  // Forcer user à choisir
+        console.log(`[IMPORT] No valid category, user must select one`);
     }
 
     categorySelect.addEventListener('change', (e) => {
@@ -337,6 +345,21 @@ async function handleFileSelected(e) {
     console.log('[IMPORT] File selected:', file.name, formatBytes(file.size));
 
     const product = products[currentIndex];
+
+    // Validation catégorie obligatoire
+    if (!product.category || product.category === '') {
+        showStatus('error', 'Veuillez selectionner une categorie');
+        fileInput.value = '';
+        return;
+    }
+
+    // Validation prix minimum (0 ou >= 10)
+    const price = product.price || 0;
+    if (price > 0 && price < 10.0) {
+        showStatus('error', `Prix invalide: ${price}$ (minimum 10$ ou gratuit)`);
+        fileInput.value = '';
+        return;
+    }
 
     const maxSize = 10 * 1024 * 1024 * 1024; // 10 GB
     if (file.size > maxSize) {
