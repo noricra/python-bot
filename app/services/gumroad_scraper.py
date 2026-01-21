@@ -470,7 +470,8 @@ async def fetch_full_description(client: httpx.AsyncClient, product_url: str, he
         logger.error(f"[GUMROAD] Failed to fetch page after {max_retries} attempts: {product_url}")
         return ""
 
-        # Chercher __NEXT_DATA__ dans page produit
+    # Chercher __NEXT_DATA__ dans page produit
+    try:
         script_tag = soup.find('script', id='__NEXT_DATA__', type='application/json')
 
         if script_tag:
