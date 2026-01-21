@@ -500,14 +500,15 @@ async def upload_complete(request: UploadCompleteRequest):
                     except Exception as e:
                         logger.error(f"Erreur envoi emails produit: {e}")
 
-                    # Message de succès
-                    success_msg = f"✅ **Produit créé avec succès!**\n\n**ID:** {product_id}\n**Titre:** {product_data['title']}\n**Prix:** ${product_data['price_usd']:.2f}"
+                    # Message de succès (fonction unifiée)
+                    from app.integrations.telegram.utils.message_utils import create_product_success_message
+                    success_msg, keyboard = create_product_success_message(
+                        product_id=product_id,
+                        title=product_data['title'],
+                        price=product_data['price_usd'],
+                        lang=lang
+                    )
                     logger.info(f"💬 Preparing success message: {success_msg}")
-
-                    keyboard = InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🏪 Dashboard" if lang == 'en' else "🏪 Dashboard", callback_data='seller_dashboard'),
-                        InlineKeyboardButton("📦 Mes produits" if lang == 'fr' else "📦 My Products", callback_data='my_products')
-                    ]])
 
                     logger.info(f"📤 Sending Telegram message to {request.user_id}")
                     await telegram_application.bot.send_message(
@@ -1048,6 +1049,28 @@ async def download_file_with_token(token: str):
 # 5.5 IMPORT API (GUMROAD IMPORT MINI-APP)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+@app.get("/api/categories")
+async def get_categories():
+    """Get all categories from database"""
+    try:
+        from app.core.db_pool import get_connection, put_connection
+
+        conn = get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute('SELECT name FROM categories ORDER BY name')
+            categories = cursor.fetchall()
+
+            logger.info(f"[CATEGORIES] Retrieved {len(categories)} categories from DB")
+            return {"categories": [cat['name'] for cat in categories]}
+        finally:
+            put_connection(conn)
+
+    except Exception as e:
+        logger.error(f"[CATEGORIES] Error fetching categories: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch categories")
+
+
 @app.get("/api/import-products")
 async def get_import_products(user_id: int, request: Request):
     """Récupérer les produits scrapés pour l'import depuis user_state"""
@@ -1135,6 +1158,7 @@ async def import_complete(request: ImportCompleteRequest):
 
         # Prepare product data from metadata
         metadata = request.product_metadata
+
         product_data = {
             'product_id': product_id,
             'seller_id': request.user_id,
@@ -1159,11 +1183,58 @@ async def import_complete(request: ImportCompleteRequest):
         if returned_product_id:
             logger.info(f"[IMPORT-COMPLETE] ✅ Product created: {returned_product_id}")
 
+            # Send email notifications
+            try:
+                from app.services.email_service import EmailService
+                from app.domain.repositories.product_repo import ProductRepository
+                from app.domain.repositories.user_repo import UserRepository
+
+                email_service = EmailService()
+                product_repo = ProductRepository()
+                user_repo = UserRepository()
+
+                user_data = user_repo.get_user_by_id(request.user_id)
+
+                if user_data and user_data.get('email'):
+                    # Email creation produit
+                    await email_service.send_product_created_confirmation(
+                        to_email=user_data['email'],
+                        seller_name=user_data.get('seller_name', 'Vendeur'),
+                        product_title=product_data['title'],
+                        product_price=f"{product_data['price_usd']:.2f}",
+                        product_id=returned_product_id
+                    )
+
+                    # Email premier produit si applicable
+                    total_products = product_repo.count_products_by_seller(request.user_id)
+                    if total_products == 1:
+                        await email_service.send_first_product_published_notification(
+                            to_email=user_data['email'],
+                            seller_name=user_data.get('seller_name', 'Vendeur'),
+                            product_title=product_data['title'],
+                            product_price=product_data['price_usd']
+                        )
+            except Exception as e:
+                logger.error(f"[IMPORT-COMPLETE] Erreur envoi emails produit: {e}")
+
             # Send notification to user
             try:
+                # Get user language
+                lang = user_state.get('lang', 'fr')
+
+                # Message de succès (fonction unifiée)
+                from app.integrations.telegram.utils.message_utils import create_product_success_message
+                success_msg, keyboard = create_product_success_message(
+                    product_id=returned_product_id,
+                    title=product_data['title'],
+                    price=product_data['price_usd'],
+                    lang=lang
+                )
+
                 await telegram_application.bot.send_message(
                     chat_id=request.user_id,
-                    text=f"✅ **Produit importé!**\n\n📦 {product_data['title']}\n💰 ${product_data['price_usd']:.2f}",
+                    text=success_msg,
+                    reply_markup=keyboard,
                     parse_mode='Markdown'
                 )
             except Exception as e:
