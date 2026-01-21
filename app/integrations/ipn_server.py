@@ -1053,6 +1053,7 @@ async def download_file_with_token(token: str):
 async def get_categories():
     """Get all categories from database"""
     try:
+        import psycopg2.extras
         from app.core.db_pool import get_connection, put_connection
 
         conn = get_connection()
@@ -1159,6 +1160,19 @@ async def import_complete(request: ImportCompleteRequest):
         # Prepare product data from metadata
         metadata = request.product_metadata
 
+        # Download cover image from Gumroad URL to R2 (only when actually importing)
+        cover_image_url = None
+        gumroad_image_url = metadata.get('cover_image_url') or metadata.get('image_url')
+        if gumroad_image_url and gumroad_image_url.startswith('http'):
+            try:
+                logger.info(f"[IMPORT-COMPLETE] Downloading cover from Gumroad: {gumroad_image_url}")
+                from app.services.gumroad_scraper import download_cover_image
+                cover_image_url = await download_cover_image(gumroad_image_url, product_id)
+                logger.info(f"[IMPORT-COMPLETE] Cover uploaded to R2: {cover_image_url}")
+            except Exception as e:
+                logger.warning(f"[IMPORT-COMPLETE] Failed to download cover: {e}")
+                cover_image_url = None
+
         product_data = {
             'product_id': product_id,
             'seller_id': request.user_id,
@@ -1169,7 +1183,7 @@ async def import_complete(request: ImportCompleteRequest):
             'main_file_url': file_url,
             'file_size': request.file_size,
             'file_name': request.file_name,
-            'cover_image_url': metadata.get('cover_image_url'),
+            'cover_image_url': cover_image_url,
             'imported_from': metadata.get('imported_from', 'gumroad'),
             'imported_url': metadata.get('imported_url'),
             'source_profile': source_profile,
