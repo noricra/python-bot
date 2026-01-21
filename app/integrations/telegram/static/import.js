@@ -353,10 +353,10 @@ async function handleFileSelected(e) {
         return;
     }
 
-    // Validation prix minimum (0 ou >= 10)
+    // Validation prix minimum (0 ou >= 9.99)
     const price = product.price || 0;
-    if (price > 0 && price < 10.0) {
-        showStatus('error', `Prix invalide: ${price}$ (minimum 10$ ou gratuit)`);
+    if (price > 0 && price < 9.99) {
+        showStatus('error', `Prix invalide: ${price}$ (minimum 9.99$ ou gratuit)`);
         fileInput.value = '';
         return;
     }
