@@ -123,10 +123,40 @@ class ImportHandlers:
 
         try:
             # Scraping
-            products = await scrape_gumroad_profile(url)
+            all_products = await scrape_gumroad_profile(url)
 
             # Annuler progression
             progress_task.cancel()
+
+            # Filtrer produits avec prix invalides (0 < prix < 10)
+            valid_products = []
+            invalid_products = []
+
+            for product in all_products:
+                price = product.get('price', 0.0)
+                if price > 0 and price < 10.0:
+                    invalid_products.append(product)
+                else:
+                    valid_products.append(product)
+
+            # Informer user des produits filtres
+            if invalid_products:
+                invalid_list = '\n'.join([
+                    f"  \\- {self._escape_markdown(p['title'])}: ${p['price']:.2f}"
+                    for p in invalid_products[:5]
+                ])
+                if len(invalid_products) > 5:
+                    invalid_list += f"\n  \\- \\.\\.\\. et {len(invalid_products) - 5} autres"
+
+                await status_msg.edit_text(
+                    f"**{len(invalid_products)} produits ignores** \\(prix \\< 10$\\):\n\n"
+                    f"{invalid_list}\n\n"
+                    f"Continuer avec {len(valid_products)} produits valides\\.\\.\\.",
+                    parse_mode='MarkdownV2'
+                )
+                await asyncio.sleep(3)
+
+            products = valid_products
 
             if not products:
                 await status_msg.edit_text(
