@@ -193,7 +193,16 @@ function displayProduct(index) {
     categoryLabel.style.cssText = 'font-weight: 600; margin-right: 8px;';
 
     const categorySelect = document.createElement('select');
-    categorySelect.style.cssText = 'padding: 6px 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; background: white;';
+    categorySelect.style.cssText = 'padding: 6px 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; background: white; min-width: 150px;';
+    categorySelect.required = true;
+
+    // DEBUG: Vérifier si categories chargées
+    if (availableCategories.length === 0) {
+        console.error('[IMPORT] No categories available! Using fallback.');
+        availableCategories = ['Autre'];
+    }
+
+    console.log(`[IMPORT] Building dropdown with ${availableCategories.length} categories`);
 
     availableCategories.forEach(cat => {
         const option = document.createElement('option');
@@ -202,6 +211,13 @@ function displayProduct(index) {
         option.selected = (cat === product.category);
         categorySelect.appendChild(option);
     });
+
+    // Si product.category n'est pas dans la liste, sélectionner la première
+    if (!product.category || !availableCategories.includes(product.category)) {
+        product.category = availableCategories[0];
+        categorySelect.value = availableCategories[0];
+        console.log(`[IMPORT] No valid category, defaulting to: ${product.category}`);
+    }
 
     categorySelect.addEventListener('change', (e) => {
         product.category = e.target.value;
