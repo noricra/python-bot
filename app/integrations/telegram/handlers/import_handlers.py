@@ -994,7 +994,7 @@ class ImportHandlers:
         await safe_transition_to_text(
             query,
             "Import annulé" if lang == 'fr' else "Import cancelled",
-            reply_markup=InlineKeyboardMarkup([[
+            keyboard=InlineKeyboardMarkup([[
                 InlineKeyboardButton("Retour" if lang == 'fr' else "Back", callback_data='back_main')
             ]])
         )
