@@ -150,11 +150,19 @@ async def scrape_gumroad_profile(profile_url: str) -> List[Dict]:
             logger.warning("[GUMROAD] __NEXT_DATA__ not found, trying JSON extraction from all scripts...")
             products = extract_products_from_scripts(soup, profile_url)
             if products:
-                logger.info(f"[GUMROAD] Found {len(products)} products via script JSON extraction")
+                logger.info(f"[GUMROAD] ✅ Found {len(products)} products via script JSON extraction")
+                logger.info(f"[GUMROAD] 🔍 Products BEFORE enrichment - checking URLs:")
+                for idx, p in enumerate(products):
+                    logger.info(f"[GUMROAD]   Product {idx+1}: '{p.get('title')}' - URL: {p.get('gumroad_url')} - Desc length: {len(p.get('description', ''))}")
 
                 # Deep scraping parallele pour descriptions completes
-                logger.info(f"[GUMROAD] Starting parallel deep scraping for {len(products)} products...")
+                logger.info(f"[GUMROAD] 🚀 STARTING parallel deep scraping for {len(products)} products...")
                 products = await enrich_products_parallel(client, products, headers)
+                logger.info(f"[GUMROAD] ✅ FINISHED parallel deep scraping")
+
+                logger.info(f"[GUMROAD] 🔍 Products AFTER enrichment - checking descriptions:")
+                for idx, p in enumerate(products):
+                    logger.info(f"[GUMROAD]   Product {idx+1}: '{p.get('title')}' - Desc length: {len(p.get('description', ''))}")
 
                 return products
 
@@ -386,6 +394,7 @@ async def enrich_products_parallel(client: httpx.AsyncClient, products: List[Dic
     Returns:
         Liste produits enrichis avec descriptions completes
     """
+    logger.info(f"[GUMROAD] 🌟🌟🌟 ENTERING enrich_products_parallel() with {len(products)} products")
     logger.info(f"[GUMROAD] Launching {len(products)} parallel requests for full descriptions...")
 
     # Creer taches paralleles
