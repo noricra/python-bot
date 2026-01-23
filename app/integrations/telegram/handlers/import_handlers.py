@@ -835,11 +835,15 @@ class ImportHandlers:
 
             # Download cover image si existe
             cover_url = None
-            if product.get('image_url'):
+            gumroad_image_url = product.get('image_url')
+            if gumroad_image_url:
                 try:
-                    cover_url = await download_cover_image(product['image_url'], product_id, seller_id=user_id)
+                    cover_url = await download_cover_image(gumroad_image_url, product_id, seller_id=user_id)
                 except Exception as e:
-                    logger.warning(f"Failed download cover: {e}")
+                    logger.warning(f"Failed download cover to R2: {e}")
+                    # FALLBACK: Utiliser URL Gumroad directement si R2 upload echoue
+                    cover_url = gumroad_image_url
+                    logger.info(f"Using Gumroad URL as fallback: {gumroad_image_url}")
 
             # Store result
             upload_results.append({
@@ -954,10 +958,15 @@ class ImportHandlers:
                 # Use cover_image_url from R2 upload (download_cover_image deja appele)
                 cover_image = result.get('cover_image_url')
 
-                # Construire thumbnail_url (meme structure que cover mais thumb.jpg)
+                # Construire thumbnail_url
                 thumbnail_image = None
                 if cover_image:
-                    thumbnail_image = cover_image.replace('/cover.jpg', '/thumb.jpg')
+                    # Si URL R2 (contient /cover.jpg), remplacer par /thumb.jpg
+                    if '/cover.jpg' in cover_image:
+                        thumbnail_image = cover_image.replace('/cover.jpg', '/thumb.jpg')
+                    else:
+                        # Si URL Gumroad (fallback), utiliser meme URL pour cover et thumb
+                        thumbnail_image = cover_image
 
                 self.product_repo.insert_product({
                     'product_id': result['product_id'],
