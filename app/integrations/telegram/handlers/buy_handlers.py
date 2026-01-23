@@ -147,7 +147,18 @@ class BuyHandlers:
             # Description avec label italique discret (MODE FULL uniquement)
             if product.get('description'):
                 about_label = "<i>À propos :</i>\n" if lang == 'fr' else "<i>About:</i>\n"
-                caption += f"{about_label}{product['description']}\n\n"
+                description = product['description']
+
+                # Telegram limit caption = 1024 chars TOTAL
+                # Calculer espace disponible pour description
+                current_caption_length = len(caption)
+                footer_estimated = 200  # Estimation footer (metadata + separator + search hint)
+                available_space = 1024 - current_caption_length - len(about_label) - footer_estimated - 10  # -10 safety margin
+
+                if len(description) > available_space:
+                    description = description[:available_space-3] + "..."
+
+                caption += f"{about_label}{description}\n\n"
 
             # Métadonnées (catégorie + taille)
             caption += f"📂 {category} • 📁 {file_size:.1f} MB\n"
