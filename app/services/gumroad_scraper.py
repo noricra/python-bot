@@ -256,33 +256,50 @@ def parse_nextjs_product(product_data: dict, profile_url: str) -> Optional[Dict]
         else:
             logger.info(f"[GUMROAD] ✅ Prix final extrait: ${price:.2f}")
 
-        # Description - Essayer plusieurs champs possibles
+        # Description - Essayer plusieurs champs possibles (priorité aux champs texte pur)
         description_fields = [
-            ('description', product_data.get('description')),
+            ('description', product_data.get('description')),  # Texte pur prioritaire
             ('short_description', product_data.get('short_description')),
             ('summary', product_data.get('summary')),
-            ('description_html', product_data.get('description_html')),
-            ('content', product_data.get('content')),
             ('preview_text', product_data.get('preview_text')),
+            ('description_html', product_data.get('description_html')),  # HTML en dernier recours
+            ('content', product_data.get('content')),
         ]
 
         description = ''
         for field_name, field_value in description_fields:
             if field_value and isinstance(field_value, str) and len(field_value.strip()) > 0:
-                description = field_value
-                logger.info(f"[GUMROAD] Description trouvée dans champ '{field_name}': {len(description)} caractères")
+                # Si c'est un champ HTML, nettoyer immédiatement
+                if 'html' in field_name.lower() or '<' in field_value:
+                    from bs4 import BeautifulSoup
+                    soup = BeautifulSoup(field_value, 'lxml')
+                    description = soup.get_text(separator=' ', strip=True)
+                    logger.info(f"[GUMROAD] Description HTML nettoyée depuis '{field_name}': {len(description)} caractères")
+                else:
+                    description = field_value
+                    logger.info(f"[GUMROAD] Description trouvée dans champ '{field_name}': {len(description)} caractères")
+
                 logger.debug(f"[GUMROAD] Description preview: {description[:200]}...")
                 break
 
         if not description:
             logger.warning(f"[GUMROAD] AUCUNE DESCRIPTION TROUVÉE - Tous les champs description vides")
 
-        # Image
+        # Image - Ensure absolute URL
         image_url = (
             product_data.get('thumbnail_url') or
             product_data.get('cover_image_url') or
             product_data.get('preview_url')
         )
+
+        # Ensure image URL is absolute
+        if image_url and not image_url.startswith('http'):
+            # If relative URL, prefix with Gumroad CDN
+            if image_url.startswith('/'):
+                image_url = f"https://public-files.gumroad.com{image_url}"
+            else:
+                image_url = f"https://public-files.gumroad.com/{image_url}"
+
         logger.info(f"[GUMROAD] Product '{title}' - image_url: {image_url} (from thumbnail_url={product_data.get('thumbnail_url')}, cover_image_url={product_data.get('cover_image_url')}, preview_url={product_data.get('preview_url')})")
 
         # URL produit
@@ -707,32 +724,26 @@ def clean_html_for_telegram(html_text: str) -> str:
         html_text: HTML brut
 
     Returns:
-        Texte nettoye compatible Telegram
+        Texte nettoye compatible Telegram (texte pur sans HTML)
     """
     if not html_text:
         return ""
 
-    # Supprimer balises non supportees (garder contenu)
-    # Telegram supporte: b, i, u, s, a, code, pre
-    # On supprime: div, span, p, h1-h6, etc.
+    # Parser HTML avec BeautifulSoup
     soup = BeautifulSoup(html_text, 'lxml')
 
-    # Convertir headings en bold
-    for tag in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
-        tag.name = 'b'
+    # Extraire UNIQUEMENT le texte (sans balises HTML)
+    # get_text() convertit tout en texte pur
+    cleaned_text = soup.get_text(separator=' ', strip=True)
 
-    # Supprimer balises mais garder texte
-    for tag in soup.find_all(['div', 'span', 'p', 'section', 'article']):
-        tag.unwrap()
-
-    # Extraire texte avec balises supportees
-    cleaned = str(soup)
+    # Nettoyer espaces multiples
+    cleaned_text = ' '.join(cleaned_text.split())
 
     # Limiter longueur (Telegram max 4096 chars)
-    if len(cleaned) > 4000:
-        cleaned = cleaned[:4000] + "..."
+    if len(cleaned_text) > 4000:
+        cleaned_text = cleaned_text[:4000] + "..."
 
-    return cleaned
+    return cleaned_text
 
 
 def parse_price(price_str: str) -> float:
@@ -763,13 +774,19 @@ def parse_price(price_str: str) -> float:
         return 0.0
 
 
-async def download_cover_image(image_url: str, product_id: str) -> str:
+async def download_cover_image(image_url: str, product_id: str, seller_id: int = None) -> str:
     """
-    Telecharger image cover vers B2/R2
+    Telecharger image cover vers B2/R2 ET creer cache local
+
+    IMPORTANT: Cette fonction doit reproduire EXACTEMENT le flux d'upload classique:
+    1. Download image depuis Gumroad
+    2. Upload vers R2/B2
+    3. Creer cache local (buffer/python-bot/uploads/temp/images/{product_id}/thumb.jpg)
 
     Args:
         image_url: URL image Gumroad
         product_id: ID produit genere
+        seller_id: ID vendeur (optionnel, pour cache local)
 
     Returns:
         URL B2/R2 de l'image uploadee
@@ -818,15 +835,48 @@ async def download_cover_image(image_url: str, product_id: str) -> str:
             try:
                 # Upload vers B2/R2
                 b2 = B2StorageService()
-                object_key = f"products/imported/gumroad/{product_id}/cover.{ext}"
 
-                url = await b2.upload_file(temp_path, object_key)
+                # Structure R2: products/{seller_id}/{product_id}/cover.jpg (et thumb.jpg)
+                # Si seller_id non fourni, utiliser structure temporaire
+                if seller_id:
+                    cover_key = f"products/{seller_id}/{product_id}/cover.jpg"
+                    thumb_key = f"products/{seller_id}/{product_id}/thumb.jpg"
+                else:
+                    # Fallback: structure import temporaire (sera migre plus tard)
+                    cover_key = f"products/imported/gumroad/{product_id}/cover.{ext}"
+                    thumb_key = f"products/imported/gumroad/{product_id}/thumb.{ext}"
 
-                logger.info(f"[GUMROAD] Cover image uploaded: {url}")
-                return url
+                # Upload cover
+                cover_url = await b2.upload_file(temp_path, cover_key)
+                logger.info(f"[GUMROAD] Cover image uploaded to R2: {cover_url}")
+
+                # Upload thumbnail (meme fichier pour import Gumroad)
+                thumb_url = await b2.upload_file(temp_path, thumb_key)
+                logger.info(f"[GUMROAD] Thumbnail uploaded to R2: {thumb_url}")
+
+                # NOUVEAU: Creer cache local (comme upload classique)
+                # Structure: buffer/python-bot/uploads/temp/images/{product_id}/thumb.jpg
+                try:
+                    cache_dir = os.path.join('buffer', 'python-bot', 'uploads', 'temp', 'images', product_id)
+                    os.makedirs(cache_dir, exist_ok=True)
+
+                    # Copier vers cache local (toujours thumb.jpg pour coherence)
+                    cache_path = os.path.join(cache_dir, 'thumb.jpg')
+
+                    # Si extension n'est pas jpg, convertir ou copier direct
+                    import shutil
+                    shutil.copy2(temp_path, cache_path)
+
+                    logger.info(f"[GUMROAD] Cover image cached locally: {cache_path}")
+
+                except Exception as cache_error:
+                    # Cache non critique - juste log warning
+                    logger.warning(f"[GUMROAD] Failed to create local cache (non-critical): {cache_error}")
+
+                return cover_url
 
             finally:
-                # Cleanup
+                # Cleanup temp file
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
 
