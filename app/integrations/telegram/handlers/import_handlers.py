@@ -8,7 +8,7 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, WebAppInfo
 from telegram.ext import ContextTypes
 
-from app.services.gumroad_scraper import scrape_gumroad_profile, GumroadScraperException
+from app.services.gumroad_scraper import scrape_gumroad_profile, GumroadScraperException, download_cover_image
 from app.core.i18n import t as i18n
 from app.integrations.telegram.utils import safe_transition_to_text
 from app.core.settings import Settings
@@ -837,7 +837,7 @@ class ImportHandlers:
             cover_url = None
             if product.get('image_url'):
                 try:
-                    cover_url = await download_cover_image(product['image_url'], product_id)
+                    cover_url = await download_cover_image(product['image_url'], product_id, seller_id=user_id)
                 except Exception as e:
                     logger.warning(f"Failed download cover: {e}")
 
@@ -951,6 +951,14 @@ class ImportHandlers:
             try:
                 product_data = result['product']
 
+                # Use cover_image_url from R2 upload (download_cover_image deja appele)
+                cover_image = result.get('cover_image_url')
+
+                # Construire thumbnail_url (meme structure que cover mais thumb.jpg)
+                thumbnail_image = None
+                if cover_image:
+                    thumbnail_image = cover_image.replace('/cover.jpg', '/thumb.jpg')
+
                 self.product_repo.insert_product({
                     'product_id': result['product_id'],
                     'seller_user_id': user_id,
@@ -959,7 +967,8 @@ class ImportHandlers:
                     'price_usd': product_data['price'],
                     'main_file_url': result['main_file_url'],
                     'file_size_mb': result['file_size_mb'],
-                    'cover_image_url': result.get('cover_image_url'),
+                    'cover_image_url': cover_image,
+                    'thumbnail_url': thumbnail_image,
                     'status': 'active',  # Publié direct
                     'imported_from': 'gumroad',
                     'imported_url': product_data.get('gumroad_url'),
