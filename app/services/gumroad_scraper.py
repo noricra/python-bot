@@ -522,7 +522,52 @@ async def fetch_full_description(client: httpx.AsyncClient, product_url: str, he
             except json.JSONDecodeError as e:
                 logger.error(f"[GUMROAD] Failed to parse __NEXT_DATA__ for {product_url}: {e}")
         else:
-            logger.warning(f"[GUMROAD] No __NEXT_DATA__ found in product page: {product_url}")
+            logger.warning(f"[GUMROAD] No __NEXT_DATA__ found, trying regex extraction from HTML...")
+
+            # NOUVEAU: Chercher description dans React component JSON (pour pages ?layout=profile)
+            try:
+                # Chercher le script React component ProfileProductPage
+                react_script = soup.find('script', {'data-component-name': 'ProfileProductPage', 'type': 'application/json'})
+
+                if react_script:
+                    logger.info(f"[GUMROAD] Found React component script tag for {product_url}")
+                    if react_script.string:
+                        logger.info(f"[GUMROAD] React script has content ({len(react_script.string)} chars)")
+                        try:
+                            react_data = json.loads(react_script.string)
+                            logger.info(f"[GUMROAD] Successfully parsed React JSON")
+
+                            product_data = react_data.get('product', {})
+                            logger.info(f"[GUMROAD] product_data keys: {list(product_data.keys())}")
+
+                            desc_html = product_data.get('description_html', '')
+                            if desc_html:
+                                # json.loads() a deja decode les Unicode escapes (\u003c → <)
+                                # desc_html contient deja du HTML valide avec balises
+                                logger.info(f"[GUMROAD] SUCCESS - Found description_html in React component ({len(desc_html)} chars) for {product_url}")
+                                logger.info(f"[GUMROAD] Description preview: {desc_html[:200]}...")
+                                return desc_html
+                            else:
+                                logger.warning(f"[GUMROAD] React component found but description_html is empty")
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"[GUMROAD] Failed to parse React component JSON: {e}")
+                    else:
+                        logger.warning(f"[GUMROAD] React script tag found but has no content")
+                else:
+                    logger.warning(f"[GUMROAD] No React component script tag found for {product_url}")
+
+                # Fallback: Regex search si React component pas trouvé
+                html_content = str(soup)
+                desc_match = re.search(r'"description_html"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', html_content)
+                if desc_match:
+                    desc_json = desc_match.group(1)
+                    # Decoder echappements
+                    desc_html = desc_json.replace('\\u003c', '<').replace('\\u003e', '>').replace('\\u003cb\u003e', '<b>').replace('\\u003c/b\u003e', '</b>').replace('\\n', '\n').replace('\\"', '"').replace('\\/', '/')
+                    logger.info(f"[GUMROAD] Found description_html via regex fallback ({len(desc_html)} chars) for {product_url}")
+                    return desc_html
+
+            except Exception as regex_error:
+                logger.warning(f"[GUMROAD] React component extraction failed: {regex_error}")
 
         # Fallback 1: Chercher dans HTML avec regex ameliore
         desc_elem = None
