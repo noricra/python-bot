@@ -408,7 +408,8 @@ async def upload_complete(request: UploadCompleteRequest):
             file_url = f"{custom_domain}/{request.object_key}"
             logger.info(f"📦 R2 URL constructed: {file_url}")
         else:
-            file_url = f"{core_settings.B2_ENDPOINT}/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
+            # Utiliser b2.bucket_name depuis l'instance B2StorageService
+            file_url = f"{core_settings.B2_ENDPOINT}/{b2.bucket_name}/{request.object_key}"
             logger.info(f"📦 B2 URL constructed: {file_url}")
 
         global telegram_application
@@ -834,25 +835,33 @@ async def stream_download(request: GenerateDownloadURLRequest):
             # 3. Extraire object_key pour telecharger (R2 ou B2)
             logger.info(f"[STREAM-DOWNLOAD] Extracting object_key from: {main_file_url}")
 
+            # Initialize B2StorageService to get configured bucket
+            b2_service = B2StorageService()
+            configured_bucket = b2_service.bucket_name
+
             try:
-                # Detect storage provider from URL
-                if "r2.cloudflarestorage.com" in main_file_url:
+                # Detect storage provider from URL and extract object_key
+                if "r2.cloudflarestorage.com" in main_file_url or "media.uzeur.com" in main_file_url:
+                    # R2 URL detected
                     r2_bucket = os.getenv('R2_BUCKET_NAME', 'uzeur')
                     if f"/{r2_bucket}/" in main_file_url:
                         object_key = main_file_url.split(f"/{r2_bucket}/")[1]
                     else:
-                        object_key = main_file_url.split(f"{r2_bucket}/")[-1]
+                        # Custom domain format: https://media.uzeur.com/products/...
+                        object_key = main_file_url.split('.com/')[-1]
                 elif "backblazeb2.com" in main_file_url:
+                    # B2 URL detected
                     b2_bucket = os.getenv('B2_BUCKET_NAME')
                     if f"/{b2_bucket}/" in main_file_url:
                         object_key = main_file_url.split(f"/{b2_bucket}/")[1]
                     else:
                         object_key = main_file_url.split('.com/')[-1]
                 else:
+                    # Generic format - assume after domain is the object key
                     object_key = main_file_url.split('.com/')[-1]
 
                 object_key = object_key.split('?')[0]  # Remove query params
-                logger.info(f"[STREAM-DOWNLOAD] Object key: {object_key}")
+                logger.info(f"[STREAM-DOWNLOAD] Object key: {object_key}, Bucket: {configured_bucket}")
             except Exception as e:
                 logger.error(f"[STREAM-DOWNLOAD] Failed to extract object_key: {e}")
                 raise HTTPException(status_code=500, detail="Invalid file URL")
@@ -872,10 +881,8 @@ async def stream_download(request: GenerateDownloadURLRequest):
         finally:
             put_connection(conn)
 
-        # 5. Telecharger depuis B2 avec boto3 (authentifie avec credentials)
-        logger.error(f"[STREAM-DOWNLOAD] Downloading from B2 with boto3...")
-
-        b2_service = B2StorageService()
+        # 5. Telecharger depuis R2/B2 avec boto3 (authentifie avec credentials)
+        logger.info(f"[STREAM-DOWNLOAD] Downloading from {b2_service.storage_type.upper()} using bucket: {configured_bucket}")
 
         # Telecharger le fichier en memoire
         import io
@@ -885,7 +892,7 @@ async def stream_download(request: GenerateDownloadURLRequest):
             """Download file using boto3 with credentials"""
             try:
                 response = b2_service.client.get_object(
-                    Bucket=bucket_name,
+                    Bucket=configured_bucket,
                     Key=object_key
                 )
                 # Lire tout le contenu
@@ -1143,7 +1150,8 @@ async def import_complete(request: ImportCompleteRequest):
             custom_domain = os.getenv('R2_CUSTOM_DOMAIN', 'https://media.uzeur.com')
             file_url = f"{custom_domain}/{request.object_key}"
         else:
-            file_url = f"{core_settings.B2_ENDPOINT}/{core_settings.B2_BUCKET_NAME}/{request.object_key}"
+            # Utiliser b2.bucket_name depuis l'instance B2StorageService
+            file_url = f"{core_settings.B2_ENDPOINT}/{b2.bucket_name}/{request.object_key}"
 
         logger.info(f"[IMPORT-COMPLETE] File URL: {file_url}")
 
@@ -1192,6 +1200,7 @@ async def import_complete(request: ImportCompleteRequest):
 
         # Download cover image from Gumroad URL to R2 (only when actually importing)
         cover_image_url = None
+        thumbnail_url = None
         gumroad_image_url = metadata.get('cover_image_url') or metadata.get('image_url')
         logger.info(f"[IMPORT-COMPLETE] Image metadata - cover_image_url: {metadata.get('cover_image_url')}, image_url: {metadata.get('image_url')}")
 
@@ -1199,13 +1208,20 @@ async def import_complete(request: ImportCompleteRequest):
             try:
                 logger.info(f"[IMPORT-COMPLETE] Downloading cover from Gumroad: {gumroad_image_url}")
                 from app.services.gumroad_scraper import download_cover_image
-                cover_image_url = await download_cover_image(gumroad_image_url, product_id)
+                cover_image_url = await download_cover_image(gumroad_image_url, product_id, seller_id=request.user_id)
                 logger.info(f"[IMPORT-COMPLETE] Cover uploaded to R2: {cover_image_url}")
+
+                # Construire thumbnail_url (meme structure que cover mais thumb.jpg)
+                if cover_image_url:
+                    thumbnail_url = cover_image_url.replace('/cover.jpg', '/thumb.jpg')
+                    logger.info(f"[IMPORT-COMPLETE] Thumbnail URL: {thumbnail_url}")
+
             except Exception as e:
                 logger.error(f"[IMPORT-COMPLETE] Failed to download cover: {e}")
                 import traceback
                 logger.error(f"[IMPORT-COMPLETE] Traceback: {traceback.format_exc()}")
                 cover_image_url = None
+                thumbnail_url = None
         else:
             logger.warning(f"[IMPORT-COMPLETE] No valid Gumroad image URL found. gumroad_image_url={gumroad_image_url}")
 
@@ -1220,6 +1236,7 @@ async def import_complete(request: ImportCompleteRequest):
             'file_size': request.file_size,
             'file_name': request.file_name,
             'cover_image_url': cover_image_url,
+            'thumbnail_url': thumbnail_url,
             'imported_from': metadata.get('imported_from', 'gumroad'),
             'imported_url': metadata.get('imported_url'),
             'source_profile': source_profile,
