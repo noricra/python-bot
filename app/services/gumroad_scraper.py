@@ -302,17 +302,17 @@ def parse_nextjs_product(product_data: dict, profile_url: str) -> Optional[Dict]
 
         logger.info(f"[GUMROAD] Product '{title}' - image_url: {image_url} (from thumbnail_url={product_data.get('thumbnail_url')}, cover_image_url={product_data.get('cover_image_url')}, preview_url={product_data.get('preview_url')})")
 
-        # URL produit
+        # URL produit avec ?layout=profile pour acceder à la description complete
         permalink = product_data.get('permalink')
         if permalink:
             # Extraire username depuis profile_url
             # Ex: https://tallguytycoon.gumroad.com -> tallguytycoon
             if '.gumroad.com' in profile_url:
                 username = profile_url.split('//')[1].split('.gumroad.com')[0]
-                product_url = f"https://{username}.gumroad.com/l/{permalink}"
+                product_url = f"https://{username}.gumroad.com/l/{permalink}?layout=profile"
             else:
                 # Fallback pour format https://gumroad.com/username
-                product_url = f"https://gumroad.com/l/{permalink}"
+                product_url = f"https://gumroad.com/l/{permalink}?layout=profile"
         else:
             product_url = None
 
