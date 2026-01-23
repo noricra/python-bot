@@ -1215,13 +1215,19 @@ async def import_complete(request: ImportCompleteRequest):
                 if cover_image_url:
                     thumbnail_url = cover_image_url.replace('/cover.jpg', '/thumb.jpg')
                     logger.info(f"[IMPORT-COMPLETE] Thumbnail URL: {thumbnail_url}")
+                else:
+                    logger.warning(f"[IMPORT-COMPLETE] download_cover_image returned None, using Gumroad URL as fallback")
+                    cover_image_url = gumroad_image_url
+                    thumbnail_url = gumroad_image_url
 
             except Exception as e:
                 logger.error(f"[IMPORT-COMPLETE] Failed to download cover: {e}")
                 import traceback
                 logger.error(f"[IMPORT-COMPLETE] Traceback: {traceback.format_exc()}")
-                cover_image_url = None
-                thumbnail_url = None
+                # FALLBACK: Utiliser URL Gumroad si R2 upload echoue
+                logger.warning(f"[IMPORT-COMPLETE] Using Gumroad URL as fallback: {gumroad_image_url}")
+                cover_image_url = gumroad_image_url
+                thumbnail_url = gumroad_image_url
         else:
             logger.warning(f"[IMPORT-COMPLETE] No valid Gumroad image URL found. gumroad_image_url={gumroad_image_url}")
 
