@@ -665,8 +665,10 @@ def extract_products_from_scripts(soup: BeautifulSoup, profile_url: str) -> List
                                     if product:
                                         products.append(product)
 
-                                if products:
-                                    return products  # Retourne des que produits trouves
+                                # Ne pas retourner immédiatement - continuer pour potentiellement trouver plus
+                                # Le return se fera à la fin de la fonction
+                                # if products:
+                                #     return products  # SUPPRIMÉ - bloquait l'enrichissement
 
                         except json.JSONDecodeError:
                             continue
