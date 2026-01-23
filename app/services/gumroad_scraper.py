@@ -294,10 +294,12 @@ def parse_nextjs_product(product_data: dict, profile_url: str) -> Optional[Dict]
             logger.warning(f"[GUMROAD] AUCUNE DESCRIPTION TROUVÉE - Tous les champs description vides")
 
         # Image - Ensure absolute URL
+        # Essayer plusieurs sources (profil vs page produit ont structures differentes)
         image_url = (
             product_data.get('thumbnail_url') or
             product_data.get('cover_image_url') or
-            product_data.get('preview_url')
+            product_data.get('preview_url') or
+            (product_data.get('covers', [{}])[0].get('url') if product_data.get('covers') else None)
         )
 
         # Ensure image URL is absolute
