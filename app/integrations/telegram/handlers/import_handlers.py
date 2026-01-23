@@ -330,9 +330,9 @@ class ImportHandlers:
         sales_count = product.get('sales_count', 0)
         views_count = product.get('views_count', 0)
 
-        # Truncate description (200 chars max)
-        if len(description) > 200:
-            description = description[:197] + '...'
+        # Truncate description (150 chars max pour caption Telegram 1024 limit)
+        if len(description) > 150:
+            description = description[:147] + '...'
 
         # Echapper HTML entities
         title_html = self._escape_html(title)
