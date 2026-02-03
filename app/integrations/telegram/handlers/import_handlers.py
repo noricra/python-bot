@@ -836,9 +836,15 @@ class ImportHandlers:
             # Download cover image si existe
             cover_url = None
             gumroad_image_url = product.get('image_url')
+            gumroad_product_url = product.get('gumroad_url')
             if gumroad_image_url:
                 try:
-                    cover_url = await download_cover_image(gumroad_image_url, product_id, seller_id=user_id)
+                    cover_url = await download_cover_image(
+                        gumroad_image_url,
+                        product_id,
+                        seller_id=user_id,
+                        referer_url=gumroad_product_url
+                    )
                 except Exception as e:
                     logger.warning(f"Failed download cover to R2: {e}")
                     # FALLBACK: Utiliser URL Gumroad directement si R2 upload echoue
