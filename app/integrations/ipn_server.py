@@ -1123,6 +1123,7 @@ class ImportCompleteRequest(BaseModel):
     user_id: int
     telegram_init_data: str
     product_metadata: dict  # {title, description, price, category, imported_from, imported_url, cover_image_url}
+    preview_url: Optional[str] = None  # URL apercu PDF genere cote client
 
 
 @app.post("/api/import-complete")
@@ -1251,12 +1252,13 @@ async def import_complete(request: ImportCompleteRequest):
             'file_name': request.file_name,
             'cover_image_url': cover_image_url,
             'thumbnail_url': thumbnail_url,
+            'preview_url': request.preview_url,
             'imported_from': metadata.get('imported_from', 'gumroad'),
             'imported_url': metadata.get('imported_url'),
             'source_profile': source_profile,
         }
 
-        logger.info(f"[IMPORT-COMPLETE] Creating product: {product_data['title']}")
+        logger.info(f"[IMPORT-COMPLETE] Creating product: {product_data['title']} cover={cover_image_url} thumb={thumbnail_url} preview={request.preview_url}")
 
         # Create product
         returned_product_id = bot_instance.create_product(product_data)
