@@ -1167,9 +1167,10 @@ async def import_complete(request: ImportCompleteRequest):
         user_state = bot_instance.get_user_state(request.user_id)
         source_profile = user_state.get('import_source_url', '')
 
-        # Generate product_id
-        from app.core.utils import generate_product_id
-        product_id = generate_product_id()
+        # Extraire product_id depuis object_key (genere par generate-upload-url)
+        # Format: products/{user_id}/{product_id}/main_file.ext
+        product_id = request.object_key.split('/')[2]
+        logger.info(f"[IMPORT-COMPLETE] product_id extrait de object_key: {product_id}")
 
         # Prepare product data from metadata
         metadata = request.product_metadata
