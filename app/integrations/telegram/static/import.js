@@ -446,12 +446,26 @@ async function handleFileSelected(e) {
             }
         }
 
-        // 3. Upload main file
+        // 3. Upload cover image from Gumroad to R2
+        let coverObjectKey = null;
+        try {
+            coverObjectKey = await uploadCoverToB2(productId);
+            if (coverObjectKey) {
+                product.cover_object_key = coverObjectKey;
+                console.log('[IMPORT] Cover object key:', coverObjectKey);
+            } else {
+                console.warn('[IMPORT] Cover not uploaded, backend will use fallback');
+            }
+        } catch (e) {
+            console.warn('[IMPORT] Cover upload error (non-blocking):', e.message);
+        }
+
+        // 4. Upload main file
         progressPercent.textContent = '0%';
         console.log('[IMPORT] Uploading main file to:', uploadData.object_key);
         await uploadFileToB2(file, uploadData);
 
-        // 4. Notify backend
+        // 5. Notify backend
         await notifyImportComplete(uploadData.object_key, file.name, file.size, previewUrl, product);
 
         // Success
@@ -620,6 +634,52 @@ async function uploadFileToB2(file, uploadData) {
     });
 }
 
+// Upload cover image from Gumroad directly to R2 (client-side, comme le preview PDF)
+async function uploadCoverToB2(productId) {
+    const product = products[currentIndex];
+    const imageUrl = product.cover_image_url || product.image_url;
+    if (!imageUrl) {
+        console.log('[IMPORT] No cover image URL available');
+        return null;
+    }
+
+    try {
+        console.log('[IMPORT] Fetching cover image from Gumroad...');
+        const imgResponse = await fetch(imageUrl);
+        if (!imgResponse.ok) {
+            console.warn('[IMPORT] Cover fetch failed:', imgResponse.status);
+            return null;
+        }
+        const imageBlob = await imgResponse.blob();
+        console.log('[IMPORT] Cover image fetched, size:', imageBlob.size, 'type:', imageBlob.type);
+
+        const contentType = imageBlob.type || 'image/jpeg';
+
+        // Upload cover.jpg
+        const coverKey = `products/${userId}/${productId}/cover.jpg`;
+        const coverUpload = await getB2UploadUrlForPath(coverKey, contentType);
+        if (!coverUpload) {
+            console.warn('[IMPORT] Failed to get presigned URL for cover');
+            return null;
+        }
+        await uploadFileToB2(imageBlob, coverUpload);
+        console.log('[IMPORT] Cover uploaded to R2:', coverKey);
+
+        // Upload thumb.jpg (meme fichier, meme pattern que download_cover_image serverside)
+        const thumbKey = `products/${userId}/${productId}/thumb.jpg`;
+        const thumbUpload = await getB2UploadUrlForPath(thumbKey, contentType);
+        if (thumbUpload) {
+            await uploadFileToB2(imageBlob, thumbUpload);
+            console.log('[IMPORT] Thumb uploaded to R2:', thumbKey);
+        }
+
+        return coverKey;
+    } catch (e) {
+        console.warn('[IMPORT] Cover upload to R2 failed:', e.message);
+        return null;
+    }
+}
+
 // Notify Backend Import Complete
 async function notifyImportComplete(objectKey, fileName, fileSize, previewUrl, product) {
     console.log('[IMPORT] Notifying server...');
@@ -637,7 +697,8 @@ async function notifyImportComplete(objectKey, fileName, fileSize, previewUrl, p
             category: product.category,
             imported_from: 'gumroad',
             imported_url: product.gumroad_url,
-            cover_image_url: product.cover_image_url || product.image_url
+            cover_image_url: product.cover_image_url || product.image_url,
+            cover_object_key: product.cover_object_key || null
         }
     };
 
