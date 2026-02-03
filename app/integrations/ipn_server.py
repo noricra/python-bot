@@ -1198,44 +1198,45 @@ async def import_complete(request: ImportCompleteRequest):
         finally:
             put_connection(conn)
 
-        # Download cover image from Gumroad URL to R2 (only when actually importing)
+        # Cover image : uploadee par le frontend (mini-app) directement sur R2
         cover_image_url = None
         thumbnail_url = None
-        gumroad_image_url = metadata.get('cover_image_url') or metadata.get('image_url')
-        gumroad_product_url = metadata.get('imported_url') or metadata.get('gumroad_url')
-        logger.info(f"[IMPORT-COMPLETE] Image metadata - cover_image_url: {metadata.get('cover_image_url')}, image_url: {metadata.get('image_url')}, product_url: {gumroad_product_url}")
+        cover_object_key = metadata.get('cover_object_key')
 
-        if gumroad_image_url and gumroad_image_url.startswith('http'):
-            try:
-                logger.info(f"[IMPORT-COMPLETE] Downloading cover from Gumroad: {gumroad_image_url} (referer: {gumroad_product_url})")
-                from app.services.gumroad_scraper import download_cover_image
-                cover_image_url = await download_cover_image(
-                    gumroad_image_url,
-                    product_id,
-                    seller_id=request.user_id,
-                    referer_url=gumroad_product_url
-                )
-                logger.info(f"[IMPORT-COMPLETE] Cover uploaded to R2: {cover_image_url}")
+        if cover_object_key:
+            # Cas principal : frontend a uploade l'image sur R2, on reconstruit l'URL
+            if b2.storage_type == 'r2':
+                custom_domain = os.getenv('R2_CUSTOM_DOMAIN', 'https://media.uzeur.com')
+                cover_image_url = f"{custom_domain}/{cover_object_key}"
+            else:
+                cover_image_url = f"{core_settings.B2_ENDPOINT}/{b2.bucket_name}/{cover_object_key}"
+            thumbnail_url = cover_image_url.replace('/cover.jpg', '/thumb.jpg')
+            logger.info(f"[IMPORT-COMPLETE] Cover from frontend upload: {cover_image_url}")
+        else:
+            # Fallback : essayer de telecharger depuis Gumroad server-side
+            gumroad_image_url = metadata.get('cover_image_url') or metadata.get('image_url')
+            gumroad_product_url = metadata.get('imported_url') or metadata.get('gumroad_url')
+            logger.warning(f"[IMPORT-COMPLETE] No cover_object_key, fallback download. gumroad_image_url={gumroad_image_url}")
 
-                # Construire thumbnail_url (meme structure que cover mais thumb.jpg)
-                if cover_image_url:
-                    thumbnail_url = cover_image_url.replace('/cover.jpg', '/thumb.jpg')
-                    logger.info(f"[IMPORT-COMPLETE] Thumbnail URL: {thumbnail_url}")
-                else:
-                    logger.warning(f"[IMPORT-COMPLETE] download_cover_image returned None, using Gumroad URL as fallback")
+            if gumroad_image_url and gumroad_image_url.startswith('http'):
+                try:
+                    from app.services.gumroad_scraper import download_cover_image
+                    cover_image_url = await download_cover_image(
+                        gumroad_image_url,
+                        product_id,
+                        seller_id=request.user_id,
+                        referer_url=gumroad_product_url
+                    )
+                    if cover_image_url:
+                        thumbnail_url = cover_image_url.replace('/cover.jpg', '/thumb.jpg')
+                        logger.info(f"[IMPORT-COMPLETE] Cover downloaded server-side: {cover_image_url}")
+                    else:
+                        cover_image_url = gumroad_image_url
+                        thumbnail_url = gumroad_image_url
+                except Exception as e:
+                    logger.error(f"[IMPORT-COMPLETE] Server-side cover download failed: {e}")
                     cover_image_url = gumroad_image_url
                     thumbnail_url = gumroad_image_url
-
-            except Exception as e:
-                logger.error(f"[IMPORT-COMPLETE] Failed to download cover: {e}")
-                import traceback
-                logger.error(f"[IMPORT-COMPLETE] Traceback: {traceback.format_exc()}")
-                # FALLBACK: Utiliser URL Gumroad si R2 upload echoue
-                logger.warning(f"[IMPORT-COMPLETE] Using Gumroad URL as fallback: {gumroad_image_url}")
-                cover_image_url = gumroad_image_url
-                thumbnail_url = gumroad_image_url
-        else:
-            logger.warning(f"[IMPORT-COMPLETE] No valid Gumroad image URL found. gumroad_image_url={gumroad_image_url}")
 
         product_data = {
             'product_id': product_id,
@@ -1265,34 +1266,22 @@ async def import_complete(request: ImportCompleteRequest):
             # Send email notifications
             try:
                 from app.core.email_service import EmailService
-                from app.domain.repositories.product_repo import ProductRepository
                 from app.domain.repositories.user_repo import UserRepository
 
                 email_service = EmailService()
-                product_repo = ProductRepository()
                 user_repo = UserRepository()
 
                 user_data = user_repo.get_user(request.user_id)
 
                 if user_data and user_data.get('email'):
-                    # Email creation produit
-                    await email_service.send_product_created_confirmation(
+                    await email_service.send_product_added_email(
                         to_email=user_data['email'],
                         seller_name=user_data.get('seller_name', 'Vendeur'),
                         product_title=product_data['title'],
                         product_price=f"{product_data['price_usd']:.2f}",
                         product_id=returned_product_id
                     )
-
-                    # Email premier produit si applicable
-                    total_products = product_repo.count_products_by_seller(request.user_id)
-                    if total_products == 1:
-                        await email_service.send_first_product_published_notification(
-                            to_email=user_data['email'],
-                            seller_name=user_data.get('seller_name', 'Vendeur'),
-                            product_title=product_data['title'],
-                            product_price=product_data['price_usd']
-                        )
+                    logger.info(f"[IMPORT-COMPLETE] Email produit ajout envoye a {user_data['email']}")
             except Exception as e:
                 logger.error(f"[IMPORT-COMPLETE] Erreur envoi emails produit: {e}")
 
