@@ -832,7 +832,7 @@ def parse_price(price_str: str) -> float:
         return 0.0
 
 
-async def download_cover_image(image_url: str, product_id: str, seller_id: int = None) -> str:
+async def download_cover_image(image_url: str, product_id: str, seller_id: int = None, referer_url: str = None) -> str:
     """
     Telecharger image cover vers B2/R2 ET creer cache local
 
@@ -845,6 +845,7 @@ async def download_cover_image(image_url: str, product_id: str, seller_id: int =
         image_url: URL image Gumroad
         product_id: ID produit genere
         seller_id: ID vendeur (optionnel, pour cache local)
+        referer_url: URL de la page produit Gumroad (pour contourner protections Referer)
 
     Returns:
         URL B2/R2 de l'image uploadee
@@ -854,8 +855,21 @@ async def download_cover_image(image_url: str, product_id: str, seller_id: int =
     """
     from app.services.b2_storage_service import B2StorageService
 
+    # Headers anti-detection avec Referer Gumroad (CRITIQUE pour contourner protections)
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate',
+        'Referer': referer_url if referer_url else 'https://gumroad.com/',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'image',
+        'Sec-Fetch-Mode': 'no-cors',
+        'Sec-Fetch-Site': 'same-site',
+        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
     }
 
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
