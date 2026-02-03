@@ -1202,13 +1202,19 @@ async def import_complete(request: ImportCompleteRequest):
         cover_image_url = None
         thumbnail_url = None
         gumroad_image_url = metadata.get('cover_image_url') or metadata.get('image_url')
-        logger.info(f"[IMPORT-COMPLETE] Image metadata - cover_image_url: {metadata.get('cover_image_url')}, image_url: {metadata.get('image_url')}")
+        gumroad_product_url = metadata.get('imported_url') or metadata.get('gumroad_url')
+        logger.info(f"[IMPORT-COMPLETE] Image metadata - cover_image_url: {metadata.get('cover_image_url')}, image_url: {metadata.get('image_url')}, product_url: {gumroad_product_url}")
 
         if gumroad_image_url and gumroad_image_url.startswith('http'):
             try:
-                logger.info(f"[IMPORT-COMPLETE] Downloading cover from Gumroad: {gumroad_image_url}")
+                logger.info(f"[IMPORT-COMPLETE] Downloading cover from Gumroad: {gumroad_image_url} (referer: {gumroad_product_url})")
                 from app.services.gumroad_scraper import download_cover_image
-                cover_image_url = await download_cover_image(gumroad_image_url, product_id, seller_id=request.user_id)
+                cover_image_url = await download_cover_image(
+                    gumroad_image_url,
+                    product_id,
+                    seller_id=request.user_id,
+                    referer_url=gumroad_product_url
+                )
                 logger.info(f"[IMPORT-COMPLETE] Cover uploaded to R2: {cover_image_url}")
 
                 # Construire thumbnail_url (meme structure que cover mais thumb.jpg)
