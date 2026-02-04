@@ -908,15 +908,13 @@ async def download_cover_image(image_url: str, product_id: str, seller_id: int =
                 # Upload vers B2/R2
                 b2 = B2StorageService()
 
-                # Structure R2: products/{seller_id}/{product_id}/cover.jpg (et thumb.jpg)
-                # Si seller_id non fourni, utiliser structure temporaire
-                if seller_id:
-                    cover_key = f"products/{seller_id}/{product_id}/cover.jpg"
-                    thumb_key = f"products/{seller_id}/{product_id}/thumb.jpg"
-                else:
-                    # Fallback: structure import temporaire (sera migre plus tard)
-                    cover_key = f"products/imported/gumroad/{product_id}/cover.{ext}"
-                    thumb_key = f"products/imported/gumroad/{product_id}/thumb.{ext}"
+                # Structure: products/{seller_id}/{product_id}/cover.jpg
+                if not seller_id:
+                    logger.error(f"[GUMROAD] seller_id requis pour upload cover, product_id={product_id}")
+                    return None
+
+                cover_key = f"products/{seller_id}/{product_id}/cover.jpg"
+                thumb_key = f"products/{seller_id}/{product_id}/thumb.jpg"
 
                 # Upload cover
                 cover_url = await b2.upload_file(temp_path, cover_key)
