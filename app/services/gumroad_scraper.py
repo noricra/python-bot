@@ -280,8 +280,11 @@ def parse_nextjs_product(product_data: dict, profile_url: str) -> Optional[Dict]
                 # Si c'est un champ HTML, nettoyer immédiatement
                 if 'html' in field_name.lower() or '<' in field_value:
                     from bs4 import BeautifulSoup
+                    import re as _re
                     soup = BeautifulSoup(field_value, 'lxml')
-                    description = soup.get_text(separator=' ', strip=True)
+                    description = soup.get_text(separator='\n', strip=True)
+                    # Nettoyer les lignes vides consecutives
+                    description = _re.sub(r'\n{3,}', '\n\n', description).strip()
                     logger.info(f"[GUMROAD] Description HTML nettoyée depuis '{field_name}': {len(description)} caractères")
                 else:
                     description = field_value
@@ -382,6 +385,23 @@ def auto_categorize(title: str, description: str) -> str:
     return None
 
 
+def _extract_gumroad_stats(product_data: dict) -> dict:
+    """Extraire rating/reviews/sales depuis product_data Gumroad (profile ou page individuelle)."""
+    rating = product_data.get('average_rating', 0) or product_data.get('rating', 0)
+    reviews_count = product_data.get('reviews_count', 0) or product_data.get('ratings_count', 0)
+    sales_count = (
+        product_data.get('sales_count') or
+        product_data.get('sales') or
+        product_data.get('purchases_count') or
+        0
+    )
+    return {
+        'rating': float(rating) if rating else 0.0,
+        'reviews_count': int(reviews_count) if reviews_count else 0,
+        'sales_count': int(sales_count) if sales_count else 0,
+    }
+
+
 async def enrich_products_parallel(client: httpx.AsyncClient, products: List[Dict], headers: dict) -> List[Dict]:
     """
     Deep scraping parallele pour enrichir produits avec descriptions completes
@@ -416,22 +436,34 @@ async def enrich_products_parallel(client: httpx.AsyncClient, products: List[Dic
     full_descriptions = await asyncio.gather(*tasks, return_exceptions=True)
     logger.info(f"[GUMROAD] Parallel requests completed")
 
-    # Fusionner descriptions avec produits
+    # Fusionner descriptions et stats avec produits
     enriched_products = []
     for idx, product in enumerate(products):
-        desc = full_descriptions[idx]
+        result = full_descriptions[idx]
         product_title = product.get('title', 'Unknown')
 
-        # Si erreur ou pas de description, garder description courte
-        if isinstance(desc, Exception):
-            logger.warning(f"[GUMROAD] Failed to fetch description for '{product_title}': {desc}")
+        if isinstance(result, Exception):
+            logger.warning(f"[GUMROAD] Failed to fetch description for '{product_title}': {result}")
             product['full_description'] = product.get('description', '')
-            logger.info(f"[GUMROAD] Product '{product_title}' - Using short description ({len(product.get('description', ''))} chars)")
-        elif desc:
-            product['full_description'] = desc
-            # Remplacer description courte par complete
-            product['description'] = clean_html_for_telegram(desc)
-            logger.info(f"[GUMROAD] Product '{product_title}' - Enriched with full description ({len(desc)} chars)")
+        elif isinstance(result, dict):
+            # Nouveau format: description + stats depuis page individuelle
+            desc = result.get('description', '')
+            stats = result.get('stats')
+            if desc:
+                product['full_description'] = desc
+                product['description'] = clean_html_for_telegram(desc)
+                logger.info(f"[GUMROAD] Product '{product_title}' - Enriched with full description ({len(desc)} chars)")
+            # Merger stats si extraites (valeurs non-nulles uniquement)
+            if stats:
+                for key in ('rating', 'reviews_count', 'sales_count'):
+                    if stats.get(key):
+                        product[key] = stats[key]
+                logger.info(f"[GUMROAD] Product '{product_title}' - Stats merged: {stats}")
+        elif result:
+            # Ancien format: string seulement (fallbacks HTML/OG/meta)
+            product['full_description'] = result
+            product['description'] = clean_html_for_telegram(result)
+            logger.info(f"[GUMROAD] Product '{product_title}' - Enriched with fallback description ({len(result)} chars)")
         else:
             product['full_description'] = product.get('description', '')
             logger.warning(f"[GUMROAD] Product '{product_title}' - No full description found, using short ({len(product.get('description', ''))} chars)")
@@ -518,7 +550,9 @@ async def fetch_full_description(client: httpx.AsyncClient, product_url: str, he
 
                 if description_html:
                     logger.info(f"[GUMROAD] Found description in __NEXT_DATA__ ({len(description_html)} chars) for {product_url}")
-                    return description_html
+                    stats = _extract_gumroad_stats(product_data)
+                    logger.info(f"[GUMROAD] Stats from individual page: {stats}")
+                    return {'description': description_html, 'stats': stats}
                 else:
                     logger.warning(f"[GUMROAD] __NEXT_DATA__ found but no description_html/description fields for {product_url}")
             except json.JSONDecodeError as e:
@@ -544,11 +578,11 @@ async def fetch_full_description(client: httpx.AsyncClient, product_url: str, he
 
                             desc_html = product_data.get('description_html', '')
                             if desc_html:
-                                # json.loads() a deja decode les Unicode escapes (\u003c → <)
-                                # desc_html contient deja du HTML valide avec balises
                                 logger.info(f"[GUMROAD] SUCCESS - Found description_html in React component ({len(desc_html)} chars) for {product_url}")
                                 logger.info(f"[GUMROAD] Description preview: {desc_html[:200]}...")
-                                return desc_html
+                                stats = _extract_gumroad_stats(product_data)
+                                logger.info(f"[GUMROAD] Stats from React component: {stats}")
+                                return {'description': desc_html, 'stats': stats}
                             else:
                                 logger.warning(f"[GUMROAD] React component found but description_html is empty")
                         except json.JSONDecodeError as e:
@@ -790,12 +824,13 @@ def clean_html_for_telegram(html_text: str) -> str:
     # Parser HTML avec BeautifulSoup
     soup = BeautifulSoup(html_text, 'lxml')
 
-    # Extraire UNIQUEMENT le texte (sans balises HTML)
-    # get_text() convertit tout en texte pur
-    cleaned_text = soup.get_text(separator=' ', strip=True)
+    # Extraire le texte avec retours a la ligne entre blocs
+    import re as _re
+    cleaned_text = soup.get_text(separator='\n', strip=True)
 
-    # Nettoyer espaces multiples
-    cleaned_text = ' '.join(cleaned_text.split())
+    # Nettoyer: espaces multiples sur chaque ligne, puis lignes vides consecutives
+    lines = [' '.join(line.split()) for line in cleaned_text.split('\n')]
+    cleaned_text = _re.sub(r'\n{3,}', '\n\n', '\n'.join(lines)).strip()
 
     # Limiter longueur (Telegram max 4096 chars)
     if len(cleaned_text) > 4000:
