@@ -91,23 +91,27 @@ def cleanup_old_deleted_products(dry_run: bool = False) -> Dict:
                     stats['cleaned'] += 1
                     continue
 
-                # 1. Delete B2 main file
-                if main_file_url:
-                    success = b2.delete_file(main_file_url)
+                # 1. Delete B2 main file (main_file_url est une URL pleine, extraire object_key)
+                if main_file_url and 'products/' in main_file_url:
+                    main_object_key = 'products/' + main_file_url.split('products/', 1)[1]
+                    success = b2.delete_file(main_object_key)
                     if success:
-                        logger.info(f"   ✅ Deleted B2 file: {main_file_url}")
+                        logger.info(f"   ✅ Deleted B2 file: {main_object_key}")
                         stats['b2_files_deleted'] += 1
                     else:
-                        logger.warning(f"   ⚠️ Failed to delete B2 file: {main_file_url}")
+                        logger.warning(f"   ⚠️ Failed to delete B2 file: {main_object_key}")
 
-                # 2. Delete B2 images
-                cover_b2_key = f"products/{product_id}/cover.jpg"
-                thumb_b2_key = f"products/{product_id}/thumb.jpg"
+                # 2. Delete B2 images (chemin: products/{seller_user_id}/{product_id}/...)
+                image_keys = [
+                    f"products/{seller_user_id}/{product_id}/cover.jpg",
+                    f"products/{seller_user_id}/{product_id}/thumb.jpg",
+                    f"products/{seller_user_id}/{product_id}/preview.png",
+                ]
 
-                b2.delete_file(cover_b2_key)
-                b2.delete_file(thumb_b2_key)
+                for key in image_keys:
+                    if b2.delete_file(key):
+                        stats['b2_files_deleted'] += 1
                 logger.info(f"   ✅ Deleted B2 images: {product_id}")
-                stats['b2_files_deleted'] += 2
 
                 # 3. Delete local images directory
                 local_dir = os.path.join('data', 'product_images', str(seller_user_id), product_id)
