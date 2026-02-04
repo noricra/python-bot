@@ -1,6 +1,7 @@
 """Sell Handlers - Modular class with dependency injection"""
 
 import os
+import html
 import logging
 import asyncio  # <--- AJOUT CRITIQUE
 import psycopg2
@@ -893,44 +894,40 @@ class SellHandlers:
         # Caption builder for seller carousel
         def build_caption(product, lang):
             status_icon = "✅" if product['status'] == 'active' else "❌"
-            status_text = "**ACTIF**" if product['status'] == 'active' else "_Inactif_"
+            status_text = "<b>ACTIF</b>" if product['status'] == 'active' else "<i>Inactif</i>"
 
-            # Echapper titre et description pour eviter parsing errors Telegram
-            title_escaped = SellHandlers._escape_markdown(product['title'])
-            category_escaped = SellHandlers._escape_markdown(product.get('category', ''))
+            title_escaped = html.escape(product['title'])
+            category_escaped = html.escape(product.get('category', ''))
 
             caption = ""
-            breadcrumb = f"📂 _Mes Produits" + (f" › {category_escaped}_" if category_escaped else "_")
-            caption += f"{breadcrumb}\n\n"
-            caption += f"{status_icon} **{title_escaped}**\n\n"
-            caption += f" **${product['price_usd']:.2f}** •  {status_text}\n"
+            caption += f"📂 <i>Mes Produits{f' › {category_escaped}' if category_escaped else ''}</i>\n\n"
+            caption += f"{status_icon} <b>{title_escaped}</b>\n\n"
+            caption += f" <b>${product['price_usd']:.2f}</b> •  {status_text}\n"
             caption += "────────────────\n\n"
-            caption += "📊 **PERFORMANCE**\n"
-            caption += f"• **{product.get('sales_count', 0)}** ventes"
+            caption += "📊 <b>PERFORMANCE</b>\n"
+            caption += f"• <b>{product.get('sales_count', 0)}</b> ventes"
 
             views = product.get('views_count', 0)
             sales = product.get('sales_count', 0)
             if views > 0 and sales > 0:
                 conversion_rate = (sales / views) * 100
-                caption += f" • Conversion: **{conversion_rate:.1f}%**"
-            caption += f"\n• **{views}** vues"
+                caption += f" • Conversion: <b>{conversion_rate:.1f}%</b>"
+            caption += f"\n• <b>{views}</b> vues"
 
             if product.get('rating', 0) > 0:
                 rating_stars = "⭐" * int(product.get('rating', 0))
-                caption += f"\n• {rating_stars} **{product.get('rating', 0):.1f}**/5"
+                caption += f"\n• {rating_stars} <b>{product.get('rating', 0):.1f}</b>/5"
                 if product.get('reviews_count', 0) > 0:
-                    caption += f" _({product.get('reviews_count', 0)} avis)_"
+                    caption += f" <i>({product.get('reviews_count', 0)} avis)</i>"
             caption += "\n\n"
 
             if product.get('description'):
                 desc = product['description']
                 if len(desc) > 160:
                     desc = desc[:160].rsplit(' ', 1)[0] + "..."
-                # Echapper description
-                desc_escaped = SellHandlers._escape_markdown(desc)
-                caption += f"{desc_escaped}\n\n"
+                caption += f"{html.escape(desc)}\n\n"
 
-            caption += f"📂 _{category_escaped if category_escaped else 'N/A'}_  •  📁 {product.get('file_size_mb', 0):.1f} MB"
+            caption += f"📂 <i>{category_escaped if category_escaped else 'N/A'}</i>  •  📁 {product.get('file_size_mb', 0):.1f} MB"
             return caption
 
         # Keyboard builder for seller carousel
@@ -995,7 +992,7 @@ class SellHandlers:
             caption_builder=build_caption,
             keyboard_builder=build_keyboard,
             lang=lang,
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
 
     async def show_my_products(self, bot, query, lang: str, page: int = 0):
