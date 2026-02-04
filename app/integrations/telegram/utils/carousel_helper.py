@@ -109,6 +109,7 @@ class CarouselHelper:
         product_id = product.get('product_id')
         seller_id = product.get('seller_user_id')
         thumbnail_url = product.get('thumbnail_url')
+        cover_image_url = product.get('cover_image_url')
 
         # 1. PRIORITY: Check Telegram file_id cache
         if product_id:
@@ -125,7 +126,6 @@ class CarouselHelper:
 
         # 2. Check if thumbnail_url is B2 URL
         if thumbnail_url and thumbnail_url.startswith('https://'):
-            # logger.info(f"🌐 Thumbnail is B2 URL: {product_id}")
             # Try to download from B2 to local cache
             if product_id and seller_id:
                 try:
@@ -137,10 +137,21 @@ class CarouselHelper:
                         image_type='thumb'
                     )
                     if local_path and os.path.exists(local_path):
-                        # logger.info(f"📥 Downloaded from B2: {product_id}")
                         return (local_path, False)
                 except Exception as e:
                     logger.warning(f"⚠️ B2 download failed: {e}")
+
+            # Fallback : utiliser l'URL directement (produits importes sans cache local)
+            logger.info(f"[CAROUSEL] Using thumbnail_url directly for {product_id}")
+            return (thumbnail_url, False)
+
+        # 2.5. Check cover_image_url (produits sans thumbnail_url)
+        if cover_image_url:
+            if cover_image_url.startswith('http'):
+                logger.info(f"[CAROUSEL] Using external cover_image_url for {product_id}")
+                return (cover_image_url, False)
+            elif os.path.exists(cover_image_url):
+                return (cover_image_url, False)
 
         # 3. Check if thumbnail exists locally
         if thumbnail_url and os.path.exists(thumbnail_url):
@@ -162,6 +173,25 @@ class CarouselHelper:
                     return (b2_path, False)
             except Exception as e:
                 logger.warning(f"⚠️ Could not download from B2: {e}")
+
+        # 4.5. Construire URL directe vers object storage (produits sans thumbnail_url en DB)
+        if product_id and seller_id:
+            try:
+                from app.services.b2_storage_service import B2StorageService
+                b2 = B2StorageService()
+                thumb_key = f"products/{seller_id}/{product_id}/thumb.jpg"
+
+                if b2.storage_type == 'r2':
+                    custom_domain = os.getenv('R2_CUSTOM_DOMAIN', 'https://media.uzeur.com')
+                    constructed_url = f"{custom_domain}/{thumb_key}"
+                else:
+                    from app.core import settings as core_settings
+                    constructed_url = f"{core_settings.B2_ENDPOINT}/{b2.bucket_name}/{thumb_key}"
+
+                logger.info(f"[CAROUSEL] Constructed fallback URL for {product_id}: {constructed_url}")
+                return (constructed_url, False)
+            except Exception as e:
+                logger.warning(f"[CAROUSEL] Could not construct fallback URL: {e}")
 
         # 5. FALLBACK: generate placeholder
         try:
@@ -217,6 +247,17 @@ class CarouselHelper:
                         )
                         # ✅ Acknowledge callback to dismiss loading animation
                         await query.answer()
+                    elif image_source.startswith('http'):
+                        # External URL (imported products from Gumroad, etc.)
+                        sent_message = await query.edit_message_media(
+                            media=InputMediaPhoto(
+                                media=image_source,
+                                caption=caption,
+                                parse_mode=parse_mode
+                            ),
+                            reply_markup=keyboard_markup
+                        )
+                        await query.answer()
                     elif os.path.exists(image_source):
                         # Send from local file
                         with open(image_source, 'rb') as photo_file:
@@ -252,6 +293,15 @@ class CarouselHelper:
                 if image_source:
                     if is_file_id:
                         # Use cached file_id
+                        sent_message = await bot.send_photo(
+                            chat_id=chat_id,
+                            photo=image_source,
+                            caption=caption,
+                            reply_markup=keyboard_markup,
+                            parse_mode=parse_mode
+                        )
+                    elif image_source.startswith('http'):
+                        # External URL
                         sent_message = await bot.send_photo(
                             chat_id=chat_id,
                             photo=image_source,
@@ -310,6 +360,15 @@ class CarouselHelper:
 
             if image_source:
                 if is_file_id:
+                    await bot.send_photo(
+                        chat_id=chat_id,
+                        photo=image_source,
+                        caption=caption,
+                        reply_markup=keyboard_markup,
+                        parse_mode=parse_mode
+                    )
+                elif image_source.startswith('http'):
+                    # External URL fallback
                     await bot.send_photo(
                         chat_id=chat_id,
                         photo=image_source,
