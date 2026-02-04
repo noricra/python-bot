@@ -2231,6 +2231,30 @@ class SellHandlers:
             success = self.product_repo.delete_product(product_id, seller_user_id)
 
             if success:
+                # Supprimer fichiers de l'object storage
+                try:
+                    from app.services.b2_storage_service import B2StorageService
+                    b2 = B2StorageService()
+
+                    # Chemins predictables pour cover/thumb/preview
+                    files_to_delete = [
+                        f"products/{seller_user_id}/{product_id}/cover.jpg",
+                        f"products/{seller_user_id}/{product_id}/thumb.jpg",
+                        f"products/{seller_user_id}/{product_id}/preview.png",
+                    ]
+
+                    # Extraire object_key du main_file_url (URL pleine R2 ou B2)
+                    main_file_url = product.get('main_file_url')
+                    if main_file_url and 'products/' in main_file_url:
+                        main_object_key = 'products/' + main_file_url.split('products/', 1)[1]
+                        files_to_delete.append(main_object_key)
+
+                    for key in files_to_delete:
+                        if b2.delete_file(key):
+                            logger.info(f"[DELETE] Supprime de l'object storage: {key}")
+                except Exception as e:
+                    logger.error(f"[DELETE] Erreur suppression fichiers object storage: {e}")
+
                 # Envoyer email de notification de suppression
                 try:
                     user_data = self.user_repo.get_user(seller_user_id)
