@@ -19,8 +19,8 @@ class ProductRepository:
             cursor.execute(
                 '''
                 INSERT INTO products
-                (product_id, seller_user_id, title, description, category, price_usd, main_file_url, file_size_mb, cover_image_url, thumbnail_url, preview_url, status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (product_id, seller_user_id, title, description, category, price_usd, main_file_url, file_size_mb, cover_image_url, thumbnail_url, preview_url, status, sales_count, rating, reviews_count, imported_rating, imported_reviews_count)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''',
                 (
                     product['product_id'],
@@ -35,6 +35,11 @@ class ProductRepository:
                     product.get('thumbnail_url'),
                     product.get('preview_url'),  # URL aperçu PDF généré côté client
                     product.get('status', 'active'),
+                    product.get('sales_count', 0),
+                    product.get('rating', 0),
+                    product.get('reviews_count', 0),
+                    product.get('imported_rating', 0),
+                    product.get('imported_reviews_count', 0),
                 ),
             )
 
@@ -413,12 +418,17 @@ class ProductRepository:
             'description': product_data.get('description', ''),
             'category': product_data.get('category', 'General'),
             'price_usd': product_data.get('price_usd', product_data.get('price_eur', 0)),  # USDT only
-            'main_file_url': product_data.get('main_file_url'),  # Will be updated after B2 upload
+            'main_file_url': product_data.get('main_file_url'),  # ✅ Utiliser URL fournie (miniapp) ou None (chat)
             'file_size_mb': round(product_data.get('file_size', 0) / (1024 * 1024), 2),
             'cover_image_url': product_data.get('cover_image_url'),
             'thumbnail_url': product_data.get('thumbnail_url'),
             'preview_url': product_data.get('preview_url'),  # PDF preview généré côté client
-            'status': 'active'
+            'status': 'active',
+            'sales_count': product_data.get('sales_count', 0),
+            'rating': product_data.get('rating', 0),
+            'reviews_count': product_data.get('reviews_count', 0),
+            'imported_rating': product_data.get('rating', 0) if product_data.get('imported_from') else 0,
+            'imported_reviews_count': product_data.get('reviews_count', 0) if product_data.get('imported_from') else 0,
         }
 
         if self.insert_product(product):
@@ -460,5 +470,68 @@ class ProductRepository:
             conn.rollback()
             logger.error(f"Error recalculating category counts: {e}")
             return False
+        finally:
+            put_connection(conn)
+
+    def create_product_from_import(
+        self,
+        product_id: str,
+        seller_id: int,
+        title: str,
+        description: str,
+        price_usd: float,
+        cover_image_url: Optional[str],
+        imported_from: str,
+        imported_url: Optional[str],
+        source_profile: str
+    ) -> str:
+        """
+        Creer produit depuis import externe (Gumroad, etc.)
+
+        Produit cree en status='draft' car fichiers manquants
+
+        Args:
+            product_id: ID genere
+            seller_id: User ID vendeur
+            title: Titre produit
+            description: Description
+            price_usd: Prix USD
+            cover_image_url: URL image R2 (peut etre None)
+            imported_from: Source ('gumroad', 'shopify', etc.)
+            imported_url: URL produit original
+            source_profile: URL profil source
+
+        Returns:
+            product_id cree
+
+        Raises:
+            Exception: Si insertion echoue
+        """
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute('''
+                INSERT INTO products (
+                    product_id, seller_user_id, title, description,
+                    price_usd, cover_image_url, status,
+                    imported_from, imported_url, source_profile,
+                    created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ''', (
+                product_id, seller_id, title, description,
+                price_usd, cover_image_url, 'draft',
+                imported_from, imported_url, source_profile
+            ))
+
+            conn.commit()
+            logger.info(f"Product imported: {product_id} from {imported_from}")
+
+            return product_id
+
+        except psycopg2.Error as e:
+            conn.rollback()
+            logger.error(f"Error creating imported product: {e}")
+            raise Exception(f"Failed to create imported product: {e}")
         finally:
             put_connection(conn)
