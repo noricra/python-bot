@@ -540,6 +540,28 @@ class DatabaseInitService:
             ('Outils & Tech', 'Logiciels, automatisation', '🔧')
         ]
 
-        try:
+       try:
             for cat_name, cat_desc, cat_icon in default_categories:
                 cursor.execute(
+                    '''INSERT INTO categories (name, description, icon)
+                       VALUES (%s, %s, %s)
+                       ON CONFLICT (name) DO NOTHING''',
+                    (cat_name, cat_desc, cat_icon)
+                )
+            conn.commit()
+            logger.debug("✅ Default categories inserted/verified (PostgreSQL)")
+
+        except Exception as e:
+            logger.error(f"❌ Error inserting default categories: {e}")
+            conn.rollback()
+            raise
+
+
+    # Backward compatibility function (will be removed in next phase)
+    def get_sqlite_connection(db_path: Optional[str] = None):
+        """
+        DEPRECATED: This function is kept for backward compatibility only
+        All new code should use get_postgresql_connection()
+        """
+        logger.warning("⚠️ get_sqlite_connection() is deprecated. Use get_postgresql_connection() instead.")
+        raise NotImplementedError("SQLite is no longer supported. Please use PostgreSQL.")
