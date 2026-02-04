@@ -540,7 +540,7 @@ class DatabaseInitService:
             ('Outils & Tech', 'Logiciels, automatisation', '🔧')
         ]
 
-       try:
+        try:
             for cat_name, cat_desc, cat_icon in default_categories:
                 cursor.execute(
                     '''INSERT INTO categories (name, description, icon)
@@ -557,11 +557,11 @@ class DatabaseInitService:
             raise
 
 
-    # Backward compatibility function (will be removed in next phase)
-    def get_sqlite_connection(db_path: Optional[str] = None):
-        """
-        DEPRECATED: This function is kept for backward compatibility only
-        All new code should use get_postgresql_connection()
-        """
-        logger.warning("⚠️ get_sqlite_connection() is deprecated. Use get_postgresql_connection() instead.")
-        raise NotImplementedError("SQLite is no longer supported. Please use PostgreSQL.")
+# Backward compatibility function (will be removed in next phase)
+def get_sqlite_connection(db_path: Optional[str] = None):
+    """
+    DEPRECATED: This function is kept for backward compatibility only
+    All new code should use get_postgresql_connection()
+    """
+    logger.warning("⚠️ get_sqlite_connection() is deprecated. Use get_postgresql_connection() instead.")
+    raise NotImplementedError("SQLite is no longer supported. Please use PostgreSQL.")
