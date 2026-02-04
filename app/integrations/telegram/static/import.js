@@ -698,7 +698,10 @@ async function notifyImportComplete(objectKey, fileName, fileSize, previewUrl, p
             imported_from: 'gumroad',
             imported_url: product.gumroad_url,
             cover_image_url: product.cover_image_url || product.image_url,
-            cover_object_key: product.cover_object_key || null
+            cover_object_key: product.cover_object_key || null,
+            rating: product.rating || 0,
+            reviews_count: product.reviews_count || 0,
+            sales_count: product.sales_count || 0
         }
     };
 
