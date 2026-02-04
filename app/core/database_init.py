@@ -178,6 +178,8 @@ class DatabaseInitService:
                     sales_count INTEGER DEFAULT 0,
                     rating REAL DEFAULT 0.0,
                     reviews_count INTEGER DEFAULT 0,
+                    imported_rating REAL DEFAULT 0.0,
+                    imported_reviews_count INTEGER DEFAULT 0,
                     status TEXT DEFAULT 'active',
                     deactivated_by_admin BOOLEAN DEFAULT FALSE,
                     admin_deactivation_reason TEXT,
@@ -205,6 +207,14 @@ class DatabaseInitService:
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                                    WHERE table_name='products' AND column_name='source_profile') THEN
                         ALTER TABLE products ADD COLUMN source_profile TEXT;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name='products' AND column_name='imported_rating') THEN
+                        ALTER TABLE products ADD COLUMN imported_rating REAL DEFAULT 0.0;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name='products' AND column_name='imported_reviews_count') THEN
+                        ALTER TABLE products ADD COLUMN imported_reviews_count INTEGER DEFAULT 0;
                     END IF;
                 END $$;
             ''')
@@ -452,23 +462,35 @@ class DatabaseInitService:
         Note: PostgreSQL uses functions + triggers (different from SQLite)
         """
         try:
-            # Create function for rating update
+            # Create function for rating update (moyenne ponderee imported + local)
             cursor.execute('''
                 CREATE OR REPLACE FUNCTION update_product_rating()
                 RETURNS TRIGGER AS $$
+                DECLARE
+                    local_count INTEGER;
+                    local_sum NUMERIC;
+                    imp_count INTEGER;
+                    imp_rating REAL;
                 BEGIN
-                    UPDATE products
-                    SET rating = (
-                        SELECT COALESCE(AVG(rating), 0.0)
-                        FROM reviews
-                        WHERE product_id = COALESCE(NEW.product_id, OLD.product_id)
-                    ),
-                    reviews_count = (
-                        SELECT COUNT(*)
-                        FROM reviews
-                        WHERE product_id = COALESCE(NEW.product_id, OLD.product_id)
-                    )
+                    SELECT COUNT(*), COALESCE(SUM(rating), 0)
+                    INTO local_count, local_sum
+                    FROM reviews
                     WHERE product_id = COALESCE(NEW.product_id, OLD.product_id);
+
+                    SELECT COALESCE(imported_reviews_count, 0), COALESCE(imported_rating, 0.0)
+                    INTO imp_count, imp_rating
+                    FROM products
+                    WHERE product_id = COALESCE(NEW.product_id, OLD.product_id);
+
+                    UPDATE products
+                    SET rating = CASE
+                            WHEN (imp_count + local_count) > 0 THEN
+                                (imp_rating * imp_count + local_sum) / (imp_count + local_count)
+                            ELSE 0.0
+                        END,
+                        reviews_count = imp_count + local_count
+                    WHERE product_id = COALESCE(NEW.product_id, OLD.product_id);
+
                     RETURN NEW;
                 END;
                 $$ LANGUAGE plpgsql;
@@ -521,25 +543,3 @@ class DatabaseInitService:
         try:
             for cat_name, cat_desc, cat_icon in default_categories:
                 cursor.execute(
-                    '''INSERT INTO categories (name, description, icon)
-                       VALUES (%s, %s, %s)
-                       ON CONFLICT (name) DO NOTHING''',
-                    (cat_name, cat_desc, cat_icon)
-                )
-            conn.commit()
-            logger.debug("✅ Default categories inserted/verified (PostgreSQL)")
-
-        except Exception as e:
-            logger.error(f"❌ Error inserting default categories: {e}")
-            conn.rollback()
-            raise
-
-
-# Backward compatibility function (will be removed in next phase)
-def get_sqlite_connection(db_path: Optional[str] = None):
-    """
-    DEPRECATED: This function is kept for backward compatibility only
-    All new code should use get_postgresql_connection()
-    """
-    logger.warning("⚠️ get_sqlite_connection() is deprecated. Use get_postgresql_connection() instead.")
-    raise NotImplementedError("SQLite is no longer supported. Please use PostgreSQL.")
