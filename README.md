@@ -4,7 +4,7 @@
 
 ## Mission
 
-Enable content creators to sell their digital products at scale, fully automated. By sharing their shop link or product link, customers can pay with multiple cryptocurrencies (BTC, ETH, SOL, USDT, USDC) while sellers receive their revenue in cryptocurrency via manual payouts.
+Enable content creators to sell their digital products at scale, fully automated. By sharing their shop link or product link, customers can pay with multiple cryptocurrencies (BTC, ETH, SOL, USDT, USDC) while sellers receive their revenue in Solana payouts.
 
 The project was designed, modeled, coded, and optimized to improve user experience and significantly reduce the number of clicks before purchase.
 
